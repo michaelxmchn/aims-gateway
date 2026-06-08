@@ -299,19 +299,26 @@ def start_worker_loop(
     manifest: SkillManifest,
     stop_event: threading.Event,
     crash_simulate_after: Optional[float] = None,
+    corrupt_output: bool = False,
 ) -> None:
     """Background worker daemon — claims tasks and settles escrow.
 
     Runs in an infinite loop (until *stop_event* is set):
       1. Claim a task via ``broker.claim_task(worker_id)``.
       2. Execute the skill via ``engine.execute()``.
-      3. Call ``ledger.release_escrow_dynamic()`` to claim gas fees
+      3. **Proof-of-Result** — parse output and validate via
+         ``broker.validate_task_result()``. If the result is invalid,
+         mark the task as FAILED.
+      4. Call ``ledger.release_escrow_dynamic()`` to claim gas fees
          to this worker's ``worker_id`` balance.
-      4. Call ``broker.complete_task()`` with the final status.
+      5. Call ``broker.complete_task()`` with the final status.
 
     If *crash_simulate_after* is set, the worker will sleep that many
     seconds *after* claiming the task (simulating an abrupt drop-off)
     so the broker's timeout recovery can recycle the abandoned task.
+
+    If *corrupt_output* is ``True``, the worker replaces the engine
+    output with ``{"price": -10}`` to trigger validation failure.
     """
     from src.gateway.broker import TaskBroker
     from src.ledger.mock_counter import MockLedger
@@ -348,22 +355,51 @@ def start_worker_loop(
             {"search_term": asin, "max_results": 1},
         )
 
+        # ── Corrupt output (for penalty testing) ──────────────────
+        if corrupt_output and receipt.status == "SUCCESS":
+            receipt = ExecutionReceipt(
+                skill_name=receipt.skill_name,
+                status="SUCCESS",
+                output='{"price": -10}',
+                compute_consumed=receipt.compute_consumed,
+                execution_time=receipt.execution_time,
+            )
+
+        # ── Proof-of-Result validation ────────────────────────────
+        result_status = receipt.status
+        if result_status == "SUCCESS":
+            try:
+                parsed = json.loads(receipt.output)
+                # Extract the first product from the products array
+                # for validation (asin + price live on each product)
+                products = parsed.get("products", []) if isinstance(parsed, dict) else []
+                sample = products[0] if products else {}
+                if not broker.validate_task_result(task_id, sample):
+                    result_status = "FAILED"
+            except (json.JSONDecodeError, TypeError, IndexError) as exc:
+                logger.warning(
+                    "WORKER %s unparseable output for %s: %s",
+                    worker_id, task_id, exc,
+                )
+                result_status = "FAILED"
+
         detail = ledger.release_escrow_dynamic(
             escrow_hold.escrow_id,
             user_id=task_dict["user_id"],
             developer_id=worker_id,
             execution_time=receipt.execution_time,
             developer_premium=premium,
-            success=receipt.status == "SUCCESS",
+            success=result_status == "SUCCESS",
         )
 
         if detail is not None:
-            broker.complete_task(task_id, receipt.status, detail)
+            broker.complete_task(task_id, result_status, detail)
             logger.info(
                 "WORKER %s completed %s — earned $%.2f USDT  "
-                "[gas=$%.4f  premium=$%.2f]",
+                "[gas=$%.4f  premium=$%.2f]  status=%s",
                 worker_id, task_id, detail.developer_payout,
                 detail.gas_cost, detail.developer_premium,
+                result_status,
             )
 
     logger.info("Worker '%s' shutting down.", worker_id)

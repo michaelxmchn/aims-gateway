@@ -123,14 +123,21 @@ class MockLedger:
         self._freeze_counter: int = 0
         self._lock = threading.Lock()
 
+        # ── Worker Registration & Staking ──────────────────────────────────
+        self._staked_collateral: Dict[str, float] = {}
+        self.worker_strikes: Dict[str, int] = {}
+        """Strike counter keyed by worker_id (public for test inspection)."""
+
     # ── thread-safe read helpers ─────────────────────────────────────────
 
     def _snapshot_wealth(self) -> float:
-        """Return total USDT across all balances + treasury (must hold lock)."""
+        """Return total USDT across all balances + treasury + collateral (must hold lock)."""
         total = self._founder_treasury_usdt
         for v in self._user_balances.values():
             total += v
         for v in self._dev_balances.values():
+            total += v
+        for v in self._staked_collateral.values():
             total += v
         return total
 
@@ -163,6 +170,92 @@ class MockLedger:
     def founder_treasury_usdt(self) -> float:
         with self._lock:
             return self._founder_treasury_usdt
+
+    # ── Worker Registration & Staking ─────────────────────────────────────
+
+    def seed_dev_usdt(self, worker_id: str, amount: float) -> None:
+        """Seed a worker's dev balance with USDT (for testing)."""
+        with self._lock:
+            self._dev_balances[worker_id] = self._dev_balances.get(worker_id, 0.0) + amount
+        logger.info(
+            "SEED-DEV %s +$%.2f USDT (balance=$%.2f)",
+            worker_id, amount, self._dev_balances[worker_id],
+        )
+
+    def register_worker(self, worker_id: str, stake_amount: float = 5.0) -> bool:
+        """Register a worker by freezing *stake_amount* USDT as collateral.
+
+        Deducts from the worker's dev balance. Returns ``True`` if the
+        stake was successfully frozen, ``False`` if insufficient funds.
+        """
+        with self._lock:
+            balance = self._dev_balances.get(worker_id, 0.0)
+            if balance < stake_amount:
+                logger.warning(
+                    "REGISTER FAIL: %s has $%.2f, needs $%.2f to stake",
+                    worker_id, balance, stake_amount,
+                )
+                return False
+
+            self._dev_balances[worker_id] = round(balance - stake_amount, 2)
+            self._staked_collateral[worker_id] = round(
+                self._staked_collateral.get(worker_id, 0.0) + stake_amount, 2,
+            )
+            self.worker_strikes.setdefault(worker_id, 0)
+
+        logger.info(
+            "REGISTER %s → staked $%.2f USDT (collateral=$%.2f, strikes=%d)",
+            worker_id, stake_amount,
+            self._staked_collateral[worker_id],
+            self.worker_strikes[worker_id],
+        )
+        return True
+
+    def get_staked_collateral(self, worker_id: str) -> float:
+        """Return the amount of USDT a worker has locked as collateral."""
+        with self._lock:
+            return self._staked_collateral.get(worker_id, 0.0)
+
+    def apply_penalty(self, worker_id: str, reason: str) -> float:
+        """Issue a strike to *worker_id*.
+
+        **Strike accumulation (3-strike rule):**
+          - Strikes 1-2: warning only.
+          - Strike 3+: **Slash Event** — $1.00 USDT deducted from
+            ``_staked_collateral`` and transferred to ``founder_treasury``.
+            Strike counter is reset to 0.
+
+        Returns the amount slashed (1.0 on slash, 0.0 on warning-only).
+        """
+        with self._lock:
+            self.worker_strikes[worker_id] = self.worker_strikes.get(worker_id, 0) + 1
+            strikes = self.worker_strikes[worker_id]
+
+            logger.warning(
+                "STRIKE %d for '%s' — reason: %s",
+                strikes, worker_id, reason,
+            )
+
+            if strikes >= 3:
+                collateral = self._staked_collateral.get(worker_id, 0.0)
+                if collateral >= 1.0:
+                    self._staked_collateral[worker_id] = round(collateral - 1.0, 2)
+                    self._founder_treasury_usdt += 1.0
+                    self.worker_strikes[worker_id] = 0  # reset after slash
+                    logger.warning(
+                        "SLASH $1.00 from '%s' collateral! "
+                        "(remaining=$%.2f  treasury=$%.2f)",
+                        worker_id, self._staked_collateral[worker_id],
+                        self._founder_treasury_usdt,
+                    )
+                    return 1.0
+                else:
+                    logger.warning(
+                        "Insufficient collateral to slash '%s' ($%.2f)",
+                        worker_id, collateral,
+                    )
+
+            return 0.0
 
     # ── JIT Escrow ─────────────────────────────────────────────────────
 

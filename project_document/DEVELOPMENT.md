@@ -87,6 +87,9 @@
   - `sandbox.py`：`start_worker_loop()` 改用 `claim_task()`，新增 `crash_simulate_after` 参数（Worker-3 10s 模拟崩溃）
   - 重写 `tests/stress_test.py`：3 Workers（W1/W2 正常，W3 10s 模拟崩溃） + 后台 Timeout Checker 每 1s 轮询
   - 验证：12/12 任务完成，$0.000000 差异，Worker-3 任务回收成功 ✓
-
----
-*本文档由 Claude Code 自动维护，请勿手动编辑格式*
+- **实现 Proof of Result 验证 + Slashing Protocol 削减协议**：
+  - `ledger/mock_counter.py`：新增 `register_worker()`（质押 $5 抵押金）+ `apply_penalty()`（3 strikes → 削减 $1 → Treasury）
+  - `gateway/broker.py`：新增 `validate_task_result()`（Proof-of-Result：校验 asin+price）+ `check_timeouts()` 自动调用 `apply_penalty()`
+  - `runtime/sandbox.py`：Worker 循环集成 `validate_task_result()`，支持 `corrupt_output` 模拟坏数据
+  - `tests/stress_test.py`：Worker-3 注册 $5 质押 → 3 次超时 → 削减 $1 → 抵押金 $5→$4，国库 +$1.40（$1 罚金+$0.40 平台税）
+  - 验证：40/40 任务完成，$105.00==$105.00 守恒 ✓，Slashing Protocol PASSED ✓

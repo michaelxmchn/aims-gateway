@@ -5,6 +5,12 @@
 
 ## [2026-06-08]
 ### 新增
+- feat(ledger): 实现 Worker Registration — register_worker() 质押 $5 抵押金 + seed_dev_usdt()
+- feat(ledger): 实现 Slashing Protocol — apply_penalty() 3 strikes 削减 $1 到 Treasury
+- feat(broker): 实现 Proof of Result — validate_task_result() 校验 asin+price，失败自动 penalty
+- feat(broker): check_timeouts() 超时回收联动 apply_penalty() strike 系统
+- feat(sandbox): Worker 循环集成 validate_task_result() + corrupt_output 坏数据模式
+- feat(test): 重写 tests/stress_test.py 为 Slashing Protocol 模型（40 任务，W3 削减 $1，WEALTH AUDIT PASSED ✓）
 - feat(broker): 实现 Stateful Task Claiming — claim_task() / complete_task() / check_timeouts() 状态机（PENDING/CLAIMED/SUCCESS/FAILED）
 - feat(broker): 实现 Fault-Tolerance 超时回收机制 — CLAIMED >5s 自动 revert 到 PENDING
 - feat(sandbox): start_worker_loop 改用 claim_task() + 新增 crash_simulate_after 模拟 Worker 崩溃

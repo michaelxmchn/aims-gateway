@@ -171,12 +171,65 @@ class TaskBroker:
 
     # ── Timeout recovery ───────────────────────────────────────────────────
 
+    def validate_task_result(self, task_id: str, result_data: Any) -> bool:
+        """Proof-of-Result validation with automatic penalty on failure.
+
+        Validation rules for *result_data*:
+          - Must be a ``dict``.
+          - Must contain ``"asin"`` (non-empty string).
+          - Must contain ``"price"`` (float/int > 0).
+
+        If validation fails, the worker that claimed this task receives a
+        strike via ``ledger.apply_penalty()``.
+
+        Returns ``True`` if the result is valid, ``False`` otherwise.
+        """
+        with self._lock:
+            state = self._status.get(task_id)
+            if state is None:
+                return False
+            worker_id = state.get("worker_id")
+
+        if not isinstance(result_data, dict):
+            logger.warning("VALIDATE %s FAIL — not a dict", task_id)
+            if worker_id:
+                self._ledger.apply_penalty(worker_id, f"invalid result: not a dict")
+            return False
+
+        asin = result_data.get("asin", "")
+        price = result_data.get("price", 0)
+
+        if not isinstance(asin, str) or not asin.strip():
+            logger.warning(
+                "VALIDATE %s FAIL — bad asin=%r (worker='%s')",
+                task_id, asin, worker_id,
+            )
+            if worker_id:
+                self._ledger.apply_penalty(worker_id, f"invalid result: bad asin={asin!r}")
+            return False
+
+        if not isinstance(price, (int, float)) or price <= 0:
+            logger.warning(
+                "VALIDATE %s FAIL — bad price=%r (worker='%s')",
+                task_id, price, worker_id,
+            )
+            if worker_id:
+                self._ledger.apply_penalty(worker_id, f"invalid result: bad price={price}")
+            return False
+
+        logger.info("VALIDATE %s PASS (asin=%s, price=$%.2f)", task_id, asin, float(price))
+        return True
+
     def check_timeouts(self) -> List[str]:
         """Revert CLAIMED tasks older than *CLAIM_TIMEOUT* back to PENDING.
+
+        Each timed-out worker receives a strike via ``ledger.apply_penalty()``.
 
         Returns the list of recycled task IDs.
         """
         recycled: List[str] = []
+        # Capture (task_id, worker_id) before mutating state
+        timeout_workers: List[tuple[str, str]] = []
         now = time.time()
 
         with self._lock:
@@ -197,6 +250,12 @@ class TaskBroker:
                     state["worker_id"] = None
                     state["claimed_at"] = None
                     recycled.append(tid)
+                    if worker:
+                        timeout_workers.append((tid, worker))
+
+        # Apply penalties outside the lock to avoid nested lock contention
+        for tid, worker in timeout_workers:
+            self._ledger.apply_penalty(worker, "timeout")
 
         return recycled
 
