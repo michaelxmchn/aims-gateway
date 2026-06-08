@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
@@ -30,6 +31,8 @@ class ExecutionReceipt:
     error_message: str = ""
     compute_consumed: float = 0.0
     output: str = ""
+    execution_time: float = 0.0
+    """Wall-clock seconds measured via time.time() for dynamic billing."""
 
 
 # ── Output validator ─────────────────────────────────────────────────────
@@ -79,20 +82,24 @@ class WorkflowEngine:
 
     def execute(self, manifest: SkillManifest, arguments: Dict[str, Any]) -> ExecutionReceipt:
         """Execute a skill and return a verified receipt."""
+        wall_start = time.time()
         start = time.perf_counter()
         skill_name = manifest.name
 
         try:
             output = self._executor_fn(manifest, arguments)
             compute_consumed = time.perf_counter() - start
+            execution_time = time.time() - wall_start
         except Exception as exc:
             compute_consumed = time.perf_counter() - start
+            execution_time = time.time() - wall_start
             logger.error("Skill '%s' raised exception: %s", skill_name, exc)
             return ExecutionReceipt(
                 skill_name=skill_name,
                 status="FAILED",
                 error_message=f"{type(exc).__name__}: {exc}",
                 compute_consumed=compute_consumed,
+                execution_time=execution_time,
             )
 
         # Validate output against schema
@@ -115,6 +122,7 @@ class WorkflowEngine:
             status="SUCCESS",
             output=output,
             compute_consumed=compute_consumed,
+            execution_time=execution_time,
         )
 
 
@@ -130,8 +138,8 @@ def _amazon_scraper_impl(arguments: Dict[str, Any]) -> str:
     search_term = arguments.get("search_term", "unknown")
     max_results = min(int(arguments.get("max_results", 10)), 50)
 
-    # Simulate network delay
-    time.sleep(1.0)
+    # Simulate variable network latency (0.5-2.5s)
+    time.sleep(random.uniform(0.5, 2.5))
 
     mock_products = [
         {

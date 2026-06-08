@@ -67,6 +67,13 @@
   - SUCCESS 结算：1% Platform Tax → founder_treasury，99% → developer
   - FAILED 结算：100% instant refund to user
 - **main.py 新增 USDT 结算演示**：展示全现金流向审计（Seeded $100.00 → $100.00 circulating ✓），支持 $X.XX 美元日志
+- **实现 Dynamic Billing（Gas 计费）系统**：
+  - 定义 `BASE_GAS_RATE = 0.01` USDT/s + `PLATFORM_TAX_RATE = 0.01`
+  - `MockLedger.create_escrow_hold()`：预授权冻结最大预算到 escrow vault
+  - `MockLedger.release_escrow_dynamic()`：按实际执行时间动态结算（gas_cost = exec_time × BASE_GAS_RATE + developer_premium，上限 max_budget）
+  - `ExecutionReceipt.execution_time`：沙箱记录 wall-clock 执行时间用于计费
+  - amazon_scraper 模拟随机网络延迟 `random.uniform(0.5, 2.5)` 使 Gas 计费真实
+  - main.py 第 7 阶段展示详细分项账单（Gas 费/开发者溢价/平台税/Dev  payout/未使用退款）
 
 ## 遇到的问题
 - 暂无

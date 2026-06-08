@@ -138,51 +138,87 @@ def main() -> None:
     assert jail_skill not in active, f"BUG: {jail_skill} should be frozen!"
     print(f"  ✓ '{jail_skill}' filtered out — {len(active)} active skills remain")
 
-    # ── 7. USDT JIT Escrow ───────────────────────────────────────────────
-    print_sep("7. USDT JIT Escrow — Cash Flow Audit ($USDT)")
+    # ── 7. Dynamic Billing (Gas-Based) ────────────────────────────────────
+    print_sep("7. Dynamic Billing — Gas Meter & Itemised Receipt")
 
-    from src.ledger.mock_counter import MockLedger
+    from src.ledger.mock_counter import MockLedger, BASE_GAS_RATE
 
     ledger = MockLedger()
-
-    # Seed
     ledger.seed_usdt("alice", 100.00)
-    print(f"\n  {'Alice initial:':22s} ${ledger.get_user_usdt('alice'):>7.2f} USDT")
+    print(f"\n  {'Alice initial:':28s} ${ledger.get_user_usdt('alice'):>7.2f} USDT")
 
-    # ── Scenario A: SUCCESS → 1% tax, 99% dev ──────────────────────
-    receipt = ledger.freeze_usdt("alice", 5.0)
-    print(f"  {'Freeze → escrow:':22s} ${receipt.amount:>5.2f} USDT  ({receipt.freeze_id})")
-    print(f"  {'Alice after freeze:':22s} ${ledger.get_user_usdt('alice'):>7.2f} USDT")
+    amazon_m = registry.get("amazon_scraper")
+    assert amazon_m is not None
+    dev_premium = float(amazon_m.price_points)
+    max_budget = 1.00
 
-    detail = ledger.settle_escrow(receipt.freeze_id, success=True, dev_address="dev_alice")
+    print(f"  {'Skill:':28s} amazon_scraper")
+    print(f"  {'Developer premium:':28s} ${dev_premium:.2f} USDT")
+    print(f"  {'Max budget (escrow hold):':28s} ${max_budget:.2f} USDT")
+    print(f"  {'Gas rate:':28s} ${BASE_GAS_RATE:.2f} USDT/s")
+
+    # ── Scenario A: SUCCESS → dynamic billing ─────────────────────
+    hold = ledger.create_escrow_hold("alice", max_budget)
+    assert hold is not None
+    print(f"\n  ═══ SCENARIO A: SUCCESS ═══")
+    print(f"  {'Escrow hold:':28s} {hold.escrow_id}  (${hold.max_budget:.2f} frozen)")
+    print(f"  {'Alice after hold:':28s} ${ledger.get_user_usdt('alice'):>7.2f} USDT")
+
+    receipt = engine.execute(amazon_m, {"search_term": "wireless headphones", "max_results": 3})
+    assert receipt.status == "SUCCESS"
+
+    detail = ledger.release_escrow_dynamic(
+        hold.escrow_id,
+        user_id="alice",
+        developer_id="dev_alice",
+        execution_time=receipt.execution_time,
+        developer_premium=dev_premium,
+        success=True,
+    )
     assert detail is not None
-    print(f"  {'Settlement:':22s} {detail.outcome}")
-    print(f"    {'Platform tax (1%):':22s} ${detail.platform_tax:>5.2f} USDT → founder_treasury")
-    print(f"    {'Dev net (99%):':22s}     ${detail.dev_net:>5.2f} USDT → developer")
-    print(f"  {'Dev balance:':22s} ${ledger.get_dev_usdt('dev_alice'):>7.2f} USDT")
-    print(f"  {'Treasury:':22s} ${ledger.founder_treasury_usdt:>7.2f} USDT")
 
-    # ── Scenario B: FAILED → 100% refund ──────────────────────────
-    receipt2 = ledger.freeze_usdt("alice", 3.0)
-    detail2 = ledger.settle_escrow(receipt2.freeze_id, success=False)
+    print(f"  {'Execution time:':28s} {detail.execution_time:.2f}s")
+    print(f"  {'┌─ Billing Receipt ─────────────────────┐'}")
+    print(f"  │ {'Gas cost':22s} ${detail.gas_cost:>6.4f} USDT  │")
+    print(f"  │ {'Developer premium':22s} ${detail.developer_premium:>6.2f} USDT   │")
+    print(f"  │ {'Total cost':22s} ${detail.total_cost:>6.2f} USDT   │")
+    print(f"  │ {'Platform tax (1%)':22s} ${detail.platform_tax:>6.2f} USDT   │")
+    print(f"  │ {'Dev payout (99%)':22s} ${detail.developer_payout:>6.2f} USDT   │")
+    print(f"  ├──────────────────────────────────────────┤")
+    print(f"  │ {'Unused refund → alice':22s} ${detail.unused_refund:>6.2f} USDT   │")
+    print(f"  └──────────────────────────────────────────┘")
+
+    # ── Scenario B: FAILED → 100% refund ─────────────────────────
+    hold2 = ledger.create_escrow_hold("alice", 0.50)
+    assert hold2 is not None
+    print(f"\n  ═══ SCENARIO B: FAILED ═══")
+    print(f"  {'Escrow hold:':28s} {hold2.escrow_id}  (${hold2.max_budget:.2f} frozen)")
+    print(f"  {'Alice after hold:':28s} ${ledger.get_user_usdt('alice'):>7.2f} USDT")
+
+    detail2 = ledger.release_escrow_dynamic(
+        hold2.escrow_id,
+        user_id="alice",
+        developer_id="dev_alice",
+        execution_time=0.0,
+        developer_premium=0.0,
+        success=False,
+    )
     assert detail2 is not None
-    print(f"\n  {'Freeze → escrow:':22s} ${receipt2.amount:>5.2f} USDT  ({receipt2.freeze_id})")
-    print(f"  {'Settlement:':22s} {detail2.outcome}")
-    print(f"    {'Refund (100%):':22s}      ${detail2.user_refund:>5.2f} USDT → alice")
-    print(f"  {'Alice after refund:':22s} ${ledger.get_user_usdt('alice'):>7.2f} USDT")
+
+    print(f"  {'Outcome:':28s} {detail2.outcome} — 100% back")
+    print(f"  {'Refund:':28s} ${detail2.unused_refund:>6.2f} USDT → alice")
+    print(f"  {'Alice after refund:':28s} ${ledger.get_user_usdt('alice'):>7.2f} USDT")
 
     # ── Final audit ───────────────────────────────────────────────
-    print(f"\n  ── Final Cash Flow ──")
     alice_end = ledger.get_user_usdt("alice")
     dev_end = ledger.get_dev_usdt("dev_alice")
     treasury = ledger.founder_treasury_usdt
     total = alice_end + dev_end + treasury
-    print(f"  {'Alice:':22s} ${alice_end:>7.2f} USDT")
-    print(f"  {'Developer (dev_alice):':22s} ${dev_end:>7.2f} USDT")
-    print(f"  {'Founder Treasury:':22s} ${treasury:>7.2f} USDT")
-    print(f"  {'────────────────────────────────'}")
-    print(f"  {'Total in system:':22s} ${total:>7.2f} USDT")
-    print(f"  {'Seeded $100.00 →':22s} ${total:>7.2f} USDT circulating  "
+    print(f"\n  ── Final Balance Sheet ──")
+    print(f"  {'Alice:':28s} ${alice_end:>7.2f} USDT")
+    print(f"  {'Developer (dev_alice):':28s} ${dev_end:>7.2f} USDT")
+    print(f"  {'Founder Treasury:':28s} ${treasury:>7.2f} USDT")
+    print(f"  {'Total in system:':28s} ${total:>7.2f} USDT  "
           f"{'✓' if abs(total - 100.00) < 0.01 else '✗ MISSING!'}")
 
     # ── 8. Health Report ────────────────────────────────────────────────
