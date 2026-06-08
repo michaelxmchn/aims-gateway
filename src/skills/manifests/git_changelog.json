@@ -1,0 +1,31 @@
+{
+  "name": "git_changelog",
+  "description": "Generate a formatted changelog from git commit history between two refs. Supports conventional commits parsing.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "repo_path": {
+        "type": "string",
+        "description": "Absolute path to the git repository"
+      },
+      "from_ref": {
+        "type": "string",
+        "description": "Starting git ref (tag, branch, or commit hash)"
+      },
+      "to_ref": {
+        "type": "string",
+        "description": "Ending git ref (defaults to HEAD)"
+      },
+      "format": {
+        "type": "string",
+        "enum": ["markdown", "json"],
+        "description": "Output format"
+      }
+    },
+    "required": ["repo_path", "from_ref"]
+  },
+  "version": "1.0.0",
+  "author": "aims_seed",
+  "price_points": 0,
+  "tags": ["git", "changelog", "markdown"]
+}

@@ -1,0 +1,22 @@
+{
+  "name": "code_security_audit",
+  "description": "Analyse Solidity source code for common vulnerability patterns including reentrancy, access control, and arithmetic issues. Returns a severity-ranked report.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "source_code": {
+        "type": "string",
+        "description": "The Solidity source code to audit"
+      },
+      "contract_name": {
+        "type": "string",
+        "description": "Name of the primary contract"
+      }
+    },
+    "required": ["source_code"]
+  },
+  "version": "1.0.0",
+  "author": "aims_seed",
+  "price_points": 1,
+  "tags": ["security", "solidity", "audit"]
+}
