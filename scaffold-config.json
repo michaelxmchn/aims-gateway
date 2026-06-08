@@ -1,0 +1,12 @@
+{
+  "PROJECT_NAME": "AIMS",
+  "SOURCE_DIR": "src",
+  "TEST_DIR": "tests",
+  "include_uiux": true,
+  "PROJECT_TYPE": "Decentralized AI Skill Network (Agent Protocol)",
+  "TECH_STACK": "Solidity (Base L2), TypeScript, Append-only Log, DAG Execution Engine",
+  "ENTRY_POINT": "SKILL.md",
+  "BUILD_COMMAND": "forge build",
+  "RUN_COMMAND": "N/A (loaded as Skill by AI client)",
+  "TEST_COMMAND": "forge test"
+}

@@ -1,0 +1,35 @@
+# --- OS ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# --- Editors / IDEs ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+
+# --- Secrets / local env ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets.*
+
+# --- Logs / temp ---
+*.log
+*.tmp
+tmp/
+.cache/
+
+# --- Build output (ADS: append stack-specific rules below) ---
+# e.g. node: node_modules/ dist/ ; python: __pycache__/ .venv/ *.pyc ;
+#      rust: target/ ; java: build/ *.class ; swift/xcode: DerivedData/ *.xcuserstate
