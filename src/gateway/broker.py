@@ -1,31 +1,36 @@
-"""Task Broker — DePIN Centralized Task Queue (Layer 3.5).
+"""Task Broker — Stateful Task Claiming & Fault-Tolerance (Layer 3.5).
 
-Maintains a thread-safe FIFO task queue that Worker Nodes poll for
-work. Each task carries a pre-funded escrow hold so workers can execute
-and claim gas fees without touching user balances directly.
+Manages a thread-safe in-memory task store with explicit state tracking.
+Workers claim individual tasks; the broker detects abandoned (timed-out)
+CLAIMED tasks and recycles them back to PENDING so other workers can
+pick them up.
 
 Lifecycle:
-  1. publish_task() — create escrow hold from user, enqueue task
-  2. poll_task()   — worker pops next available task (blocking with timeout)
-  3. record_result — worker reports settlement outcome back to broker
+  1. publish_task()  — create escrow hold from user, enqueue as PENDING
+  2. claim_task()    — atomically grab the first PENDING task → CLAIMED
+  3. complete_task() — mark CLAIMED as SUCCESS or FAILED
+  4. check_timeouts()— recycle CLAIMED tasks older than 5 s back to PENDING
 """
 
 from __future__ import annotations
 
 import logging
-import queue
 import threading
+import time
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from src.ledger.mock_counter import DynamicSettlementDetail, EscrowHold, MockLedger
 
 logger = logging.getLogger(__name__)
 
+CLAIM_TIMEOUT = 5.0
+"""Seconds after which a CLAIMED task is considered abandoned."""
+
 
 @dataclass
 class BrokerTask:
-    """A scraping task waiting for an available worker node."""
+    """Escrow metadata for a published task (referenced by task_id)."""
 
     task_id: str
     user_id: str
@@ -36,15 +41,24 @@ class BrokerTask:
 
 
 class TaskBroker:
-    """Centralised thread-safe FIFO task queue for DePIN workload distribution."""
+    """Thread-safe stateful task store with claiming and timeout recovery."""
 
     def __init__(self, ledger: MockLedger) -> None:
         self._ledger = ledger
-        self._queue: queue.Queue[BrokerTask] = queue.Queue()
         self._task_counter = 0
         self._lock = threading.Lock()
-        self._assignments: Dict[str, str] = {}
+
+        # Task state store: task_id → task metadata
+        self._tasks: Dict[str, BrokerTask] = {}
+
+        # Task status tracking
+        # Maps task_id → {"status": str, "worker_id": str | None, "claimed_at": float | None}
+        self._status: Dict[str, Dict[str, Any]] = {}
+
+        # Settlement results
         self._results: Dict[str, DynamicSettlementDetail] = {}
+
+    # ── Publish ────────────────────────────────────────────────────────────
 
     def publish_task(
         self,
@@ -53,7 +67,7 @@ class TaskBroker:
         developer_premium: float,
         max_budget: float,
     ) -> Optional[str]:
-        """Create an escrow hold and enqueue a micro-task.
+        """Create an escrow hold and register a PENDING task.
 
         Returns the ``task_id`` string, or ``None`` if the user has
         insufficient balance for the escrow hold.
@@ -74,40 +88,126 @@ class TaskBroker:
             max_budget=max_budget,
             escrow_hold=hold,
         )
-        self._queue.put(task)
+
+        with self._lock:
+            self._tasks[task_id] = task
+            self._status[task_id] = {
+                "status": "PENDING",
+                "worker_id": None,
+                "claimed_at": None,
+            }
+
         logger.info(
-            "PUBLISH %s → queue (asin=%s  premium=$%.2f  budget=$%.2f)",
+            "PUBLISH %s → PENDING (asin=%s  premium=$%.2f  budget=$%.2f)",
             task_id, asin, developer_premium, max_budget,
         )
         return task_id
 
-    def poll_task(self, worker_id: str, timeout: float = 2.0) -> Optional[BrokerTask]:
-        """Non-blocking poll for the next available task.
+    # ── Claim ──────────────────────────────────────────────────────────────
 
-        Blocks up to *timeout* seconds. Returns ``None`` if the queue
-        is still empty after the timeout.
+    def claim_task(self, worker_id: str) -> Optional[Dict[str, Any]]:
+        """Atomically claim the first PENDING task.
+
+        Returns an enriched dict with task metadata, or ``None`` if no
+        PENDING tasks are available.
         """
-        try:
-            task = self._queue.get(timeout=timeout)
-            with self._lock:
-                self._assignments[task.task_id] = worker_id
-            logger.info(
-                "ASSIGN %s → worker '%s'", task.task_id, worker_id,
-            )
-            return task
-        except queue.Empty:
+        with self._lock:
+            for tid, state in self._status.items():
+                if state["status"] == "PENDING":
+                    task = self._tasks.get(tid)
+                    if task is None:
+                        continue
+
+                    state["status"] = "CLAIMED"
+                    state["worker_id"] = worker_id
+                    state["claimed_at"] = time.time()
+
+                    logger.info(
+                        "CLAIM %s → worker '%s'  (asin=%s)",
+                        tid, worker_id, task.asin,
+                    )
+                    return {
+                        "task_id": tid,
+                        "asin": task.asin,
+                        "status": "CLAIMED",
+                        "worker_id": worker_id,
+                        "claimed_at": state["claimed_at"],
+                        "user_id": task.user_id,
+                        "developer_premium": task.developer_premium,
+                        "max_budget": task.max_budget,
+                        "escrow_hold": task.escrow_hold,
+                    }
             return None
 
-    def record_result(self, task_id: str, detail: DynamicSettlementDetail) -> None:
-        """Store the settlement result for a completed task."""
-        with self._lock:
-            self._results[task_id] = detail
+    # ── Complete ───────────────────────────────────────────────────────────
 
-    # ── status helpers ─────────────────────────────────────────────────
+    def complete_task(
+        self,
+        task_id: str,
+        status: str,
+        detail: Optional[DynamicSettlementDetail] = None,
+    ) -> None:
+        """Mark a CLAIMED task as SUCCESS or FAILED."""
+        with self._lock:
+            state = self._status.get(task_id)
+            if state is None:
+                logger.warning("COMPLETE %s — unknown task", task_id)
+                return
+            if state["status"] != "CLAIMED":
+                logger.warning(
+                    "COMPLETE %s — expected CLAIMED, got %s",
+                    task_id, state["status"],
+                )
+                return
+
+            state["status"] = status
+            if detail is not None:
+                self._results[task_id] = detail
+
+            logger.info(
+                "COMPLETE %s → %s  (worker='%s')",
+                task_id, status, state["worker_id"],
+            )
+
+    # ── Timeout recovery ───────────────────────────────────────────────────
+
+    def check_timeouts(self) -> List[str]:
+        """Revert CLAIMED tasks older than *CLAIM_TIMEOUT* back to PENDING.
+
+        Returns the list of recycled task IDs.
+        """
+        recycled: List[str] = []
+        now = time.time()
+
+        with self._lock:
+            for tid, state in self._status.items():
+                if state["status"] != "CLAIMED":
+                    continue
+                if state["claimed_at"] is None:
+                    continue
+                age = now - state["claimed_at"]
+                if age >= CLAIM_TIMEOUT:
+                    worker = state["worker_id"]
+                    logger.warning(
+                        "[Timeout] Worker '%s' went ghost on %s! "
+                        "(age=%.1fs) Reverting to PENDING.",
+                        worker, tid, age,
+                    )
+                    state["status"] = "PENDING"
+                    state["worker_id"] = None
+                    state["claimed_at"] = None
+                    recycled.append(tid)
+
+        return recycled
+
+    # ── Status helpers ─────────────────────────────────────────────────────
 
     @property
     def pending_count(self) -> int:
-        return self._queue.qsize()
+        with self._lock:
+            return sum(
+                1 for s in self._status.values() if s["status"] == "PENDING"
+            )
 
     @property
     def completed_count(self) -> int:
@@ -118,7 +218,17 @@ class TaskBroker:
         """Return {worker_id: completed_task_count}."""
         with self._lock:
             summary: Dict[str, int] = {}
-            for tid, wid in self._assignments.items():
-                if tid in self._results:
+            for tid, state in self._status.items():
+                if state["status"] == "SUCCESS" and state["worker_id"]:
+                    wid = state["worker_id"]
                     summary[wid] = summary.get(wid, 0) + 1
             return summary
+
+    def status_counts(self) -> Dict[str, int]:
+        """Return {status_label: count} for diagnostics."""
+        with self._lock:
+            counts: Dict[str, int] = {}
+            for s in self._status.values():
+                label = s["status"]
+                counts[label] = counts.get(label, 0) + 1
+            return counts

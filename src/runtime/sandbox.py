@@ -298,54 +298,71 @@ def start_worker_loop(
     engine: WorkflowEngine,
     manifest: SkillManifest,
     stop_event: threading.Event,
+    crash_simulate_after: Optional[float] = None,
 ) -> None:
-    """Background worker daemon — polls the broker and settles escrow.
+    """Background worker daemon — claims tasks and settles escrow.
 
     Runs in an infinite loop (until *stop_event* is set):
-      1. Poll ``broker.poll_task(worker_id)`` with a 2 s timeout.
+      1. Claim a task via ``broker.claim_task(worker_id)``.
       2. Execute the skill via ``engine.execute()``.
       3. Call ``ledger.release_escrow_dynamic()`` to claim gas fees
          to this worker's ``worker_id`` balance.
+      4. Call ``broker.complete_task()`` with the final status.
 
-    Each worker collects gas fees under its own ``worker_id`` so the
-    ledger can audit exactly how revenue is distributed across the
-    DePIN network.
+    If *crash_simulate_after* is set, the worker will sleep that many
+    seconds *after* claiming the task (simulating an abrupt drop-off)
+    so the broker's timeout recovery can recycle the abandoned task.
     """
     from src.gateway.broker import TaskBroker
     from src.ledger.mock_counter import MockLedger
 
-    logger.info("Worker '%s' online — polling for tasks ...", worker_id)
+    logger.info("Worker '%s' online — claiming tasks ...", worker_id)
 
     while not stop_event.is_set():
-        task = broker.poll_task(worker_id, timeout=2.0)
-        if task is None:
+        task_dict = broker.claim_task(worker_id)
+        if task_dict is None:
+            time.sleep(0.5)
             continue
 
+        task_id = task_dict["task_id"]
+        asin = task_dict["asin"]
+        premium = task_dict["developer_premium"]
+        escrow_hold = task_dict["escrow_hold"]
+
         logger.info(
-            "WORKER %s picked up %s (asin=%s, premium=$%.2f)",
-            worker_id, task.task_id, task.asin, task.developer_premium,
+            "WORKER %s claimed %s (asin=%s, premium=$%.2f)",
+            worker_id, task_id, asin, premium,
         )
+
+        # ── Simulate worker crash (abandon the task) ──────────────
+        if crash_simulate_after is not None and crash_simulate_after >= 0:
+            logger.warning(
+                "WORKER %s CRASH SIMULATION — sleeping %.1fs before execution",
+                worker_id, crash_simulate_after,
+            )
+            time.sleep(crash_simulate_after)
+            # Task is still CLAIMED — broker.check_timeouts() will recycle it
 
         receipt = engine.execute(
             manifest,
-            {"search_term": task.asin, "max_results": 1},
+            {"search_term": asin, "max_results": 1},
         )
 
         detail = ledger.release_escrow_dynamic(
-            task.escrow_hold.escrow_id,
-            user_id=task.user_id,
+            escrow_hold.escrow_id,
+            user_id=task_dict["user_id"],
             developer_id=worker_id,
             execution_time=receipt.execution_time,
-            developer_premium=task.developer_premium,
+            developer_premium=premium,
             success=receipt.status == "SUCCESS",
         )
 
         if detail is not None:
-            broker.record_result(task.task_id, detail)
+            broker.complete_task(task_id, receipt.status, detail)
             logger.info(
                 "WORKER %s completed %s — earned $%.2f USDT  "
                 "[gas=$%.4f  premium=$%.2f]",
-                worker_id, task.task_id, detail.developer_payout,
+                worker_id, task_id, detail.developer_payout,
                 detail.gas_cost, detail.developer_premium,
             )
 

@@ -82,6 +82,11 @@
   - `sandbox.py` 新增 `start_worker_loop()` 后台守护线程：自动轮询 Broker → 执行技能 → 调用 `release_escrow_dynamic()` 将 Gas 费记入自身 `worker_id`
   - 更新 `tests/stress_test.py` 为 DePIN 模型：5 个 Worker × 30 任务，自动排空，工作量分布 5–7 任务/worker，Gas 费分配到 5 个独立 worker_id 余额
   - 验证：WEALTH AUDIT: PASSED ✓（$70.00 Alice + $29.70 Workers + $0.30 Treasury = $100.00 ✓）
+- **实现 Stateful Task Claiming + Fault-Tolerance**：
+  - 重构 `gateway/broker.py`：`queue.Queue` → `Dict[str, dict]` 任务状态存储，实现 `claim_task()`（原子抢占 CLAIMED）、`complete_task()`（SUCCESS/FAILED）、`check_timeouts()`（>5s 回收 PENDING）
+  - `sandbox.py`：`start_worker_loop()` 改用 `claim_task()`，新增 `crash_simulate_after` 参数（Worker-3 10s 模拟崩溃）
+  - 重写 `tests/stress_test.py`：3 Workers（W1/W2 正常，W3 10s 模拟崩溃） + 后台 Timeout Checker 每 1s 轮询
+  - 验证：12/12 任务完成，$0.000000 差异，Worker-3 任务回收成功 ✓
 
 ---
 *本文档由 Claude Code 自动维护，请勿手动编辑格式*
