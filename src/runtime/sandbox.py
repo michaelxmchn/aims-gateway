@@ -365,32 +365,49 @@ def start_worker_loop(
                 execution_time=receipt.execution_time,
             )
 
-        # ── Proof-of-Result validation ────────────────────────────
+        # ── Generic JSON Schema validation ────────────────────────
         result_status = receipt.status
         if result_status == "SUCCESS":
             try:
-                parsed = json.loads(receipt.output)
-                # Extract the first product from the products array
-                # for validation (asin + price live on each product)
-                products = parsed.get("products", []) if isinstance(parsed, dict) else []
-                sample = products[0] if products else {}
-                if not broker.validate_task_result(task_id, sample):
+                parsed = json.loads(receipt.output) if isinstance(receipt.output, str) else receipt.output
+                schema = {
+                    "type": "object",
+                    "required": ["products"],
+                    "properties": {
+                        "products": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "required": ["asin", "price"],
+                                "properties": {
+                                    "asin": {"type": "string"},
+                                    "price": {"type": "number", "minimum": 0},
+                                },
+                            },
+                        },
+                    },
+                }
+                if not broker.validate_result_generic(parsed, schema, worker_id):
                     result_status = "FAILED"
-            except (json.JSONDecodeError, TypeError, IndexError) as exc:
+            except (json.JSONDecodeError, TypeError) as exc:
                 logger.warning(
                     "WORKER %s unparseable output for %s: %s",
                     worker_id, task_id, exc,
                 )
                 result_status = "FAILED"
 
+        skill_meta = {
+            "compute_tier": task_dict.get("compute_tier", 1),
+            "developer_premium": premium,
+            "skill_id": task_dict.get("skill_id", ""),
+        }
         detail = ledger.release_escrow_dynamic(
             escrow_hold.escrow_id,
             user_id=task_dict["user_id"],
             developer_id=worker_id,
             execution_time=receipt.execution_time,
-            developer_premium=premium,
+            skill_meta=skill_meta,
             success=result_status == "SUCCESS",
-            skill_id=task_dict.get("skill_id", ""),
         )
 
         if detail is not None:

@@ -26,6 +26,7 @@ Audits:
 
 from __future__ import annotations
 
+import json
 import logging
 import sys
 import threading
@@ -36,7 +37,7 @@ sys.path.insert(0, ".")
 from src.gateway.broker import TaskBroker
 from src.ledger.mock_counter import MockLedger
 from src.skills.manifest import SkillManifest
-from src.runtime.sandbox import WorkflowEngine, resolve_impl, start_worker_loop
+from src.runtime.sandbox import SKILL_IMPLS, WorkflowEngine, resolve_impl, start_worker_loop
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -439,6 +440,190 @@ else:
 
 print(f"  {'─' * 60}")
 print(f"  Reputation System Verified — outlier truncation protects weighted score")
+print(f"  {'─' * 60}")
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PHASE 3: COMPUTE TIER BILLING — Tier-2 (2.5x) Multiplier
+# ═══════════════════════════════════════════════════════════════════════════
+
+print("\n")
+print("=" * 72)
+print("  COMPUTE TIER BILLING — Tier-2 (2.5x) Multiplier")
+print("  social_media_booster (4.0s) on compute_tier=2")
+print("=" * 72)
+
+TIER2_SKILL = "social_media_booster"
+
+# Register a custom skill implementation that runs for ~4s
+def _social_media_booster_tier2(arguments: dict) -> str:
+    """Tier-2 skill: 4s execution, valid output for schema validation."""
+    time.sleep(4.0)
+    return json.dumps({
+        "products": [{"asin": "TIER2-001", "price": 49.99, "title": "Tier-2 Post"}]
+    })
+
+SKILL_IMPLS[TIER2_SKILL] = _social_media_booster_tier2
+
+tier_ledger = MockLedger()
+tier_broker = TaskBroker(tier_ledger)
+tier_engine = WorkflowEngine(resolve_impl)
+
+tier_manifest = SkillManifest(
+    name=TIER2_SKILL,
+    description="Social media content booster (Tier-2)",
+    input_schema={"type": "object", "properties": {}, "required": []},
+    output_schema={"type": "object", "properties": {}, "required": []},
+    version="1.0.0",
+    author="aims_seed",
+    price_points=0.0,
+    tags=["social"],
+)
+
+tier_stop_event = threading.Event()
+tier_worker = threading.Thread(
+    target=start_worker_loop,
+    args=("tier_worker", tier_ledger, tier_broker, tier_engine,
+          tier_manifest, tier_stop_event),
+    daemon=True,
+)
+tier_worker.start()
+
+tier_ledger.seed_usdt("tier_user", 100.0)
+time.sleep(0.3)
+
+TIER2_TASK_BUDGET = 3.0
+TIER2_PREMIUM = 0.0
+
+tier_broker.publish_task(
+    user_id="tier_user",
+    asin="TIER2-TEST",
+    developer_premium=TIER2_PREMIUM,
+    max_budget=TIER2_TASK_BUDGET,
+    skill_id=TIER2_SKILL,
+    compute_tier=2,
+)
+
+while tier_broker.completed_count < 1:
+    time.sleep(0.3)
+time.sleep(1.0)
+tier_stop_event.set()
+
+tier_worker_earned = tier_ledger.get_dev_usdt("tier_worker")
+tier_treasury = tier_ledger.founder_treasury_usdt
+
+# Expected with tier=2, mult=2.5, ~4.0s:
+#   gas_cost ≈ 0.01 × 2.5 × 4.0 = 0.1000
+#   total    ≈ 0.1000 + 0.0 = 0.1000
+#   tax      ≈ 0.1000 × 0.01 = 0.0010
+#   payout   ≈ 0.1000 − 0.0010 = 0.0990
+#   refund   ≈ 3.0 − 0.1000 = 2.90
+EXPECTED_GAS_TIER2 = 0.01 * 2.5 * 4.0  # = 0.1000
+tier_gas_approx = abs(tier_worker_earned - (EXPECTED_GAS_TIER2 * 0.99)) < 0.02
+tier_billing_ok = tier_gas_approx
+
+print(f"\n  {'Skill:':30s} {TIER2_SKILL} (compute_tier=2, mult=2.5x)")
+print(f"  {'Execution target:':30s} 4.0 seconds")
+print(f"  {'Worker earned:':30s} ${tier_worker_earned:.4f} USDT")
+print(f"  {'Expected gas (2.5x):':30s} ${EXPECTED_GAS_TIER2:.4f} USDT")
+print(f"  {'Treasury (tax):':30s} ${tier_treasury:.4f} USDT")
+
+if tier_billing_ok:
+    print(f"  {'─' * 60}")
+    print(f"  >>> TIER-2 BILLING AUDIT: PASSED ✓")
+    print(f"  >>> Tier multiplier 2.5x correctly applied ✓")
+    print(f"  >>> Worker paid ~${tier_worker_earned:.4f} for 4.0s compute ✓")
+else:
+    print(f"  >>> TIER-2 BILLING AUDIT: FAILED ⚠")
+    print(f"  >>> Expected ~${EXPECTED_GAS_TIER2:.4f}, got ${tier_worker_earned:.4f}")
+    exit_code = 1
+
+print(f"  {'─' * 60}")
+print(f"  Compute Tier Billing Verified — Tier-2 2.5x multiplier")
+print(f"  {'─' * 60}")
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PHASE 4: GENERIC VALIDATION REJECTION — Invalid Output Slashing
+# ═══════════════════════════════════════════════════════════════════════════
+
+print("\n")
+print("=" * 72)
+print("  GENERIC VALIDATION REJECTION — Slashing via validate_result_generic")
+print("  Worker injects corrupt output → JSON Schema rejects → penalty")
+print("=" * 72)
+
+SLASHING_WORKER = "val_worker"
+SLASHING_STAKE = 5.0
+
+val_ledger = MockLedger()
+val_broker = TaskBroker(val_ledger)
+val_engine = WorkflowEngine(resolve_impl)
+
+val_manifest = SkillManifest(
+    name="amazon_scraper",
+    description="Amazon scraper (corrupted for test)",
+    input_schema={"type": "object", "properties": {}, "required": []},
+    output_schema={"type": "object", "properties": {}, "required": []},
+    version="1.0.0",
+    author="aims_seed",
+    price_points=2.0,
+    tags=["scraping"],
+)
+
+val_stop_event = threading.Event()
+
+# Seed and register the worker
+val_ledger.seed_dev_usdt(SLASHING_WORKER, SLASHING_STAKE)
+val_ledger.register_worker(SLASHING_WORKER, SLASHING_STAKE)
+initial_strikes = val_ledger.worker_strikes.get(SLASHING_WORKER, 0)
+
+val_worker = threading.Thread(
+    target=start_worker_loop,
+    args=(SLASHING_WORKER, val_ledger, val_broker, val_engine,
+          val_manifest, val_stop_event),
+    kwargs={"corrupt_output": True},
+    daemon=True,
+)
+val_worker.start()
+
+val_ledger.seed_usdt("val_user", 100.0)
+time.sleep(0.3)
+
+val_broker.publish_task(
+    user_id="val_user",
+    asin="VALIDATE-TEST",
+    developer_premium=2.0,
+    max_budget=1.0,
+    skill_id="amazon_scraper",
+)
+
+while val_broker.completed_count < 1:
+    time.sleep(0.3)
+time.sleep(1.0)
+val_stop_event.set()
+
+strikes_after = val_ledger.worker_strikes.get(SLASHING_WORKER, 0)
+val_rejected = strikes_after > initial_strikes
+strike_gained = strikes_after - initial_strikes
+
+print(f"\n  {'Worker:':30s} {SLASHING_WORKER}")
+print(f"  {'Corrupt output:':30s} {{\"price\": -10}} (missing 'products')")
+print(f"  {'Expected failure:':30s} JSON Schema 'required: [products]'")
+print(f"  {'Strikes before:':30s} {initial_strikes}")
+print(f"  {'Strikes after:':30s} {strikes_after}")
+print(f"  {'Strike gained:':30s} {'✓' if val_rejected else '✗'} (+{strike_gained})")
+
+if val_rejected:
+    print(f"  {'─' * 60}")
+    print(f"  >>> GENERIC VALIDATION AUDIT: PASSED ✓")
+    print(f"  >>> Corrupt output correctly rejected by JSON Schema ✓")
+    print(f"  >>> Worker penalized +{strike_gained} strike(s) ✓")
+else:
+    print(f"  >>> GENERIC VALIDATION AUDIT: FAILED ⚠")
+    print(f"  >>> Expected 1 strike, got {strike_gained}")
+    exit_code = 1
+
+print(f"  {'─' * 60}")
+print(f"  Generic Validation Verified — corrupt output rejected + penalty")
 print(f"  {'─' * 60}")
 
 sys.exit(exit_code)

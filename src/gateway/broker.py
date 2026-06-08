@@ -39,6 +39,7 @@ class BrokerTask:
     max_budget: float
     escrow_hold: EscrowHold
     skill_id: str = ""
+    compute_tier: int = 1
 
 
 class TaskBroker:
@@ -68,6 +69,7 @@ class TaskBroker:
         developer_premium: float,
         max_budget: float,
         skill_id: str = "",
+        compute_tier: int = 1,
     ) -> Optional[str]:
         """Create an escrow hold and register a PENDING task.
 
@@ -90,6 +92,7 @@ class TaskBroker:
             max_budget=max_budget,
             escrow_hold=hold,
             skill_id=skill_id,
+            compute_tier=compute_tier,
         )
 
         with self._lock:
@@ -140,6 +143,7 @@ class TaskBroker:
                         "max_budget": task.max_budget,
                         "escrow_hold": task.escrow_hold,
                         "skill_id": task.skill_id,
+                        "compute_tier": task.compute_tier,
                     }
             return None
 
@@ -262,6 +266,78 @@ class TaskBroker:
             self._ledger.apply_penalty(worker, "timeout")
 
         return recycled
+
+    # ── Generic JSON Schema validation ──────────────────────────────────
+
+    def validate_result_generic(self, result_data: Any, schema: Dict[str, Any],
+                                 worker_id: str) -> bool:
+        """Generic JSON Schema result validation with slashing integration.
+
+        Supports a subset of JSON Schema sufficient for skill output checks:
+
+        - **type**: ``"object"`` | ``"array"`` | ``"string"`` | ``"number"``
+        - **properties** (object): each key describes a field with:
+          ``{"type": ..., "required": true/false}``
+        - **items** (array): schema for each element
+        - **minimum** / **maximum** (number): numeric bounds
+
+        On validation failure, calls ``ledger.apply_penalty(worker_id)``.
+        Returns ``True`` if valid, ``False`` otherwise.
+        """
+        def _check_type(value: Any, expected: str) -> bool:
+            if expected == "object":
+                return isinstance(value, dict)
+            elif expected == "array":
+                return isinstance(value, list)
+            elif expected == "string":
+                return isinstance(value, str)
+            elif expected == "number":
+                return isinstance(value, (int, float))
+            return True  # unknown type passes
+
+        def _validate(value: Any, schema_part: Dict[str, Any]) -> bool:
+            schema_type = schema_part.get("type")
+            if schema_type:
+                if not _check_type(value, schema_type):
+                    return False
+
+            if schema_type == "object" and isinstance(value, dict):
+                req = schema_part.get("required", [])
+                for field in req:
+                    if field not in value:
+                        return False
+                props = schema_part.get("properties", {})
+                for prop_name, prop_schema in props.items():
+                    if prop_name in value:
+                        if not _validate(value[prop_name], prop_schema):
+                            return False
+
+            if schema_type == "array" and isinstance(value, list):
+                items_schema = schema_part.get("items", {})
+                for item in value:
+                    if not _validate(item, items_schema):
+                        return False
+
+            if isinstance(value, (int, float)):
+                min_val = schema_part.get("minimum")
+                max_val = schema_part.get("maximum")
+                if min_val is not None and value < min_val:
+                    return False
+                if max_val is not None and value > max_val:
+                    return False
+
+            return True
+
+        if not _validate(result_data, schema):
+            logger.warning(
+                "VALIDATE GENERIC FAIL — worker='%s'  schema=%s",
+                worker_id, schema,
+            )
+            self._ledger.apply_penalty(worker_id, "output validation failed")
+            return False
+
+        logger.info("VALIDATE GENERIC PASS — worker='%s'", worker_id)
+        return True
 
     # ── Status helpers ─────────────────────────────────────────────────────
 

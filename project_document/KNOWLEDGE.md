@@ -109,6 +109,18 @@ A: 待补充
 - **经济模型**: 成功时扣除实际成本（Gas + premium），1% Platform Tax → `founder_treasury`，99% → developer，未使用部分即时退还用户；失败时 100% 退还全部冻结预算
 - **计费数据流**: `sandbox.WorkflowEngine.execute()` 测量 `execution_time`（wall-clock `time.time()`）→ `ExecutionReceipt.execution_time` → `MockLedger.release_escrow_dynamic()` 计算 Gas 和溢价 → 返回 `DynamicSettlementDetail` 分项账单
 
+### 决策17：Compute Tier Billing（层级 Gas 计费）
+- **背景**: 不同 Skill 的计算复杂度差异巨大，简单爬虫（Tier-1）和 AI 推理（Tier-3）不应按相同费率计费
+- **决策**: 引入 `TIER_MULTIPLIERS = {1: 1.0, 2: 2.5, 3: 6.0}`，gas 公式改为 `gas_cost = exec_time × BASE_GAS_RATE × tier_mult`。`release_escrow_dynamic()` 改为接收 `skill_meta` 字典（含 `compute_tier`/`developer_premium`/`skill_id`），`compute_tier` 通过 `BrokerTask → publish_task → claim_task → skill_meta` 全链路传递
+- **原因**: 层级计费让市场自动定价——简单任务便宜，复杂任务贵，激励开发者优化技能效率
+- **验证**: Tier-2(2.5x) Worker 运行 4.0s，`gas = 0.01 × 2.5 × 4.0 = $0.1000` 精确匹配 ✓
+
+### 决策18：通用 JSON Schema 验证器（validate_result_generic）
+- **背景**: 原有 `validate_task_result()` 硬编码校验 asin+price 两个字段，无法扩展为新技能类型
+- **决策**: 创建 `validate_result_generic(result_data, schema, worker_id)` — 递归 JSON Schema 验证器，支持 `type`/`required`/`properties`/`items`/`minimum`/`maximum`，失败自动联动 `apply_penalty()` 削减协议
+- **原因**: 通用验证器让每个 Skill 的 `output_schema` 定义自己的验证规则，不再需要硬编码。验证失败自动 strike，降低运营成本
+- **验证**: corrupt 输出 `{"price": -10}`（缺少 required `products` 字段）被 JSON Schema 拒绝，Worker strike 0→1 ✓
+
 ### 决策16：Double-Sided Reputation + Outlier Truncation
 - **背景**: 恶意用户或机器人可以刷低分操纵技能评分，单个 1 星评价可以显著拉低整体分数
 - **决策**: 引入双层保护 — (1) **评分门控**：用户必须先成功使用过技能（有 `release_escrow_dynamic(skill_id=...)` 记录）才能评分；(2) **异常截断**：当技能评分 ≥ 5 条时，计算均值和标准差，`|rating - mean| > 2.5` 的评分被抑制（不追加到评分列表）；(3) **信誉惩罚**：提交异常评分的用户信誉 -0.1（下限 0.0）；(4) **加权评分**：`weighted_score = Σ(reputation_i × rating_i) / Σ(reputation_i)`

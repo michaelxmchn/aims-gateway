@@ -15,6 +15,13 @@
 - feat(ledger): 实现 Outlier Truncation — |rating - mean| > 2.5 自动抑制 + 信誉惩罚 -0.1
 - feat(broker): BrokerTask / publish_task / claim_task 传递 skill_id 支持评分链
 - feat(test): stress_test.py Double-Sided Reputation 验证 — 6 任务全完成，恶意 1.0 抑制，信誉 1.0→0.9，评分 5.0 不变，PASSED ✓
+- feat(ledger): 实现 Compute Tier Billing — TIER_MULTIPLIERS {1:1.0, 2:2.5, 3:6.0} + gas = rate × tier_mult × duration
+- feat(ledger): release_escrow_dynamic 改用 skill_meta 字典参数（compute_tier + developer_premium + skill_id）
+- feat(broker): 实现 validate_result_generic — JSON Schema 通用验证器（type/required/properties/items/minimum/maximum）
+- feat(broker): BrokerTask/publish_task/claim_task 新增 compute_tier 字段传递
+- refactor(sandbox): Worker 循环改用 skill_meta + validate_result_generic 替换硬编码 asin+price 校验
+- feat(test): stress_test.py 新增 Phase 3 Tier-2 Billing 验证（4.0s 2.5x gas=$0.1000 ✓）
+- feat(test): stress_test.py 新增 Phase 4 Generic Validation Rejection 验证（corrupt output 拒绝 + strike ✓）
 ### 修复
 - fix(test): stress_test.py 声誉测试阶段等待全部任务完成（completed_count 检查取代 pending_count 检查）
 - fix(test): stress_test.py 移除未定义的 pytest.approx 引用，使用 abs 差值验证

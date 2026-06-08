@@ -25,7 +25,7 @@ import logging
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,9 @@ logger = logging.getLogger(__name__)
 
 BASE_GAS_RATE: float = 0.01
 """USDT per second of execution time — the base compute cost."""
+
+TIER_MULTIPLIERS: dict[int, float] = {1: 1.0, 2: 2.5, 3: 6.0}
+"""Compute tier → gas multiplier. Tier-1 = 1x, Tier-2 = 2.5x, Tier-3 = 6x."""
 
 PLATFORM_TAX_RATE: float = 0.01
 """1% platform fee on total cost — sent to founder treasury on success."""
@@ -96,7 +99,8 @@ class DynamicSettlementDetail:
     # Execution
     execution_time: float     # seconds measured by the sandbox
     gas_rate: float           # USDT/s (the BASE_GAS_RATE constant)
-    gas_cost: float           # execution_time × gas_rate
+    gas_cost: float           # execution_time × gas_rate × tier_multiplier
+    tier_multiplier: float    # the compute tier multiplier applied
     developer_premium: float  # the skill's price_points in USDT
 
     # Settlement
@@ -488,18 +492,26 @@ class MockLedger:
         user_id: str,
         developer_id: str,
         execution_time: float,
-        developer_premium: float = 0.0,
+        skill_meta: Optional[Dict[str, Any]] = None,
         success: bool = True,
-        skill_id: str = "",
     ) -> Optional[DynamicSettlementDetail]:
-        """Release an escrow hold with gas-based dynamic billing.
+        """Release an escrow hold with compute-tier-aware gas billing.
 
-        **On SUCCESS:**
-          1. ``gas_cost = execution_time * BASE_GAS_RATE``
+        *skill_meta* is a dict that may contain::
+
+            {
+                "compute_tier": 1,          # 1|2|3  (default 1)
+                "developer_premium": 0.0,   # USDT premium for the skill
+                "skill_id": "",             # for usage recording
+            }
+
+        **Formula (SUCCESS):**
+          1. ``gas_cost = exec_time * BASE_GAS_RATE * TIER_MULTIPLIERS[tier]``
           2. ``total_cost = gas_cost + developer_premium`` (capped at max_budget)
           3. ``platform_tax = total_cost * PLATFORM_TAX_RATE``  ->  founder_treasury
-          4. ``developer_payout = total_cost - platform_tax``    ->  developer
-          5. ``unused_refund = max_budget - total_cost``         ->  user
+          4. ``remaining = total_cost − platform_tax``
+          5. ``developer_payout = remaining`` ->  developer_id
+          6. ``unused_refund = max_budget − total_cost`` ->  user
 
         **On FAILED:**
           100 % of the frozen *max_budget* is returned to the user.
@@ -510,14 +522,21 @@ class MockLedger:
                 logger.error("Escrow hold not found: %s", escrow_id)
                 return None
 
+            skill_meta = skill_meta or {}
+            compute_tier = skill_meta.get("compute_tier", 1)
+            developer_premium = skill_meta.get("developer_premium", 0.0)
+            skill_id = skill_meta.get("skill_id", "")
+            tier_mult = TIER_MULTIPLIERS.get(compute_tier, 1.0)
+
             max_budget = hold.max_budget
 
             if success:
-                gas_cost = execution_time * BASE_GAS_RATE
+                gas_cost = execution_time * BASE_GAS_RATE * tier_mult
                 total_cost = gas_cost + developer_premium
                 total_cost = min(total_cost, max_budget)  # never exceed the ceiling
                 platform_tax = round(total_cost * PLATFORM_TAX_RATE, 2)
-                developer_payout = round(total_cost - platform_tax, 2)
+                remaining = total_cost - platform_tax
+                developer_payout = round(remaining, 2)
                 unused_refund = round(max_budget - total_cost, 2)
 
                 # Distribute
@@ -536,7 +555,8 @@ class MockLedger:
                     developer_id=developer_id,
                     execution_time=execution_time,
                     gas_rate=BASE_GAS_RATE,
-                    gas_cost=gas_cost,
+                    gas_cost=round(gas_cost, 4),
+                    tier_multiplier=tier_mult,
                     developer_premium=developer_premium,
                     max_budget=max_budget,
                     total_cost=total_cost,
@@ -545,9 +565,9 @@ class MockLedger:
                     unused_refund=unused_refund,
                 )
                 logger.info(
-                    "ESCROW-RELEASE %s -> COMPLETED  [gas=$%.4f  premium=$%.2f  "
-                    "tax=$%.2f  dev=$%.2f  refund=$%.2f]",
-                    escrow_id, gas_cost, developer_premium,
+                    "ESCROW-RELEASE %s -> COMPLETED  [tier=%.1fx  gas=$%.4f  "
+                    "premium=$%.2f  tax=$%.2f  dev=$%.2f  refund=$%.2f]",
+                    escrow_id, tier_mult, gas_cost, developer_premium,
                     platform_tax, developer_payout, unused_refund,
                 )
 
@@ -571,6 +591,7 @@ class MockLedger:
                     execution_time=execution_time,
                     gas_rate=BASE_GAS_RATE,
                     gas_cost=0.0,
+                    tier_multiplier=1.0,
                     developer_premium=0.0,
                     max_budget=max_budget,
                     total_cost=0.0,

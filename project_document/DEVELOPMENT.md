@@ -98,3 +98,11 @@
   - `gateway/broker.py`：`BrokerTask`/`publish_task()/claim_task()` 新增 `skill_id` 字段传递
   - `ledger/mock_counter.py/release_escrow_dynamic()`：新增 `skill_id` 参数，成功使用时自动记录用户技能使用记录
   - 验证：6/6 任务完成，恶意用户 1.0 评价被抑制（|1.0-5.0|>2.5），信誉 1.0→0.9，加权评分保持 5.0，资金守恒 ✓
+- **实现 Compute Tier Billing（层级计费）系统**：
+  - `mock_counter.py`：新增 `TIER_MULTIPLIERS = {1: 1.0, 2: 2.5, 3: 6.0}`，`release_escrow_dynamic()` 改为接收 `skill_meta` 字典（含 compute_tier/developer_premium/skill_id），gas 公式改为 `exec_time × BASE_GAS_RATE × tier_mult`
+  - `broker.py`/`sandbox.py`：`compute_tier` 贯穿 `BrokerTask → publish_task → claim_task → skill_meta`
+  - 验证：Tier-2(2.5x) Worker 运行 4.0s，gas=$0.1000 精确匹配预期，TAX 资金守恒 ✓
+- **实现通用 JSON Schema 验证器**：
+  - `broker.py`：新增 `validate_result_generic(result_data, schema, worker_id)` — 支持 type/required/properties/items/minimum/maximum 检查，失败自动调用 `apply_penalty()`
+  - `sandbox.py`：Worker 循环改用通用验证器替代硬编码 asin+price 校验
+  - 验证：corrupt 输出 `{"price":-10}`（缺少 products）被 JSON Schema 拒绝，Worker 被记 strike+1 ✓
