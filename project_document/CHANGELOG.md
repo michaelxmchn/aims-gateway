@@ -47,6 +47,17 @@
 - feat(config): 创建 AIMS 项目脚手架配置
 - docs(prd): 填充 PRD 文档（愿景/用户/范围/功能定义/Q&A 确认）
 - docs(arch): 填充 ARCHITECTURE 文档（领域模型/7 模块/DAG 依赖图/目录结构）
+### 修复
+- fix(main): release_escrow_dynamic() 签名不匹配 — 改用 skill_meta 字典参数
+- fix(merkle): import json 作用域错误 — hash_record() 无法访问 json 模块
+### 新增
+- feat(mcp): 创建 src/client/mcp_server.py — MCP stdio 服务器（initialize/tools/list/tools/call）
+- feat(cli): 扩展 CLI — aims exec/aims list/aims login/aims mcp 子命令
+- feat(chain): 实现 user_identity_map + simulate_stripe_webhook() 法币入金桩
+- feat(test): 创建 4 个单元测试套件 — Manifest/Registry/Log/Sandbox（47 tests）
+### 重构
+- refactor(runtime): 删除死代码 executor.py（已被 sandbox.py 替代）
+- refactor(chain): settlement.py 重构 — 新增 UserIdentity + Stripe Webhook 支持
 - feat(manifest): 创建 SkillManifest Pydantic 模型，对齐 LLM Tool Calling 格式
 - feat(registry): 创建 SkillRegistry，支持本地 manifests/ 加载 + Anthropic/OpenAI 工具定义注入
 - feat(router): 创建 GatewayRouter 万能入口，动态注入工具到 LLM + 串行编排

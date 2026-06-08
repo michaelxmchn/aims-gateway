@@ -7,6 +7,7 @@ submitted to the Base chain as a single compressed proof.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import asdict
 from typing import List
 
@@ -25,8 +26,6 @@ def compute_root(records: List[ExecutionRecord]) -> bytes:
 
     Uses simple binary Merkle tree with zero-padding to power-of-2.
     """
-    import json
-
     leaves = [hash_record(r) for r in records]
     if not leaves:
         return b""

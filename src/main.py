@@ -172,7 +172,7 @@ def main() -> None:
         user_id="alice",
         developer_id="dev_alice",
         execution_time=receipt.execution_time,
-        developer_premium=dev_premium,
+        skill_meta={"compute_tier": 1, "developer_premium": dev_premium, "skill_id": "amazon_scraper"},
         success=True,
     )
     assert detail is not None
@@ -200,7 +200,7 @@ def main() -> None:
         user_id="alice",
         developer_id="dev_alice",
         execution_time=0.0,
-        developer_premium=0.0,
+        skill_meta={"compute_tier": 1, "developer_premium": 0.0, "skill_id": ""},
         success=False,
     )
     assert detail2 is not None

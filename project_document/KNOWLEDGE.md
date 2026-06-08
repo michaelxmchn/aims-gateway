@@ -134,6 +134,15 @@ A: 待补充
 - **经济模型**: 用户信誉默认 1.0，每次异常评分 -0.1，低信誉用户的评分权重自动降低，形成自我修复的评分系统
 - **验证**: 5 个诚实用户评分 5.0 + 1 个恶意用户评分 1.0（|1.0-5.0|=4.0 > 2.5 → 抑制），恶意用户信誉 1.0→0.9，加权评分保持 5.0 ✓
 
+### MCP 协议集成模式
+- **MCP stdio 服务器**：`src/client/mcp_server.py` 实现 Model Context Protocol over stdio，AI 客户端（Claude Code/Cursor）通过 stdin/stdout JSON-RPC 发现和调用 AIMS Skill
+- **工具自动发现**：`tools/list` 返回 `SkillRegistry.get_all_manifests()` 的完整工具列表，`tools/call` 通过 `WorkflowEngine.execute()` 执行 Skill
+- **无需 SDK**：直接实现 JSON-RPC 2.0 协议（initialize/tools/list/tools/call），零外部依赖
+
+### User Identity Map 模式
+- **Email → Wallet 绑定**：`src/chain/settlement.py` 的 `user_identity_map` 将用户 email 映射到钱包地址和会话密钥
+- **法币入金桩**：`simulate_stripe_webhook()` 模拟 Stripe `payment_intent.succeeded` 事件，种子用户 USDT 余额
+
 ### 决策5：信任模式 + 串行执行
 - **背景**: MVP 要快速验证核心路由逻辑
 - **决策**: 沙箱隔离不做（信任模式，仅种子开发者）+ 串行执行（不做并行 DAG）

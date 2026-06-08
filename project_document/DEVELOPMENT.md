@@ -5,7 +5,6 @@
 ## 当前任务
 - [ ] 编写 AIMS 智能合约（Solidity on Base）
 - [ ] 实现 Skill 市场的发布/检索/获取端到端流程
-- [ ] 写单元测试（Manifest 校验、Registry 加载、Log 追加）
 - [ ] 集成 Anthropic SDK 做端到端 route() 测试
 
 ## 任务详情
@@ -112,3 +111,22 @@
   - `src/runtime/sandbox.py`：`dashboard_skill` 注册到 SKILL_IMPLS
   - `src/skills/manifests/dashboard_skill/`：manifest.json + rules.md Document-Driven 定义
   - 验证：HTML 生成 13KB ✓，Tailwind/Chart.js/Slashing 表/财富饼图/层级柱图均正确渲染 ✓
+- **修复 main.py release_escrow_dynamic() 签名不匹配**：
+  - `src/main.py`：将 `developer_premium=` 关键字参数改为 `skill_meta=` 字典参数
+  - 原因：函数签名重构为接收 `skill_meta` 字典（含 compute_tier/developer_premium/skill_id）
+  - 验证：python3 -m src.main 全流程通过（6 skills + billing + jail demo ✓）
+- **删除死代码 executor.py**：
+  - `src/runtime/executor.py`：已删除（遗留 SkillRuntime + 空 SKILL_IMPLS，未被任何文件导入）
+- **实现 MCP stdio 服务器**：
+  - `src/client/mcp_server.py`：MCP 协议实现（initialize/tools/list/tools/call），暴露所有活跃 skill 为 MCP Tool
+  - 验证：6 个 skill 全部正确列出 ✓
+- **扩展 CLI 命令行**：
+  - `src/client/cli.py`：新增 `aims exec <name> <json-args>`（执行 skill）、`aims list`（列出 skill）、`aims login`（创建会话密钥）、`aims mcp`（启动 MCP 服务器）
+- **实现 User Identity Map + Stripe Webhook 桩**：
+  - `src/chain/settlement.py`：新增 `UserIdentity` 和 `user_identity_map`（email → wallet 绑定）、`register_identity()`、`resolve_wallet()`、`simulate_stripe_webhook()`（模拟法币入金流程）
+- **创建单元测试套件**：
+  - `tests/test_manifest.py`：8 个测试（Pydantic 校验、name pattern、schema 验证、tool def 转换）
+  - `tests/test_registry.py`：16 个测试（领域检测、优先级评分、冻结机制、rules.md 加载）
+  - `tests/test_log.py`：12 个测试（Append/Flush/Query/Merkle 根）
+  - `tests/test_sandbox.py`：11 个测试（WorkflowEngine 执行、输出验证、错误处理）
+  - 验证：47/47 PASSED ✓
