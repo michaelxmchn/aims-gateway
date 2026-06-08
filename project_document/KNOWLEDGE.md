@@ -148,6 +148,12 @@ A: 待补充
 - **决策**: 沙箱隔离不做（信任模式，仅种子开发者）+ 串行执行（不做并行 DAG）
 - **原因**: 沙箱和并行调度会增加数倍复杂度，MVP 场景线性的就够用了
 
+### 决策20：E2E 集成测试 8 阶段全链路验证
+- **背景**: 单一机制的单元测试无法捕捉机制间的交互问题（如 staking 后削减、冻结资金释放后的财富守恒）
+- **决策**: `tests/e2e_integration_test.py` 定义 8 阶段流水线：Account Abstraction → Developer Registration → Worker Staking → Fault Tolerance → Slashing → Tier-2 Billing → Wealth Audit → Dashboard
+- **验证模式**: 11 个检查点覆盖所有经济机制，最终断言 `accounted == initial_wealth`（$180.00 == $180.00）
+- **原因**: 端到端测试是发现跨机制资金泄漏的唯一可靠手段，wealth audit 捕获任何未结算或错误分配
+
 ## 学习资源
 - 待补充
 

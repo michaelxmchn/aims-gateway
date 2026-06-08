@@ -130,3 +130,6 @@
   - `tests/test_log.py`：12 个测试（Append/Flush/Query/Merkle 根）
   - `tests/test_sandbox.py`：11 个测试（WorkflowEngine 执行、输出验证、错误处理）
   - 验证：47/47 PASSED ✓
+- **创建 E2E 集成测试套件**：
+  - `tests/e2e_integration_test.py`：8 阶段端到端测试（Account Abstraction → Developer Registration → Worker Staking → Fault Tolerance → Slashing → Tier-2 Billing → Wealth Audit → Dashboard）
+  - 验证：11/11 全通过 ✓，$180.00→$180.00 资金守恒 ✓，100% 架构闭合 ✓
