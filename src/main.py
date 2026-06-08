@@ -19,7 +19,7 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logging.getLogger("src.skills.registry").setLevel(logging.WARNING)
-logging.getLogger("src.ledger.mock_counter").setLevel(logging.WARNING)
+logging.getLogger("src.ledger.mock_counter").setLevel(logging.INFO)
 
 logger = logging.getLogger("aims")
 
@@ -138,8 +138,55 @@ def main() -> None:
     assert jail_skill not in active, f"BUG: {jail_skill} should be frozen!"
     print(f"  ✓ '{jail_skill}' filtered out — {len(active)} active skills remain")
 
-    # ── 7. Health Report ────────────────────────────────────────────────
-    print_sep("7. Registry Health Report")
+    # ── 7. USDT JIT Escrow ───────────────────────────────────────────────
+    print_sep("7. USDT JIT Escrow — Cash Flow Audit ($USDT)")
+
+    from src.ledger.mock_counter import MockLedger
+
+    ledger = MockLedger()
+
+    # Seed
+    ledger.seed_usdt("alice", 100.00)
+    print(f"\n  {'Alice initial:':22s} ${ledger.get_user_usdt('alice'):>7.2f} USDT")
+
+    # ── Scenario A: SUCCESS → 1% tax, 99% dev ──────────────────────
+    receipt = ledger.freeze_usdt("alice", 5.0)
+    print(f"  {'Freeze → escrow:':22s} ${receipt.amount:>5.2f} USDT  ({receipt.freeze_id})")
+    print(f"  {'Alice after freeze:':22s} ${ledger.get_user_usdt('alice'):>7.2f} USDT")
+
+    detail = ledger.settle_escrow(receipt.freeze_id, success=True, dev_address="dev_alice")
+    assert detail is not None
+    print(f"  {'Settlement:':22s} {detail.outcome}")
+    print(f"    {'Platform tax (1%):':22s} ${detail.platform_tax:>5.2f} USDT → founder_treasury")
+    print(f"    {'Dev net (99%):':22s}     ${detail.dev_net:>5.2f} USDT → developer")
+    print(f"  {'Dev balance:':22s} ${ledger.get_dev_usdt('dev_alice'):>7.2f} USDT")
+    print(f"  {'Treasury:':22s} ${ledger.founder_treasury_usdt:>7.2f} USDT")
+
+    # ── Scenario B: FAILED → 100% refund ──────────────────────────
+    receipt2 = ledger.freeze_usdt("alice", 3.0)
+    detail2 = ledger.settle_escrow(receipt2.freeze_id, success=False)
+    assert detail2 is not None
+    print(f"\n  {'Freeze → escrow:':22s} ${receipt2.amount:>5.2f} USDT  ({receipt2.freeze_id})")
+    print(f"  {'Settlement:':22s} {detail2.outcome}")
+    print(f"    {'Refund (100%):':22s}      ${detail2.user_refund:>5.2f} USDT → alice")
+    print(f"  {'Alice after refund:':22s} ${ledger.get_user_usdt('alice'):>7.2f} USDT")
+
+    # ── Final audit ───────────────────────────────────────────────
+    print(f"\n  ── Final Cash Flow ──")
+    alice_end = ledger.get_user_usdt("alice")
+    dev_end = ledger.get_dev_usdt("dev_alice")
+    treasury = ledger.founder_treasury_usdt
+    total = alice_end + dev_end + treasury
+    print(f"  {'Alice:':22s} ${alice_end:>7.2f} USDT")
+    print(f"  {'Developer (dev_alice):':22s} ${dev_end:>7.2f} USDT")
+    print(f"  {'Founder Treasury:':22s} ${treasury:>7.2f} USDT")
+    print(f"  {'────────────────────────────────'}")
+    print(f"  {'Total in system:':22s} ${total:>7.2f} USDT")
+    print(f"  {'Seeded $100.00 →':22s} ${total:>7.2f} USDT circulating  "
+          f"{'✓' if abs(total - 100.00) < 0.01 else '✗ MISSING!'}")
+
+    # ── 8. Health Report ────────────────────────────────────────────────
+    print_sep("8. Registry Health Report")
     report = registry.health_report()
     print(f"  Status: {report['status']}")
     print(f"  Active skills: {report['manifest_count']}")

@@ -63,6 +63,10 @@
 - 创建 amazon_scraper 种子技能：Document-Driven 第一个种子，含完整 rules.md（输入/输出/限速/合规/示例）
 - 为 code_security_audit、git_changelog、data_analyzer、buggy_skill 补充 rules.md
 - 重写 main.py：展示 Document-Driven 工作流（技能发现 → 上下文注入 → 沙箱执行）
+- **升级 MockLedger 为 USDT JIT Escrow**：改 Points 为 USDT 稳定币语义，实现 JIT 托管（freeze_usdt 冻结 → escrow_vault 托管 → settle_escrow 结算）
+  - SUCCESS 结算：1% Platform Tax → founder_treasury，99% → developer
+  - FAILED 结算：100% instant refund to user
+- **main.py 新增 USDT 结算演示**：展示全现金流向审计（Seeded $100.00 → $100.00 circulating ✓），支持 $X.XX 美元日志
 
 ## 遇到的问题
 - 暂无

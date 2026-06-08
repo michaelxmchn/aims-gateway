@@ -1,15 +1,14 @@
-"""MockLedger — Non-Custodial Escrow & Settlement (Layer 0).
+"""MockLedger — USDT Just-In-Time Escrow & Settlement (Layer 0).
 
-Implements the two-step transaction lifecycle:
-  1. freeze_points()  — reserve points when a workflow starts
-  2. settle_transaction() — commit or refund based on ExecutionReceipt
+Simulates a real web3 USD stablecoin clearing house. All balances are
+in USDT (float, 2-decimal precision for display).
 
-Settlement rules:
-  - Receipt.status == "SUCCESS" → points transferred to developer
-  - Receipt.status == "FAILED"  → points refunded to user + 2.0 slash from developer staked_points
-
-All operations are in-memory (mock) for MVP. Real implementation talks
-to the Base chain via the AIMS Marketplace contract.
+Lifecycle:
+  1. freeze_usdt(user_id, amount) — deduct from user, hold in escrow_vault
+  2. settle_escrow(freeze_id, success, dev_address):
+       SUCCESS → 1% platform tax → founder_treasury, 99% → developer
+       FAILED  → 100% instant refund to user
+  3. Escrow vault is cleared after settlement.
 """
 
 from __future__ import annotations
@@ -19,152 +18,166 @@ import time
 from dataclasses import dataclass, field
 from typing import Dict, Optional
 
-from src.runtime.sandbox import ExecutionReceipt
-
 logger = logging.getLogger(__name__)
 
-SLASH_AMOUNT = 2.0
-"""Points slashed from developer's staked_points on each failed execution."""
+ESCROW_TAX_RATE: float = 0.01
+"""1% platform fee on successful settlements — sent to founder treasury."""
 
 
 @dataclass
 class FreezeReceipt:
-    """Proof that points were frozen for a workflow."""
+    """Proof that USDT was frozen in escrow when a workflow started."""
 
     freeze_id: str
-    user: str
-    developer: str
-    points: int
+    user_id: str
+    amount: float             # USDT
     skill_name: str
     timestamp: float = field(default_factory=time.time)
 
 
 @dataclass
 class SettlementDetail:
-    """Result of settling a frozen transaction."""
+    """Result of settling a frozen escrow transaction."""
 
     freeze_id: str
-    outcome: str  # "TRANSFERRED" | "REFUNDED" | "SLASHED"
-    user: str
-    developer: str
-    points_moved: int
-    slashed_from_dev: float = 0.0
-    developer_remaining_staked: float = 0.0
+    outcome: str              # "TRANSFERRED" | "REFUNDED"
+    user_id: str
+    dev_address: str
+    gross_amount: float       # Total USDT that was in escrow
+    platform_tax: float = 0.0  # USDT sent to founder treasury
+    dev_net: float = 0.0      # USDT sent to developer (after tax)
+    user_refund: float = 0.0  # USDT returned to user (on failure)
 
 
 class MockLedger:
-    """In-memory mock of the on-chain escrow and settlement contract.
+    """In-memory USDT escrow and settlement mock.
 
-    Maintains balance ledgers for users and developers, and a frozen-pool
-    for in-flight transactions.
+    Maintains user balances, developer balances, an escrow vault for
+    in-flight transactions, and a founder treasury that collects the
+    1% platform tax.
     """
 
     def __init__(self) -> None:
-        self._user_balances: Dict[str, int] = {}
-        self._dev_balances: Dict[str, int] = {}
-        self._frozen: Dict[str, FreezeReceipt] = {}
+        self._user_balances: Dict[str, float] = {}
+        self._dev_balances: Dict[str, float] = {}
+        self._escrow_vault: Dict[str, FreezeReceipt] = {}
+        self._founder_treasury_usdt: float = 0.0
         self._freeze_counter: int = 0
 
     # ── balance management ──────────────────────────────────────────────
 
-    def seed_balance(self, user: str, points: int) -> None:
-        """Seed a user with initial points for testing."""
-        self._user_balances[user] = self._user_balances.get(user, 0) + points
-        logger.info("Seeded %s +%d points (balance=%d)", user, points, self._user_balances[user])
+    def seed_usdt(self, user_id: str, amount: float) -> None:
+        """Seed a user with initial USDT for testing."""
+        self._user_balances[user_id] = self._user_balances.get(user_id, 0.0) + amount
+        logger.info(
+            "SEED  %s +$%.2f USDT (balance=$%.2f)",
+            user_id, amount, self._user_balances[user_id],
+        )
 
-    def get_user_balance(self, user: str) -> int:
-        return self._user_balances.get(user, 0)
+    def get_user_usdt(self, user_id: str) -> float:
+        return self._user_balances.get(user_id, 0.0)
 
-    def get_dev_balance(self, dev: str) -> int:
-        return self._dev_balances.get(dev, 0)
+    def get_dev_usdt(self, dev_address: str) -> float:
+        return self._dev_balances.get(dev_address, 0.0)
 
-    # ── two-step escrow ─────────────────────────────────────────────────
+    @property
+    def founder_treasury_usdt(self) -> float:
+        return self._founder_treasury_usdt
 
-    def freeze_points(self, user: str, developer: str, skill_name: str, points: int) -> Optional[FreezeReceipt]:
-        """Step 1: Freeze points from the user's balance for this workflow.
+    # ── JIT Escrow ─────────────────────────────────────────────────────
 
-        Returns None if insufficient balance.
+    def freeze_usdt(self, user_id: str, amount: float) -> Optional[FreezeReceipt]:
+        """Step 1: Freeze USDT from the user's balance into escrow.
+
+        Returns FreezeReceipt on success, None if insufficient balance.
         """
-        balance = self._user_balances.get(user, 0)
-        if balance < points:
+        balance = self._user_balances.get(user_id, 0.0)
+        if balance < amount:
             logger.warning(
-                "Insufficient balance: user=%s has %d, needs %d",
-                user, balance, points,
+                "INSUFFICIENT USDT: user=%s has $%.2f, needs $%.2f",
+                user_id, balance, amount,
             )
             return None
 
-        self._user_balances[user] = balance - points
+        self._user_balances[user_id] = balance - amount
         self._freeze_counter += 1
         receipt = FreezeReceipt(
-            freeze_id=f"frz-{self._freeze_counter:04d}",
-            user=user,
-            developer=developer,
-            points=points,
-            skill_name=skill_name,
+            freeze_id=f"escrow-{self._freeze_counter:04d}",
+            user_id=user_id,
+            amount=amount,
+            skill_name="",
         )
-        self._frozen[receipt.freeze_id] = receipt
+        self._escrow_vault[receipt.freeze_id] = receipt
         logger.info(
-            "FREEZE %s: %s → %d pts (%s '%s')",
-            receipt.freeze_id, user, points, developer, skill_name,
+            "FREEZE %s → $%.2f USDT held in escrow  [user=%s]",
+            receipt.freeze_id, amount, user_id,
         )
         return receipt
 
-    def settle_transaction(
+    def settle_escrow(
         self,
         freeze_id: str,
-        receipt: ExecutionReceipt,
-        dev_staked_points: float = 0.0,
+        success: bool,
+        dev_address: str = "",
+        skill_name: str = "",
     ) -> Optional[SettlementDetail]:
-        """Step 2: Settle based on execution result.
+        """Step 2: Settle an escrow transaction based on execution outcome.
 
-        SUCCESS → transfer frozen points to developer.
-        FAILED  → refund points to user, slash 2.0 from developer's staked.
+        SUCCESS → 1% platform tax to founder_treasury, 99% to dev.
+        FAILED  → 100% instant refund to user.
 
-        Returns None if freeze_id not found.
+        Returns SettlementDetail, or None if freeze_id not found.
         """
-        freeze = self._frozen.pop(freeze_id, None)
-        if freeze is None:
-            logger.error("Freeze receipt not found: %s", freeze_id)
+        receipt = self._escrow_vault.pop(freeze_id, None)
+        if receipt is None:
+            logger.error("Escrow receipt not found: %s", freeze_id)
             return None
 
-        if receipt.status == "SUCCESS":
-            # Transfer to developer
-            self._dev_balances[freeze.developer] = (
-                self._dev_balances.get(freeze.developer, 0) + freeze.points
-            )
+        gross = receipt.amount
+
+        if success:
+            tax = round(gross * ESCROW_TAX_RATE, 2)
+            dev_net = round(gross - tax, 2)
+
+            # 1% platform tax → founder treasury
+            self._founder_treasury_usdt += tax
+            # 99% → developer
+            self._dev_balances[dev_address] = self._dev_balances.get(dev_address, 0.0) + dev_net
+
             detail = SettlementDetail(
                 freeze_id=freeze_id,
                 outcome="TRANSFERRED",
-                user=freeze.user,
-                developer=freeze.developer,
-                points_moved=freeze.points,
+                user_id=receipt.user_id,
+                dev_address=dev_address,
+                gross_amount=gross,
+                platform_tax=tax,
+                dev_net=dev_net,
             )
             logger.info(
-                "SETTLE %s → TRANSFERRED: %s +%d pts (dev balance=%d)",
-                freeze_id, freeze.developer, freeze.points,
-                self._dev_balances[freeze.developer],
+                "SETTLE %s → SUCCESS: dev=%s +$%.2f USDT  "
+                "[gross=$%.2f  tax=$%.2f  treasury=$%.2f]",
+                freeze_id, dev_address, dev_net,
+                gross, tax, self._founder_treasury_usdt,
             )
 
-        else:  # FAILED
-            # Refund user
-            self._user_balances[freeze.user] = (
-                self._user_balances.get(freeze.user, 0) + freeze.points
+        else:  # FAILED — 100% instant refund
+            self._user_balances[receipt.user_id] = (
+                self._user_balances.get(receipt.user_id, 0.0) + gross
             )
-            # Slash developer's staked points
-            remaining = max(0.0, dev_staked_points - SLASH_AMOUNT)
+            # NO tax, NO dev payment
 
             detail = SettlementDetail(
                 freeze_id=freeze_id,
-                outcome="REFUNDED" if SLASH_AMOUNT <= 0 else "SLASHED",
-                user=freeze.user,
-                developer=freeze.developer,
-                points_moved=freeze.points,
-                slashed_from_dev=SLASH_AMOUNT,
-                developer_remaining_staked=remaining,
+                outcome="REFUNDED",
+                user_id=receipt.user_id,
+                dev_address=dev_address,
+                gross_amount=gross,
+                user_refund=gross,
             )
             logger.info(
-                "SETTLE %s → REFUNDED: %s +%d pts | SLASHED dev -%.1f staked (remaining=%.1f)",
-                freeze_id, freeze.user, freeze.points, SLASH_AMOUNT, remaining,
+                "SETTLE %s → REFUND:  user=%s +$%.2f USDT (100%% back)  "
+                "[gross=$%.2f]",
+                freeze_id, receipt.user_id, gross, gross,
             )
 
         return detail

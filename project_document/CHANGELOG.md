@@ -5,6 +5,8 @@
 
 ## [2026-06-08]
 ### 新增
+- feat(ledger): MockLedger 改 Points 为 USDT 稳定币语义，实现 JIT Escrow（freeze_usdt / settle_escrow / escrow_vault / 1% tax）
+- feat(demo): main.py 新增 USDT 现金流向审计演示，验证 Seeded $100.00 守恒
 - chore(init): Git 仓库初始化（main 分支）
 - feat(scaffold): 运行 ADS scaffold 脚本生成 .project.agents/ 治理框架
 - feat(config): 创建 AIMS 项目脚手架配置
