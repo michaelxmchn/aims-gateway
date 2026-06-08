@@ -93,3 +93,8 @@
   - `runtime/sandbox.py`：Worker 循环集成 `validate_task_result()`，支持 `corrupt_output` 模拟坏数据
   - `tests/stress_test.py`：Worker-3 注册 $5 质押 → 3 次超时 → 削减 $1 → 抵押金 $5→$4，国库 +$1.40（$1 罚金+$0.40 平台税）
   - 验证：40/40 任务完成，$105.00==$105.00 守恒 ✓，Slashing Protocol PASSED ✓
+- **实现 Double-Sided Reputation & Outlier Truncation 评分保护系统**：
+  - `ledger/mock_counter.py`：新增 `_user_reputation`（默认 1.0，[0,1] 范围）、`_skill_weighted_score`（加权评分）、`submit_rating()`（评分门控 + 异常截断 + 信誉惩罚）
+  - `gateway/broker.py`：`BrokerTask`/`publish_task()/claim_task()` 新增 `skill_id` 字段传递
+  - `ledger/mock_counter.py/release_escrow_dynamic()`：新增 `skill_id` 参数，成功使用时自动记录用户技能使用记录
+  - 验证：6/6 任务完成，恶意用户 1.0 评价被抑制（|1.0-5.0|>2.5），信誉 1.0→0.9，加权评分保持 5.0，资金守恒 ✓

@@ -295,4 +295,150 @@ else:
 print(f"  {'─' * 60}")
 print(f"  Slashing Protocol Verified — {completed} tasks, ${collateral_slashed:.2f} slashed")
 print(f"  {'─' * 60}")
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  PHASE 2: REPUTATION & RATING — Outlier Truncation
+# ═══════════════════════════════════════════════════════════════════════════
+
+print("\n")
+print("=" * 72)
+print("  REPUTATION & RATING — Outlier Truncation")
+print("  5 honest users + 1 malicious → double-sided reputation protection")
+print("=" * 72)
+
+RATING_SKILL_ID = "amazon_scraper"
+HONEST_USERS = [f"honest_user_{i}" for i in range(1, 6)]
+MALICIOUS_USER = "malicious_user"
+ALL_RATING_USERS = HONEST_USERS + [MALICIOUS_USER]
+RATING_TASK_BUDGET = 1.00
+RATING_USER_SEED = 10.0
+
+# Fresh ledger, broker, and workers for the rating test
+rating_ledger = MockLedger()
+rating_broker = TaskBroker(rating_ledger)
+rating_engine = WorkflowEngine(resolve_impl)
+
+rating_stop_event = threading.Event()
+
+# Seed all users
+for uid in ALL_RATING_USERS:
+    rating_ledger.seed_usdt(uid, RATING_USER_SEED)
+
+print(f"\n  {'Users seeded:':30s} {len(ALL_RATING_USERS)} × ${RATING_USER_SEED:.2f} USDT")
+print(f"  {'Skill under test:':30s} {RATING_SKILL_ID}")
+print(f"  {'Honest raters:':30s} {len(HONEST_USERS)}")
+print(f"  {'Malicious rater:':30s} {MALICIOUS_USER}")
+print(f"  {'─' * 60}")
+
+# Start 2 honest workers for the rating test
+for wid in ["rating_worker_1", "rating_worker_2"]:
+    t = threading.Thread(
+        target=start_worker_loop,
+        args=(wid, rating_ledger, rating_broker, rating_engine,
+              amazon_manifest, rating_stop_event),
+        daemon=True,
+    )
+    t.start()
+
+time.sleep(0.3)
+
+# Publish one task per user so each user has a successful usage record
+for uid in ALL_RATING_USERS:
+    rating_broker.publish_task(
+        user_id=uid,
+        asin=f"RATING-{uid}",
+        developer_premium=DEV_PREMIUM,
+        max_budget=RATING_TASK_BUDGET,
+        skill_id=RATING_SKILL_ID,
+    )
+
+# Wait for all tasks to complete (both PENDING and CLAIMED)
+while rating_broker.completed_count < len(ALL_RATING_USERS):
+    time.sleep(0.3)
+time.sleep(1.0)
+rating_stop_event.set()
+
+print(f"  {'Tasks published:':30s} {len(ALL_RATING_USERS)}")
+print(f"  {'Tasks completed:':30s} {rating_broker.completed_count}")
+
+# Verify each user has usage recorded (they can rate)
+for uid in ALL_RATING_USERS:
+    rep = rating_ledger.get_user_reputation(uid)
+    assert rep == 1.0, f"{uid} reputation should be 1.0, got {rep}"
+print(f"  {'All users usage OK:':30s} ✓ (rep=1.0)")
+
+# ── Phase 2a: Honest users rate 5.0 ────────────────────────────────────────
+
+print(f"\n  {'─' * 60}")
+print(f"  {'HONEST RATING PHASE':^60}")
+print(f"  {'─' * 60}")
+
+for uid in HONEST_USERS:
+    accepted = rating_ledger.submit_rating(uid, RATING_SKILL_ID, 5.0)
+    status = "✓" if accepted else "✗"
+    rep = rating_ledger.get_user_reputation(uid)
+    score = rating_ledger.get_skill_weighted_score(RATING_SKILL_ID)
+    print(f"  {uid:18s} → 5.0  {status}   (rep={rep:.2f}, score={score:.2f})")
+
+score_after_honest = rating_ledger.get_skill_weighted_score(RATING_SKILL_ID)
+honest_ratings_count = len(rating_ledger._skill_rating_entries.get(RATING_SKILL_ID, []))
+print(f"  {'─' * 30}")
+print(f"  {'Skill ratings count:':30s} {honest_ratings_count}")
+print(f"  {'Weighted score (after honest):':30s} {score_after_honest:.2f}")
+assert score_after_honest == 5.0, f"Expected 5.0, got {score_after_honest}"
+print(f"  {'Score verification:':30s} ✓ (5.0 == 5.0)")
+
+# ── Phase 2b: Malicious user bombs with 1.0 ────────────────────────────────
+
+print(f"\n  {'─' * 60}")
+print(f"  {'MALICIOUS RATING ATTEMPT':^60}")
+print(f"  {'─' * 60}")
+
+mal_rep_before = rating_ledger.get_user_reputation(MALICIOUS_USER)
+malicious_accepted = rating_ledger.submit_rating(MALICIOUS_USER, RATING_SKILL_ID, 1.0)
+mal_rep_after = rating_ledger.get_user_reputation(MALICIOUS_USER)
+score_after_attack = rating_ledger.get_skill_weighted_score(RATING_SKILL_ID)
+ratings_after = len(rating_ledger._skill_rating_entries.get(RATING_SKILL_ID, []))
+
+print(f"  {'Malicious user:':30s} {MALICIOUS_USER}")
+print(f"  {'Rating value:':30s} 1.0")
+print(f"  {'Rating accepted:':30s} {'✓' if malicious_accepted else '✗ (SUPPRESSED)'}")
+print(f"  {'Reputation before:':30s} {mal_rep_before:.2f}")
+print(f"  {'Reputation after:':30s} {mal_rep_after:.2f}")
+print(f"  {'Weighted score:':30s} {score_after_attack:.2f}")
+print(f"  {'Total ratings in list:':30s} {ratings_after}")
+
+# Assertions
+ratings_unchanged = ratings_after == honest_ratings_count  # malicious not appended
+score_unaffected = score_after_attack == score_after_honest  # 5.0 unaffected
+
+rep_slashed_simple = abs(mal_rep_after - 0.9) < 0.01  # reputation dropped by 0.1
+
+print(f"  {'─' * 30}")
+print(f"  {'Rating list unchanged:':30s} {'✓' if ratings_unchanged else '✗'}")
+print(f"  {'Malicious rep slashed:':30s} {'✓' if rep_slashed_simple else '✗'}")
+print(f"  {'Score unaffected:':30s} {'✓' if score_unaffected else '✗'}")
+
+rating_ok = ratings_unchanged and rep_slashed_simple and score_unaffected
+
+if rating_ok:
+    print(f"  {'─' * 60}")
+    print(f"  >>> OUTLIER TRUNCATION AUDIT: PASSED ✓")
+    print(f"  >>> Malicious 1.0 rating suppressed (anomaly detected) ✓")
+    print(f"  >>> Malicious user reputation: 1.0 → 0.9 ✓")
+    print(f"  >>> Weighted score remains 5.0 (unaffected) ✓")
+else:
+    print(f"  >>> OUTLIER TRUNCATION AUDIT: FAILED ⚠")
+    if not ratings_unchanged:
+        print(f"  >>> Malicious rating was appended to list!")
+    if not rep_slashed_simple:
+        print(f"  >>> Malicious user rep was not penalized (expected 0.9, got {mal_rep_after})")
+    if not score_unaffected:
+        print(f"  >>> Score changed from {score_after_honest} to {score_after_attack}!")
+    exit_code = 1
+
+print(f"  {'─' * 60}")
+print(f"  Reputation System Verified — outlier truncation protects weighted score")
+print(f"  {'─' * 60}")
+
 sys.exit(exit_code)

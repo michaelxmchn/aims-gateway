@@ -38,6 +38,7 @@ class BrokerTask:
     developer_premium: float
     max_budget: float
     escrow_hold: EscrowHold
+    skill_id: str = ""
 
 
 class TaskBroker:
@@ -66,6 +67,7 @@ class TaskBroker:
         asin: str,
         developer_premium: float,
         max_budget: float,
+        skill_id: str = "",
     ) -> Optional[str]:
         """Create an escrow hold and register a PENDING task.
 
@@ -87,6 +89,7 @@ class TaskBroker:
             developer_premium=developer_premium,
             max_budget=max_budget,
             escrow_hold=hold,
+            skill_id=skill_id,
         )
 
         with self._lock:
@@ -136,6 +139,7 @@ class TaskBroker:
                         "developer_premium": task.developer_premium,
                         "max_budget": task.max_budget,
                         "escrow_hold": task.escrow_hold,
+                        "skill_id": task.skill_id,
                     }
             return None
 

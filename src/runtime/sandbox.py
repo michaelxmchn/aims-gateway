@@ -390,6 +390,7 @@ def start_worker_loop(
             execution_time=receipt.execution_time,
             developer_premium=premium,
             success=result_status == "SUCCESS",
+            skill_id=task_dict.get("skill_id", ""),
         )
 
         if detail is not None:

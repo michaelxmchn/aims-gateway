@@ -128,6 +128,18 @@ class MockLedger:
         self.worker_strikes: Dict[str, int] = {}
         """Strike counter keyed by worker_id (public for test inspection)."""
 
+        # ── Reputation & Rating ──────────────────────────────────────────
+        self._user_skill_usage: Dict[str, set[str]] = {}
+        """Track which skills each user has successfully used (for rating gating)."""
+        self._user_reputation: Dict[str, float] = {}
+        """User reputation score (1.0 = default, [0.0, 1.0] range)."""
+        self._rating_history: Dict[str, list[str]] = {}
+        """Which skills each user has rated (user_id → [skill_id, ...])."""
+        self._skill_rating_entries: Dict[str, list[dict]] = {}
+        """Rating entries per skill: [{"user_id": ..., "reputation": ..., "rating": ...}, ...]."""
+        self._skill_weighted_score: Dict[str, float] = {}
+        """Weighted average score per skill (default 5.0)."""
+
     # ── thread-safe read helpers ─────────────────────────────────────────
 
     def _snapshot_wealth(self) -> float:
@@ -256,6 +268,87 @@ class MockLedger:
                     )
 
             return 0.0
+
+    # ── Reputation & Rating ────────────────────────────────────────────────
+
+    def get_user_reputation(self, user_id: str) -> float:
+        """Return user's reputation score (default 1.0)."""
+        with self._lock:
+            return self._user_reputation.get(user_id, 1.0)
+
+    def get_skill_weighted_score(self, skill_id: str) -> float:
+        """Return skill's weighted score (default 5.0)."""
+        with self._lock:
+            return self._skill_weighted_score.get(skill_id, 5.0)
+
+    def submit_rating(self, user_id: str, skill_id: str, rating_value: float) -> bool:
+        """Submit a rating for a skill with reputation-weighted scoring.
+
+        **Gating:** User must have a successful usage record for this skill
+        (preventing sybil rating bombing).
+
+        **Outlier Detection:** When the skill has >= 5 historical ratings,
+        if ``|rating - historical_mean| > 2.5``, the rating is flagged as
+        an **ANOMALY**, suppressed (not appended), and the user's reputation
+        is penalised by -0.1. The skill's ``weighted_score`` is unchanged.
+
+        **Normal path:** The rating is appended and ``weighted_score`` is
+        recomputed as::
+
+            weighted_score = Σ(reputation_i × rating_i) / Σ(reputation_i)
+
+        Returns ``True`` if the rating was accepted, ``False`` if suppressed.
+        """
+        with self._lock:
+            # ── Gate: must have used this skill successfully ──────────
+            usage = self._user_skill_usage.get(user_id, set())
+            if skill_id not in usage:
+                logger.warning(
+                    "RATING REJECTED: User '%s' has no usage record for '%s'",
+                    user_id, skill_id,
+                )
+                return False
+
+            rating_value = max(1.0, min(5.0, rating_value))
+            entries = self._skill_rating_entries.get(skill_id, [])
+            rep = self._user_reputation.get(user_id, 1.0)
+
+            # ── Outlier detection (requires >= 5 historical entries) ──
+            if len(entries) >= 5:
+                historical_mean = sum(e["rating"] for e in entries) / len(entries)
+                if abs(rating_value - historical_mean) > 2.5:
+                    new_rep = max(0.0, rep - 0.1)
+                    self._user_reputation[user_id] = new_rep
+                    logger.warning(
+                        "[Audit] Anomaly detected from User '%s'. Rating suppressed. "
+                        "User reputation penalized: %.2f → %.2f",
+                        user_id, rep, new_rep,
+                    )
+                    return False
+
+            # ── Normal rating — append and recalculate weighted score ─
+            entry = {"user_id": user_id, "reputation": rep, "rating": rating_value}
+            entries.append(entry)
+            self._skill_rating_entries[skill_id] = entries
+
+            # Track user's rating history
+            if user_id not in self._rating_history:
+                self._rating_history[user_id] = []
+            self._rating_history[user_id].append(skill_id)
+
+            # Weighted average: Σ(rep × rating) / Σ(rep)
+            total_weighted = sum(e["reputation"] * e["rating"] for e in entries)
+            total_weight = sum(e["reputation"] for e in entries)
+            self._skill_weighted_score[skill_id] = (
+                round(total_weighted / total_weight, 2) if total_weight > 0 else 5.0
+            )
+
+            logger.info(
+                "RATING: User '%s' rated '%s' = %.1f  (rep=%.2f)  weighted_score=%.2f",
+                user_id, skill_id, rating_value, rep,
+                self._skill_weighted_score[skill_id],
+            )
+            return True
 
     # ── JIT Escrow ─────────────────────────────────────────────────────
 
@@ -397,6 +490,7 @@ class MockLedger:
         execution_time: float,
         developer_premium: float = 0.0,
         success: bool = True,
+        skill_id: str = "",
     ) -> Optional[DynamicSettlementDetail]:
         """Release an escrow hold with gas-based dynamic billing.
 
@@ -456,6 +550,13 @@ class MockLedger:
                     escrow_id, gas_cost, developer_premium,
                     platform_tax, developer_payout, unused_refund,
                 )
+
+                # Record skill usage for rating gating
+                if skill_id:
+                    if user_id not in self._user_skill_usage:
+                        self._user_skill_usage[user_id] = set()
+                    self._user_skill_usage[user_id].add(skill_id)
+                    self._user_reputation.setdefault(user_id, 1.0)
 
             else:  # FAILED - 100 % instant refund
                 self._user_balances[user_id] = (
