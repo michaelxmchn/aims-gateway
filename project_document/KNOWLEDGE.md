@@ -12,6 +12,8 @@
 - **高频运行数据**：本地 Append-only Log 挡在前面，定期 Batch 上链
 - **底链**：Base（EVM 兼容，低 Gas）
 - **意图驱动路由**：万能入口 Skill 将用户需求拆解为 DAG 工作流，自动编排多个原子 Skill
+- **Domain Detection**：通过关键词匹配将用户 Prompt 分类到 7 个领域（security/git/code/data/devops/writing/general）
+- **Top-3 注入**：`get_top_for_domain()` 按 `Priority_Score = Frequency + (Staked × 10)` 排序，只注入匹配领域的前 3 个 Skill
 
 ## 常见问题
 
@@ -39,6 +41,21 @@ A: 待补充
 - **背景**: 发币涉及复杂的经济模型设计、流动性池和合规
 - **决策**: MVP 先用本地积分（off-chain Points）跑通流转，验证分配算法后一键映射上链
 - **原因**: 不让发币逻辑卡住核心业务上线
+
+### 决策6：优先级评分 = Frequency + Staked × 10
+- **背景**: 新发布的 Skill 没有使用频率，无法在排序中获得展示机会
+- **决策**: `Priority_Score = Usage_Frequency + (Staked_Points × 10)`，开发者质押点数获得 10 倍杠杆
+- **原因**: 质押机制让优质开发者可以冷启动推广，同时质押点数也被用作质量保证金（失败罚没 2.0）
+
+### 决策7：非托管托管结算（两步交易）
+- **背景**: 需要保证用户和开发者在交易过程中都不会被欺诈
+- **决策**: `freeze_points()` 先冻结 → `WorkflowEngine.execute()` 验证执行 → `settle_transaction()` 依据结果结算
+- **原因**: 两步交易确保即使用户恶意不付款（冻结后不能撤回），或 Skill 执行失败（自动退款），双方资产安全
+
+### 决策8：Cool-down Jail 自动惩罚机制
+- **背景**: 低质量 Skill 如果持续失败，会浪费用户时间和算力
+- **决策**: 连续失败 ≥ 3 次 OR 质押点数 ≤ 0 → 24h jail，`load_all()` 自动过滤
+- **原因**: 自动化的质量保障机制，不依赖人工审核即可清除问题 Skill
 
 ### 决策5：信任模式 + 串行执行
 - **背景**: MVP 要快速验证核心路由逻辑

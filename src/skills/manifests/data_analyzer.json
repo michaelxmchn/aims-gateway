@@ -1,0 +1,38 @@
+{
+  "name": "data_analyzer",
+  "description": "Analyse a CSV dataset and return statistical summaries, correlation insights, and data quality reports. Useful for quick data exploration.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "file_path": {
+        "type": "string",
+        "description": "Absolute path to the CSV file"
+      },
+      "analysis_type": {
+        "type": "string",
+        "enum": ["summary", "correlation", "quality", "full"],
+        "description": "Type of analysis to perform"
+      }
+    },
+    "required": ["file_path"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "report": {
+        "type": "string",
+        "description": "The analysis report in markdown"
+      },
+      "row_count": {
+        "type": "number",
+        "description": "Number of rows processed"
+      }
+    },
+    "required": ["report"]
+  },
+  "version": "1.0.0",
+  "author": "aims_seed",
+  "price_points": 2,
+  "staked_points": 8.0,
+  "tags": ["data", "analysis", "csv"]
+}

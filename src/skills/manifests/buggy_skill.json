@@ -1,0 +1,29 @@
+{
+  "name": "buggy_skill",
+  "description": "Intentional failing skill for testing the cool-down jail mechanism. Always raises an exception during execution.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "input": {
+        "type": "string",
+        "description": "Any input (will be ignored — this skill always fails)"
+      }
+    },
+    "required": ["input"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "result": {
+        "type": "string",
+        "description": "Never reached — skill always fails before output"
+      }
+    },
+    "required": ["result"]
+  },
+  "version": "0.0.1",
+  "author": "buggy_dev",
+  "price_points": 0,
+  "staked_points": 5.0,
+  "tags": ["test", "debug", "fail"]
+}

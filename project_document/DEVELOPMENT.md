@@ -48,6 +48,14 @@
 - 实现 Append-only Log（JSONL 格式 + Merkle 树）
 - 实现 Chain Settlement 存根 + Session Key Manager
 - 创建 2 个种子 Skill manifest 示例
+- 扩展 SkillManifest 模型，新增 staked_points（冷启动推广）+ frozen_until（冷却监狱）字段
+- 实现 SkillRegistry 优先级评分（Priority = Frequency + Staked × 10），支持冷启动推广
+- 实现 intent domain detection（关键词匹配 7 个领域）+ get_top_for_domain 过滤注入
+- 实现 WorkflowEngine 执行验证（try-except + output_schema 校验）+ ExecutionReceipt
+- 实现 MockLedger 两步托管结算（freeze_points → settle_transaction）含 SUCCESS 转账 / FAILED 退款+罚没
+- 实现 Cool-down Jail 机制：3 次连续失败或 staked_points ≤ 0 → 24h 冻结，load_all() 自动过滤
+- 创建 data_analyzer（数据分析和报告）+ buggy_skill（故意失败用于测试监狱）两个种子 manifest
+- 实现 main.py 全生命周期演示（优先级评分、意图检测、托管结算、冷却监狱）
 
 ## 遇到的问题
 - 暂无

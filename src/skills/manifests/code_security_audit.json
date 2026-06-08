@@ -15,8 +15,13 @@
     },
     "required": ["source_code"]
   },
+  "output_schema": {
+    "type": "string",
+    "description": "A markdown-formatted audit report"
+  },
   "version": "1.0.0",
   "author": "aims_seed",
   "price_points": 1,
+  "staked_points": 10.0,
   "tags": ["security", "solidity", "audit"]
 }

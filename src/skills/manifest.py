@@ -44,7 +44,8 @@ class SkillManifest(BaseModel):
     )
     output_schema: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Optional JSON Schema describing the return value shape.",
+        description="Optional JSON Schema describing the return value shape. "
+        "Used by WorkflowEngine to verify execution output.",
     )
     version: str = Field(
         default="1.0.0",
@@ -62,9 +63,22 @@ class SkillManifest(BaseModel):
         ge=0,
         description="Points charged per execution. 0 = free.",
     )
+    staked_points: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="Points staked by the developer for cold-start promotion. "
+        "Used in priority scoring: Priority = Frequency + (Staked * 10). "
+        "Slashed by 2.0 on each failed execution.",
+    )
+    frozen_until: float = Field(
+        default=0.0,
+        description="Unix timestamp before which this skill is frozen (jailed). "
+        "Set when staked_points <= 0 or 3 consecutive failures occur. "
+        "0.0 means not frozen.",
+    )
     tags: List[str] = Field(
         default_factory=list,
-        description="Categorisation tags for marketplace search.",
+        description="Categorisation tags for marketplace search and domain matching.",
     )
 
     @field_validator("input_schema")
@@ -74,6 +88,11 @@ class SkillManifest(BaseModel):
         if "type" not in v:
             raise ValueError("input_schema must have a top-level 'type' field (JSON Schema)")
         return v
+
+    def is_frozen(self, now: float | None = None) -> bool:
+        """Check if this skill is currently in cool-down jail."""
+        import time
+        return self.frozen_until > (now or time.time())
 
 
 # ── Tool-definition adapters ──────────────────────────────────────────────

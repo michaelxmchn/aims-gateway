@@ -24,8 +24,13 @@
     },
     "required": ["repo_path", "from_ref"]
   },
+  "output_schema": {
+    "type": "string",
+    "description": "Formatted changelog text"
+  },
   "version": "1.0.0",
   "author": "aims_seed",
   "price_points": 0,
+  "staked_points": 5.0,
   "tags": ["git", "changelog", "markdown"]
 }
