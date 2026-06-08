@@ -33,3 +33,11 @@ tmp/
 # --- Build output (ADS: append stack-specific rules below) ---
 # e.g. node: node_modules/ dist/ ; python: __pycache__/ .venv/ *.pyc ;
 #      rust: target/ ; java: build/ *.class ; swift/xcode: DerivedData/ *.xcuserstate
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+.aims/ledger/
