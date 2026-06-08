@@ -7,6 +7,8 @@
 ### 新增
 - feat(test): 创建 tests/e2e_integration_test.py — 8 阶段 E2E 集成测试（身份/Staking/Fault-Tolerance/Slashing/Tier-2 Billing/Wealth Audit/Dashboard）
 - fix(test): e2e_integration_test.py — price_points 类型 int，initial_wealth 捕获时机后移至 Phase 3，staking check 考虑削减后余额
+- feat(gateway): 创建 src/gateway/server.py — FastAPI 生产级 Gateway Server（claim/submit/health 三个端点）
+- feat(gateway): broker.py 新增 get_task_meta / get_task_status 公开方法
 - feat(ledger): 实现 Worker Registration — register_worker() 质押 $5 抵押金 + seed_dev_usdt()
 - feat(ledger): 实现 Slashing Protocol — apply_penalty() 3 strikes 削减 $1 到 Treasury
 - feat(broker): 实现 Proof of Result — validate_task_result() 校验 asin+price，失败自动 penalty

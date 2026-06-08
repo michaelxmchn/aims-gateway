@@ -154,6 +154,12 @@ A: 待补充
 - **验证模式**: 11 个检查点覆盖所有经济机制，最终断言 `accounted == initial_wealth`（$180.00 == $180.00）
 - **原因**: 端到端测试是发现跨机制资金泄漏的唯一可靠手段，wealth audit 捕获任何未结算或错误分配
 
+### 决策21：Gateway Server（FastAPI HTTP 网关）
+- **背景**: DePIN Worker 需要远程 HTTP 接口来拉取任务和提交结果，不能直接访问 Python 内部的 TaskBroker
+- **决策**: `src/gateway/server.py` 用 FastAPI 实现三个端点 — `POST /api/tasks/claim`（Worker 拉取 PENDING 任务）、`POST /api/tasks/submit`（Worker 提交结果，触发 JSON Schema 验证 + tier-based gas 结算 + slashing）、`GET /api/health`（健康检查）
+- **模式**: 全局单例 `ledger`/`broker`/`registry`，同步 broker/ledger 调用通过 `loop.run_in_executor()` 跑在线程池中，不阻塞事件循环
+- **原因**: FastAPI 的 OpenAPI 文档自动生成，Worker 可以用任何 HTTP 客户端接入，无需 Python SDK
+
 ## 学习资源
 - 待补充
 

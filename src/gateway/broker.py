@@ -339,6 +339,19 @@ class TaskBroker:
         logger.info("VALIDATE GENERIC PASS — worker='%s'", worker_id)
         return True
 
+    # ── Task metadata lookup (for Gateway Server) ─────────────────────────
+
+    def get_task_meta(self, task_id: str) -> Optional["BrokerTask"]:
+        """Return task metadata for the given *task_id*, or ``None``."""
+        with self._lock:
+            return self._tasks.get(task_id)
+
+    def get_task_status(self, task_id: str) -> Optional[Dict[str, Any]]:
+        """Return a copy of the task status dict, or ``None``."""
+        with self._lock:
+            s = self._status.get(task_id)
+            return dict(s) if s else None
+
     # ── Status helpers ─────────────────────────────────────────────────────
 
     @property

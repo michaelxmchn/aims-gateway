@@ -133,3 +133,7 @@
 - **创建 E2E 集成测试套件**：
   - `tests/e2e_integration_test.py`：8 阶段端到端测试（Account Abstraction → Developer Registration → Worker Staking → Fault Tolerance → Slashing → Tier-2 Billing → Wealth Audit → Dashboard）
   - 验证：11/11 全通过 ✓，$180.00→$180.00 资金守恒 ✓，100% 架构闭合 ✓
+- **创建 Gateway Server**：
+  - `src/gateway/server.py`：FastAPI 生产级服务器（POST /api/tasks/claim / POST /api/tasks/submit / GET /api/health）
+  - `src/gateway/broker.py`：新增 get_task_meta / get_task_status 公开方法
+  - 验证：FastAPI 启动成功，3 条路由注册 ✓
