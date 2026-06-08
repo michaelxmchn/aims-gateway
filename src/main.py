@@ -64,7 +64,7 @@ def main() -> None:
     ]
 
     for prompt in prompts:
-        result = router.route(prompt, limit=2)
+        result = router.route(prompt)
 
         # Show the injected context (first 500 chars)
         context_preview = result.context[:600]
@@ -73,6 +73,9 @@ def main() -> None:
 
         print(f"\n  Prompt: \"{prompt[:60]}...\"")
         print(f"  Domain: {result.domain}")
+        print(f"  Candidates: {result.total_candidates}  |  "
+              f"Discarded: {result.filtered_out}  |  "
+              f"Injected: {len(result.skill_names)} (max 3)")
         print(f"  Skills injected: {result.skill_names}")
         print(f"  Context preview:\n{context_preview}")
         print()
