@@ -265,10 +265,19 @@ def _code_security_audit_impl(arguments: Dict[str, Any]) -> str:
 
 # ── Skill Implementations Registry ──────────────────────────────────────
 
+
+def _dashboard_impl(arguments: Dict[str, Any]) -> str:
+    """Generate and open the DePIN ecosystem dashboard in the user's browser."""
+    from src.skills.dashboard_skill import generate_dashboard
+    result = generate_dashboard()
+    return json.dumps(result, indent=2)
+
+
 SKILL_IMPLS: Dict[str, Callable[[Dict[str, Any]], str]] = {
     "amazon_scraper": _amazon_scraper_impl,
     "git_changelog": _git_changelog_impl,
     "code_security_audit": _code_security_audit_impl,
+    "dashboard_skill": _dashboard_impl,
 }
 
 

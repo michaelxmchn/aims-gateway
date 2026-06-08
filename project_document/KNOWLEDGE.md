@@ -115,6 +115,13 @@ A: 待补充
 - **原因**: 层级计费让市场自动定价——简单任务便宜，复杂任务贵，激励开发者优化技能效率
 - **验证**: Tier-2(2.5x) Worker 运行 4.0s，`gas = 0.01 × 2.5 × 4.0 = $0.1000` 精确匹配 ✓
 
+### 决策19：Ephemeral Dashboard Skill（即席仪表盘）
+- **背景**: AI 用户无法直观看到 DePIN 网络的运行状态——任务积压、财富分布、Worker 健康和削减事件都隐藏在日志中
+- **决策**: 创建 `dashboard_skill`，通过 `_seed_ecosystem()` 实例化 MockLedger/TaskBroker，聚合实时指标（任务状态/财富分布/层级统计/质押/削减日志），渲染自包含 HTML（Tailwind CSS CDN + Chart.js CDN + 暗色主题），写入 `~/.aims/dashboard.html`，通过 `webbrowser.open()` 弹出浏览器
+- **包含两张图表**: (A) 财富分布饼图（用户余额/Worker 质押/平台 Treasury）；(B) 按 Compute Tier 分组的任务柱状图
+- **削减日志表**: Worker/原因/罚金/抵押金变化/时间戳，带红色高亮
+- **CLI 入口**: `aims dashboard`（通过 `src/client/cli.py` 分发 + `aims` 包装脚本）
+
 ### 决策18：通用 JSON Schema 验证器（validate_result_generic）
 - **背景**: 原有 `validate_task_result()` 硬编码校验 asin+price 两个字段，无法扩展为新技能类型
 - **决策**: 创建 `validate_result_generic(result_data, schema, worker_id)` — 递归 JSON Schema 验证器，支持 `type`/`required`/`properties`/`items`/`minimum`/`maximum`，失败自动联动 `apply_penalty()` 削减协议

@@ -1,0 +1,23 @@
+{
+  "name": "dashboard_skill",
+  "description": "Generate a live DePIN ecosystem dashboard with wealth distribution charts, task analytics, and slashing logs. Opens the dashboard in the user's default browser.",
+  "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "status": {"type": "string"},
+      "message": {"type": "string"},
+      "path": {"type": "string"}
+    },
+    "required": ["status", "message"]
+  },
+  "version": "1.0.0",
+  "author": "aims_protocol",
+  "price_points": 0.0,
+  "tags": ["dashboard", "visualization", "analytics"],
+  "compute_tier": 1
+}

@@ -22,6 +22,10 @@
 - refactor(sandbox): Worker 循环改用 skill_meta + validate_result_generic 替换硬编码 asin+price 校验
 - feat(test): stress_test.py 新增 Phase 3 Tier-2 Billing 验证（4.0s 2.5x gas=$0.1000 ✓）
 - feat(test): stress_test.py 新增 Phase 4 Generic Validation Rejection 验证（corrupt output 拒绝 + strike ✓）
+- feat(dashboard): 创建 src/skills/dashboard_skill.py — Tailwind + Chart.js 暗色仪表盘，数据聚合+浏览器弹出
+- feat(cli): 创建 src/client/cli.py — aims dashboard 命令入口 + aims shell 包装脚本
+- feat(manifest): 创建 dashboard_skill Document-Driven 定义（manifest.json + rules.md）
+- feat(sandbox): dashboard_skill 注册到 SKILL_IMPLS
 ### 修复
 - fix(test): stress_test.py 声誉测试阶段等待全部任务完成（completed_count 检查取代 pending_count 检查）
 - fix(test): stress_test.py 移除未定义的 pytest.approx 引用，使用 abs 差值验证

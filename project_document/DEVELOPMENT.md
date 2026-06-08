@@ -106,3 +106,9 @@
   - `broker.py`：新增 `validate_result_generic(result_data, schema, worker_id)` — 支持 type/required/properties/items/minimum/maximum 检查，失败自动调用 `apply_penalty()`
   - `sandbox.py`：Worker 循环改用通用验证器替代硬编码 asin+price 校验
   - 验证：corrupt 输出 `{"price":-10}`（缺少 products）被 JSON Schema 拒绝，Worker 被记 strike+1 ✓
+- **实现 Ephemeral Dashboard Skill（即席仪表盘）**：
+  - `src/skills/dashboard_skill.py`：数据聚合（任务状态/财富分布/层级统计/质押/削减日志）+ 自包含 HTML（Tailwind CSS + Chart.js 暗色主题）+ `webbrowser` 弹出
+  - `src/client/cli.py`：新增 `aims dashboard` 命令入口
+  - `src/runtime/sandbox.py`：`dashboard_skill` 注册到 SKILL_IMPLS
+  - `src/skills/manifests/dashboard_skill/`：manifest.json + rules.md Document-Driven 定义
+  - 验证：HTML 生成 13KB ✓，Tailwind/Chart.js/Slashing 表/财富饼图/层级柱图均正确渲染 ✓
