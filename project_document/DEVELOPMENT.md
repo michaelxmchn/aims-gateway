@@ -73,13 +73,10 @@
   - `MockLedger.release_escrow_dynamic()`：按实际执行时间动态结算（gas_cost = exec_time × BASE_GAS_RATE + developer_premium，上限 max_budget）
   - `ExecutionReceipt.execution_time`：沙箱记录 wall-clock 执行时间用于计费
   - amazon_scraper 模拟随机网络延迟 `random.uniform(0.5, 2.5)` 使 Gas 计费真实
-  - main.py 第 7 阶段展示详细分项账单（Gas 费/开发者溢价/平台税/Dev  payout/未使用退款）
-
-## 遇到的问题
-- 暂无
-
-## 技术决策
-- 暂无
+  - main.py 第 7 阶段展示详细分项账单（Gas 费/开发者溢价/平台税/Dev payout/未使用退款）
+- **MockLedger 添加 threading.Lock() 线程安全保护**：所有 balance 修改通过 `with self._lock` 互斥，`total_system_wealth` 提供一致快照
+- **创建 tests/stress_test.py 高并发压力测试**：10 并发用户 × 5 次 = 50 笔并发交易，验证资金守恒
+  - 结果：50/50 成功结算，$0.000000 差异，WEALTH AUDIT: PASSED ✓
 
 ---
 *本文档由 Claude Code 自动维护，请勿手动编辑格式*

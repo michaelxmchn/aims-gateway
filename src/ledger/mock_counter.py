@@ -22,6 +22,7 @@ Lifecycle:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Dict, Optional
@@ -120,26 +121,48 @@ class MockLedger:
         self._escrow_vault: Dict[str, FreezeReceipt] = {}
         self._founder_treasury_usdt: float = 0.0
         self._freeze_counter: int = 0
+        self._lock = threading.Lock()
+
+    # ── thread-safe read helpers ─────────────────────────────────────────
+
+    def _snapshot_wealth(self) -> float:
+        """Return total USDT across all balances + treasury (must hold lock)."""
+        total = self._founder_treasury_usdt
+        for v in self._user_balances.values():
+            total += v
+        for v in self._dev_balances.values():
+            total += v
+        return total
+
+    @property
+    def total_system_wealth(self) -> float:
+        """Thread-safe snapshot of every USDT in the system."""
+        with self._lock:
+            return self._snapshot_wealth()
 
     # ── balance management ──────────────────────────────────────────────
 
     def seed_usdt(self, user_id: str, amount: float) -> None:
         """Seed a user with initial USDT for testing."""
-        self._user_balances[user_id] = self._user_balances.get(user_id, 0.0) + amount
+        with self._lock:
+            self._user_balances[user_id] = self._user_balances.get(user_id, 0.0) + amount
         logger.info(
             "SEED  %s +$%.2f USDT (balance=$%.2f)",
             user_id, amount, self._user_balances[user_id],
         )
 
     def get_user_usdt(self, user_id: str) -> float:
-        return self._user_balances.get(user_id, 0.0)
+        with self._lock:
+            return self._user_balances.get(user_id, 0.0)
 
     def get_dev_usdt(self, dev_address: str) -> float:
-        return self._dev_balances.get(dev_address, 0.0)
+        with self._lock:
+            return self._dev_balances.get(dev_address, 0.0)
 
     @property
     def founder_treasury_usdt(self) -> float:
-        return self._founder_treasury_usdt
+        with self._lock:
+            return self._founder_treasury_usdt
 
     # ── JIT Escrow ─────────────────────────────────────────────────────
 
@@ -148,23 +171,24 @@ class MockLedger:
 
         Returns FreezeReceipt on success, None if insufficient balance.
         """
-        balance = self._user_balances.get(user_id, 0.0)
-        if balance < amount:
-            logger.warning(
-                "INSUFFICIENT USDT: user=%s has $%.2f, needs $%.2f",
-                user_id, balance, amount,
-            )
-            return None
+        with self._lock:
+            balance = self._user_balances.get(user_id, 0.0)
+            if balance < amount:
+                logger.warning(
+                    "INSUFFICIENT USDT: user=%s has $%.2f, needs $%.2f",
+                    user_id, balance, amount,
+                )
+                return None
 
-        self._user_balances[user_id] = balance - amount
-        self._freeze_counter += 1
-        receipt = FreezeReceipt(
-            freeze_id=f"escrow-{self._freeze_counter:04d}",
-            user_id=user_id,
-            amount=amount,
-            skill_name="",
-        )
-        self._escrow_vault[receipt.freeze_id] = receipt
+            self._user_balances[user_id] = balance - amount
+            self._freeze_counter += 1
+            receipt = FreezeReceipt(
+                freeze_id=f"escrow-{self._freeze_counter:04d}",
+                user_id=user_id,
+                amount=amount,
+                skill_name="",
+            )
+            self._escrow_vault[receipt.freeze_id] = receipt
         logger.info(
             "FREEZE %s → $%.2f USDT held in escrow  [user=%s]",
             receipt.freeze_id, amount, user_id,
@@ -185,57 +209,58 @@ class MockLedger:
 
         Returns SettlementDetail, or None if freeze_id not found.
         """
-        receipt = self._escrow_vault.pop(freeze_id, None)
-        if receipt is None:
-            logger.error("Escrow receipt not found: %s", freeze_id)
-            return None
+        with self._lock:
+            receipt = self._escrow_vault.pop(freeze_id, None)
+            if receipt is None:
+                logger.error("Escrow receipt not found: %s", freeze_id)
+                return None
 
-        gross = receipt.amount
+            gross = receipt.amount
 
-        if success:
-            tax = round(gross * ESCROW_TAX_RATE, 2)
-            dev_net = round(gross - tax, 2)
+            if success:
+                tax = round(gross * ESCROW_TAX_RATE, 2)
+                dev_net = round(gross - tax, 2)
 
-            # 1% platform tax → founder treasury
-            self._founder_treasury_usdt += tax
-            # 99% → developer
-            self._dev_balances[dev_address] = self._dev_balances.get(dev_address, 0.0) + dev_net
+                # 1% platform tax -> founder treasury
+                self._founder_treasury_usdt += tax
+                # 99% -> developer
+                self._dev_balances[dev_address] = self._dev_balances.get(dev_address, 0.0) + dev_net
 
-            detail = SettlementDetail(
-                freeze_id=freeze_id,
-                outcome="TRANSFERRED",
-                user_id=receipt.user_id,
-                dev_address=dev_address,
-                gross_amount=gross,
-                platform_tax=tax,
-                dev_net=dev_net,
-            )
-            logger.info(
-                "SETTLE %s → SUCCESS: dev=%s +$%.2f USDT  "
-                "[gross=$%.2f  tax=$%.2f  treasury=$%.2f]",
-                freeze_id, dev_address, dev_net,
-                gross, tax, self._founder_treasury_usdt,
-            )
+                detail = SettlementDetail(
+                    freeze_id=freeze_id,
+                    outcome="TRANSFERRED",
+                    user_id=receipt.user_id,
+                    dev_address=dev_address,
+                    gross_amount=gross,
+                    platform_tax=tax,
+                    dev_net=dev_net,
+                )
+                logger.info(
+                    "SETTLE %s -> SUCCESS: dev=%s +$%.2f USDT  "
+                    "[gross=$%.2f  tax=$%.2f  treasury=$%.2f]",
+                    freeze_id, dev_address, dev_net,
+                    gross, tax, self._founder_treasury_usdt,
+                )
 
-        else:  # FAILED — 100% instant refund
-            self._user_balances[receipt.user_id] = (
-                self._user_balances.get(receipt.user_id, 0.0) + gross
-            )
-            # NO tax, NO dev payment
+            else:  # FAILED - 100% instant refund
+                self._user_balances[receipt.user_id] = (
+                    self._user_balances.get(receipt.user_id, 0.0) + gross
+                )
+                # NO tax, NO dev payment
 
-            detail = SettlementDetail(
-                freeze_id=freeze_id,
-                outcome="REFUNDED",
-                user_id=receipt.user_id,
-                dev_address=dev_address,
-                gross_amount=gross,
-                user_refund=gross,
-            )
-            logger.info(
-                "SETTLE %s → REFUND:  user=%s +$%.2f USDT (100%% back)  "
-                "[gross=$%.2f]",
-                freeze_id, receipt.user_id, gross, gross,
-            )
+                detail = SettlementDetail(
+                    freeze_id=freeze_id,
+                    outcome="REFUNDED",
+                    user_id=receipt.user_id,
+                    dev_address=dev_address,
+                    gross_amount=gross,
+                    user_refund=gross,
+                )
+                logger.info(
+                    "SETTLE %s -> REFUND:  user=%s +$%.2f USDT (100%% back)  "
+                    "[gross=$%.2f]",
+                    freeze_id, receipt.user_id, gross, gross,
+                )
 
         return detail
 
@@ -248,22 +273,23 @@ class MockLedger:
         will be consumed at settlement time; the rest is refunded.
         Returns ``None`` if the user has insufficient balance.
         """
-        balance = self._user_balances.get(user_id, 0.0)
-        if balance < max_budget:
-            logger.warning(
-                "INSUFFICIENT USDT: user=%s has $%.2f, needs $%.2f",
-                user_id, balance, max_budget,
-            )
-            return None
+        with self._lock:
+            balance = self._user_balances.get(user_id, 0.0)
+            if balance < max_budget:
+                logger.warning(
+                    "INSUFFICIENT USDT: user=%s has $%.2f, needs $%.2f",
+                    user_id, balance, max_budget,
+                )
+                return None
 
-        self._user_balances[user_id] = balance - max_budget
-        self._freeze_counter += 1
-        hold = EscrowHold(
-            escrow_id=f"escrow-{self._freeze_counter:04d}",
-            user_id=user_id,
-            max_budget=max_budget,
-        )
-        self._escrow_vault[hold.escrow_id] = hold
+            self._user_balances[user_id] = balance - max_budget
+            self._freeze_counter += 1
+            hold = EscrowHold(
+                escrow_id=f"escrow-{self._freeze_counter:04d}",
+                user_id=user_id,
+                max_budget=max_budget,
+            )
+            self._escrow_vault[hold.escrow_id] = hold
         logger.info(
             "ESCROW-HOLD %s → $%.2f USDT frozen (max budget)  [user=%s]",
             hold.escrow_id, max_budget, user_id,
@@ -291,75 +317,76 @@ class MockLedger:
         **On FAILED:**
           100 % of the frozen *max_budget* is returned to the user.
         """
-        hold = self._escrow_vault.pop(escrow_id, None)
-        if hold is None:
-            logger.error("Escrow hold not found: %s", escrow_id)
-            return None
+        with self._lock:
+            hold = self._escrow_vault.pop(escrow_id, None)
+            if hold is None:
+                logger.error("Escrow hold not found: %s", escrow_id)
+                return None
 
-        max_budget = hold.max_budget
+            max_budget = hold.max_budget
 
-        if success:
-            gas_cost = execution_time * BASE_GAS_RATE
-            total_cost = gas_cost + developer_premium
-            total_cost = min(total_cost, max_budget)  # never exceed the ceiling
-            platform_tax = round(total_cost * PLATFORM_TAX_RATE, 2)
-            developer_payout = round(total_cost - platform_tax, 2)
-            unused_refund = round(max_budget - total_cost, 2)
+            if success:
+                gas_cost = execution_time * BASE_GAS_RATE
+                total_cost = gas_cost + developer_premium
+                total_cost = min(total_cost, max_budget)  # never exceed the ceiling
+                platform_tax = round(total_cost * PLATFORM_TAX_RATE, 2)
+                developer_payout = round(total_cost - platform_tax, 2)
+                unused_refund = round(max_budget - total_cost, 2)
 
-            # Distribute
-            self._founder_treasury_usdt += platform_tax
-            self._dev_balances[developer_id] = (
-                self._dev_balances.get(developer_id, 0.0) + developer_payout
-            )
-            self._user_balances[user_id] = (
-                self._user_balances.get(user_id, 0.0) + unused_refund
-            )
+                # Distribute
+                self._founder_treasury_usdt += platform_tax
+                self._dev_balances[developer_id] = (
+                    self._dev_balances.get(developer_id, 0.0) + developer_payout
+                )
+                self._user_balances[user_id] = (
+                    self._user_balances.get(user_id, 0.0) + unused_refund
+                )
 
-            detail = DynamicSettlementDetail(
-                escrow_id=escrow_id,
-                outcome="COMPLETED",
-                user_id=user_id,
-                developer_id=developer_id,
-                execution_time=execution_time,
-                gas_rate=BASE_GAS_RATE,
-                gas_cost=gas_cost,
-                developer_premium=developer_premium,
-                max_budget=max_budget,
-                total_cost=total_cost,
-                platform_tax=platform_tax,
-                developer_payout=developer_payout,
-                unused_refund=unused_refund,
-            )
-            logger.info(
-                "ESCROW-RELEASE %s -> COMPLETED  [gas=$%.4f  premium=$%.2f  "
-                "tax=$%.2f  dev=$%.2f  refund=$%.2f]",
-                escrow_id, gas_cost, developer_premium,
-                platform_tax, developer_payout, unused_refund,
-            )
+                detail = DynamicSettlementDetail(
+                    escrow_id=escrow_id,
+                    outcome="COMPLETED",
+                    user_id=user_id,
+                    developer_id=developer_id,
+                    execution_time=execution_time,
+                    gas_rate=BASE_GAS_RATE,
+                    gas_cost=gas_cost,
+                    developer_premium=developer_premium,
+                    max_budget=max_budget,
+                    total_cost=total_cost,
+                    platform_tax=platform_tax,
+                    developer_payout=developer_payout,
+                    unused_refund=unused_refund,
+                )
+                logger.info(
+                    "ESCROW-RELEASE %s -> COMPLETED  [gas=$%.4f  premium=$%.2f  "
+                    "tax=$%.2f  dev=$%.2f  refund=$%.2f]",
+                    escrow_id, gas_cost, developer_premium,
+                    platform_tax, developer_payout, unused_refund,
+                )
 
-        else:  # FAILED - 100 % instant refund
-            self._user_balances[user_id] = (
-                self._user_balances.get(user_id, 0.0) + max_budget
-            )
+            else:  # FAILED - 100 % instant refund
+                self._user_balances[user_id] = (
+                    self._user_balances.get(user_id, 0.0) + max_budget
+                )
 
-            detail = DynamicSettlementDetail(
-                escrow_id=escrow_id,
-                outcome="REFUNDED",
-                user_id=user_id,
-                developer_id=developer_id,
-                execution_time=execution_time,
-                gas_rate=BASE_GAS_RATE,
-                gas_cost=0.0,
-                developer_premium=0.0,
-                max_budget=max_budget,
-                total_cost=0.0,
-                platform_tax=0.0,
-                developer_payout=0.0,
-                unused_refund=max_budget,
-            )
-            logger.info(
-                "ESCROW-RELEASE %s -> REFUNDED  [100%% back  $%.2f USDT -> %s]",
-                escrow_id, max_budget, user_id,
-            )
+                detail = DynamicSettlementDetail(
+                    escrow_id=escrow_id,
+                    outcome="REFUNDED",
+                    user_id=user_id,
+                    developer_id=developer_id,
+                    execution_time=execution_time,
+                    gas_rate=BASE_GAS_RATE,
+                    gas_cost=0.0,
+                    developer_premium=0.0,
+                    max_budget=max_budget,
+                    total_cost=0.0,
+                    platform_tax=0.0,
+                    developer_payout=0.0,
+                    unused_refund=max_budget,
+                )
+                logger.info(
+                    "ESCROW-RELEASE %s -> REFUNDED  [100%% back  $%.2f USDT -> %s]",
+                    escrow_id, max_budget, user_id,
+                )
 
         return detail
