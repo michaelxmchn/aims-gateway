@@ -7,33 +7,86 @@
 - [ ] 实现 Skill 市场的发布/检索/获取端到端流程
 - [ ] 集成 Anthropic SDK 做端到端 route() 测试
 
-## 任务详情
-- ADS Phase 2 架构访谈
-  - 状态: 已完成
-  - 文件: PRD.md / ARCHITECTURE.md
-  - 描述: 完成需求收敛、领域建模、模块划分、依赖图
-- Skill Manifest Standard + Registry
-  - 状态: 已完成
-  - 文件: src/skills/manifest.py / registry.py
-  - 描述: Pydantic 模型定义 + 本地 JSON 加载 + LLM Tool Def 注入
-- Gateway Router + DAG Engine
-  - 状态: 已完成
-  - 文件: src/gateway/router.py / engine.py
-  - 描述: 万能入口 + 动态工具注入 + 串行编排
-- Append-only Log + Chain Settlement
-  - 状态: 已完成
-  - 文件: src/ledger/log.py / merkle.py / src/chain/settlement.py / wallet.py
-  - 描述: 本地追加日志 + Merkle 化 + 链上结算存根 + 会话密钥管理
-- Skill Runtime
-  - 状态: 已完成
-  - 文件: src/runtime/executor.py
-  - 描述: 本地信任模式执行 + 日志记录
+## 已完成任务清单
 
-## 任务详情
-- 任务1
-  - 状态: 进行中
-  - 文件: 待定
-  - 描述: 待定
+### Layer 0-1: 账本 & 经济模型
+- **ADS Phase 2 架构访谈**
+  - 状态: 已完成
+  - 描述: 完成需求收敛、领域建模、模块划分、依赖图
+- **MockLedger USDT 账本**
+  - 状态: 已完成
+  - 文件: src/ledger/mock_counter.py
+  - 描述: USDT JIT Escrow、Dynamic Billing（Gas 计费）、Compute Tier Billing（1x/2.5x/6x）、3-Strike Slashing、Double-Sided Reputation
+- **Append-only Log + Merkle**
+  - 状态: 已完成
+  - 文件: src/ledger/log.py / merkle.py
+  - 描述: JSONL 追加日志、Merkle 树批量上链证明
+
+### Layer 2: 技能系统
+- **SkillManifest Standard**
+  - 状态: 已完成
+  - 文件: src/skills/manifest.py
+  - 描述: Pydantic 模型，对齐 LLM Tool Calling 格式
+- **SkillRegistry + Document-Driven**
+  - 状态: 已完成
+  - 文件: src/skills/registry.py
+  - 描述: 子目录加载、rules.md 缓存、优先级评分、领域检测、冷却监狱
+- **6 个种子 Skill**
+  - 状态: 已完成
+  - 文件: skills/manifests/*/
+  - 描述: amazon_scraper、code_security_audit、git_changelog、data_analyzer、buggy_skill、dashboard_skill
+
+### Layer 3: 网关 & 路由
+- **GatewayRouter**
+  - 状态: 已完成
+  - 文件: src/gateway/router.py
+  - 描述: 万能入口、轻量上下文注入
+- **TaskBroker**
+  - 状态: 已完成
+  - 文件: src/gateway/broker.py
+  - 描述: 线程安全 FIFO、Stateful Claiming、Fault-Tolerance 超时回收、JSON Schema 通用验证器
+
+### Layer 3.5: HTTP 网关
+- **FastAPI Gateway Server**
+  - 状态: 已完成 (2026-06-08)
+  - 文件: src/gateway/server.py
+  - 描述: POST /api/tasks/claim、POST /api/tasks/submit、GET /api/health
+
+### Layer 4: 执行沙箱
+- **WorkflowEngine**
+  - 状态: 已完成
+  - 文件: src/runtime/sandbox.py
+  - 描述: try-except 执行、output_schema 校验、ExecutionReceipt、DePIN Worker Loop
+
+### Layer 5: 链上结算
+- **ChainSettlement**
+  - 状态: 已完成
+  - 文件: src/chain/settlement.py
+  - 描述: UserIdentity Map、Stripe Webhook 桩（法币入金）、SessionKeyManager 存根
+
+### Layer 6: 客户端 & MCP
+- **MCP stdio Server**
+  - 状态: 已完成
+  - 文件: src/client/mcp_server.py
+  - 描述: JSON-RPC over stdio，tools/list + tools/call，6 个 skill 自动发现
+- **CLI**
+  - 状态: 已完成
+  - 文件: src/client/cli.py
+  - 描述: aims exec/list/login/mcp/dashboard 子命令
+
+### 测试
+- **单元测试**
+  - 状态: 已完成
+  - 文件: tests/test_manifest/registry/log/sandbox.py
+  - 结果: 47/47 PASSED ✓
+- **压力测试**
+  - 状态: 已完成
+  - 文件: tests/stress_test.py
+  - 结果: Slashing/Reputation/Tier-2/Generic Validation 全验证 ✓
+- **E2E 集成测试**
+  - 状态: 已完成 (2026-06-08)
+  - 文件: tests/e2e_integration_test.py
+  - 结果: 11/11 全通过 ✓，$180.00→$180.00 资金守恒 ✓，100% 架构闭合 ✓
 
 ## 最近完成
 - 初始化 Git 仓库（main 分支，Git Flow 策略）
