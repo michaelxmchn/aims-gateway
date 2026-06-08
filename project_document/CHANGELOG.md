@@ -11,6 +11,9 @@
 - feat(demo): main.py 第 7 阶段改为 Dynamic Billing 演示 — 分项账单（Gas 费/溢价/税/Payout/Refund）
 - feat(ledger): MockLedger 全线添加 threading.Lock() 保证并发安全，新增 total_system_wealth 快照
 - feat(test): 创建 tests/stress_test.py 高并发压力测试（10 用户 × 5 次 = 50 并发交易，WEALTH AUDIT PASSED ✓）
+- feat(broker): 创建 gateway/broker.py TaskBroker 中央线程安全 FIFO 任务队列
+- feat(sandbox): 新增 start_worker_loop() DePIN Worker 守护线程，自动轮询+执行+结算 Gas 费
+- feat(test): 重写 tests/stress_test.py 为 DePIN 模型（5 Workers × 30 Tasks，WEALTH AUDIT PASSED ✓）
 - chore(init): Git 仓库初始化（main 分支）
 - feat(scaffold): 运行 ADS scaffold 脚本生成 .project.agents/ 治理框架
 - feat(config): 创建 AIMS 项目脚手架配置

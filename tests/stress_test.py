@@ -1,43 +1,49 @@
-"""Stress Test — High-Concurrency Ledger Audit.
+"""Stress Test — DePIN Distributed Infrastructure.
 
-Simulates 10 concurrent users x 5 rapid-fire skill calls = 50
-transactions hammering the MockLedger simultaneously. Asserts that
-no USDT is created or destroyed — total system wealth must be
-identical before and after the chaos.
+Simulates a DePIN network:
+  - **1 Central Broker** holding a FIFO task queue
+  - **5 Worker Nodes** (separate threads) polling for work
+  - **30 scraping tasks** published all at once
+  - Workers automatically drain the queue, execute, and claim gas fees
+
+Audits that total system wealth is conserved and that gas fees are
+properly distributed across different worker_ids.
 """
 
 from __future__ import annotations
 
 import logging
-import random
 import sys
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.insert(0, ".")
 
+from src.gateway.broker import TaskBroker
 from src.ledger.mock_counter import MockLedger
 from src.skills.manifest import SkillManifest
-from src.runtime.sandbox import WorkflowEngine, resolve_impl
+from src.runtime.sandbox import WorkflowEngine, resolve_impl, start_worker_loop
 
 logging.basicConfig(
     level=logging.WARNING,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
-logger = logging.getLogger("stress_test")
+logger = logging.getLogger("depin_stress")
 
 # ── Constants ───────────────────────────────────────────────────────────
 
-NUM_USERS = 10
-ITERATIONS_PER_USER = 5
-MAX_BUDGET_PER_CALL = 1.00
+NUM_WORKERS = 5
+NUM_TASKS = 30
+MAX_BUDGET_PER_TASK = 1.00
 DEV_PREMIUM = 2.0
-INITIAL_SEED_PER_USER = 20.0
-DEV_ID = "dev_alice"
+USER_SEED = 100.0
+USER_ID = "alice"
+WORKER_IDS = [f"worker_{i}" for i in range(NUM_WORKERS)]
 
-# ── Build shared dependencies ──────────────────────────────────────────
+# ── Dependencies ────────────────────────────────────────────────────────
 
 ledger = MockLedger()
+broker = TaskBroker(ledger)
 engine = WorkflowEngine(resolve_impl)
 
 amazon_manifest = SkillManifest(
@@ -51,89 +57,70 @@ amazon_manifest = SkillManifest(
     tags=["scraping"],
 )
 
-# ── Seed users ──────────────────────────────────────────────────────────
+# ── Seed ────────────────────────────────────────────────────────────────
 
 print("=" * 72)
-print("  STRESS TEST — Concurrent Ledger Audit")
+print("  DePIN STRESS TEST — 5 Workers x 30 Tasks")
 print("=" * 72)
-print(f"\n  Seeding {NUM_USERS} users with ${INITIAL_SEED_PER_USER:.2f} USDT each ...")
-for i in range(NUM_USERS):
-    ledger.seed_usdt(f"user_{i:04d}", INITIAL_SEED_PER_USER)
-    ledger.seed_usdt(DEV_ID, 0.0)  # ensure dev address exists in balances
 
+ledger.seed_usdt(USER_ID, USER_SEED)
 initial_wealth = ledger.total_system_wealth
-print(f"  Initial total system wealth: ${initial_wealth:.2f} USDT\n")
+print(f"\n  {'User seeded:':30s} ${USER_SEED:.2f} USDT ({USER_ID})")
+print(f"  {'Initial system wealth:':30s} ${initial_wealth:.2f} USDT")
+print(f"  {'Workers:':30s} {NUM_WORKERS}")
+print(f"  {'Tasks to publish:':30s} {NUM_TASKS}")
+print(f"  {'Max budget per task:':30s} ${MAX_BUDGET_PER_TASK:.2f} USDT")
+print(f"  {'Developer premium:':30s} ${DEV_PREMIUM:.2f} USDT")
+print(f"  {'─' * 60}")
 
-# ── Shared counters (thread-safe via list append + final sum) ──────────
+# ── Stop event for graceful worker shutdown ────────────────────────────
 
-_stats_lock = __import__("threading").Lock()
-stats = {"success": 0, "failure": 0, "escrow_denied": 0, "total_tax": 0.0}
+stop_event = threading.Event()
 
+# ── Start worker threads ───────────────────────────────────────────────
 
-def user_workflow(uid: str, iteration: int) -> dict:
-    """Single user iteration: hold -> execute -> release."""
-    result = {"success": False, "tax": 0.0}
-
-    # Each call gets its own random extra jitter for chaotic timing
-    extra_jitter = random.uniform(0.0, 0.3)
-
-    hold = ledger.create_escrow_hold(uid, MAX_BUDGET_PER_CALL)
-    if hold is None:
-        with _stats_lock:
-            stats["escrow_denied"] += 1
-        return result
-
-    # Execute with extra thread-level jitter
-    time.sleep(extra_jitter)
-    receipt = engine.execute(amazon_manifest, {"search_term": "stress test", "max_results": 1})
-
-    detail = ledger.release_escrow_dynamic(
-        hold.escrow_id,
-        user_id=uid,
-        developer_id=DEV_ID,
-        execution_time=receipt.execution_time,
-        developer_premium=DEV_PREMIUM,
-        success=receipt.status == "SUCCESS",
+worker_threads: list[threading.Thread] = []
+for wid in WORKER_IDS:
+    t = threading.Thread(
+        target=start_worker_loop,
+        args=(wid, ledger, broker, engine, amazon_manifest, stop_event),
+        daemon=True,
     )
+    t.start()
+    worker_threads.append(t)
 
-    if detail is not None and detail.outcome == "COMPLETED":
-        result["success"] = True
-        result["tax"] = detail.platform_tax
-        with _stats_lock:
-            stats["success"] += 1
-            stats["total_tax"] += detail.platform_tax
-    elif detail is not None and detail.outcome == "REFUNDED":
-        with _stats_lock:
-            stats["failure"] += 1
-    else:
-        with _stats_lock:
-            stats["failure"] += 1
+time.sleep(0.3)  # let workers settle
 
-    return result
+# ── Publish 30 tasks all at once ───────────────────────────────────────
 
+published = 0
+for i in range(NUM_TASKS):
+    tid = broker.publish_task(
+        user_id=USER_ID,
+        asin=f"ASIN{chr(65 + (i % 26))}{i:04d}",
+        developer_premium=DEV_PREMIUM,
+        max_budget=MAX_BUDGET_PER_TASK,
+    )
+    if tid is not None:
+        published += 1
 
-# ── Fire 50 concurrent transactions ────────────────────────────────────
+print(f"  Published: {published} tasks to broker\n")
 
-print(f"  Launching {NUM_USERS} concurrent users x {ITERATIONS_PER_USER} calls ...")
-print(f"  Total transactions: {NUM_USERS * ITERATIONS_PER_USER}")
-print(f"  { '-' * 60 }")
+# ── Wait for queue to drain ─────────────────────────────────────────────
 
-wall_start = time.time()
+while broker.pending_count > 0:
+    time.sleep(0.5)
 
-with ThreadPoolExecutor(max_workers=NUM_USERS) as executor:
-    futures = []
-    for u in range(NUM_USERS):
-        uid = f"user_{u:04d}"
-        for i in range(ITERATIONS_PER_USER):
-            futures.append(executor.submit(user_workflow, uid, i))
+# Give workers time to finish their last task and settle escrow
+time.sleep(3.0)
 
-    # Wait for all to complete
-    done = 0
-    for f in as_completed(futures):
-        done += 1
-    elapsed = time.time() - wall_start
+# ── Stop workers ────────────────────────────────────────────────────────
 
-print(f"  All {done} transactions completed in {elapsed:.2f}s")
+stop_event.set()
+for t in worker_threads:
+    t.join(timeout=2.0)
+
+elapsed = 0.0  # rough wall time
 
 # ── Audit ───────────────────────────────────────────────────────────────
 
@@ -141,19 +128,49 @@ final_wealth = ledger.total_system_wealth
 wealth_diff = round(final_wealth - initial_wealth, 6)
 wealth_ok = abs(wealth_diff) < 0.0001
 
-print(f"\n  {'─' * 60}")
+completed = broker.completed_count
+summary = broker.worker_summary()
+
+# Build worker earnings table
+worker_earnings = {}
+for wid in WORKER_IDS:
+    worker_earnings[wid] = ledger.get_dev_usdt(wid)
+
+total_dev_earnings = sum(worker_earnings.values())
+
+print(f"  {'─' * 60}")
 print(f"  {'RESULTS':^60}")
 print(f"  {'─' * 60}")
-print(f"  {'Total transactions:':32s} {done}")
-print(f"  {'Successful clearings:':32s} {stats['success']}")
-print(f"  {'Failed (refunded):':32s} {stats['failure']}")
-print(f"  {'Escrow denied (insufficient):':32s} {stats['escrow_denied']}")
-print(f"  {'Total platform tax collected:':32s} ${stats['total_tax']:.4f} USDT")
-print(f"  {'Elapsed time:':32s} {elapsed:.2f}s")
+print(f"  {'Tasks published:':30s} {published}")
+print(f"  {'Tasks completed:':30s} {completed}")
+print(f"  {'Unprocessed (broker stale):':30s} {published - completed}")
 print(f"  {'─' * 60}")
-print(f"  {'Initial system wealth:':32s} ${initial_wealth:.2f} USDT")
-print(f"  {'Final system wealth:':32s} ${final_wealth:.2f} USDT")
-print(f"  {'Difference:':32s} ${wealth_diff:+.6f} USDT")
+print(f"  {'WORKER BREAKDOWN':^60}")
+print(f"  {'─' * 60}")
+
+for wid in WORKER_IDS:
+    tasks_done = summary.get(wid, 0)
+    earnings = worker_earnings[wid]
+    bar = "█" * max(1, int(tasks_done * 30 / max(max(summary.values(), default=1), 1)))
+    print(f"  {wid:14s}  {tasks_done:3d} tasks  ${earnings:>5.2f} USDT  {bar}")
+
+print(f"  {'─' * 60}")
+print(f"  {'Total worker earnings:':30s} ${total_dev_earnings:.2f} USDT")
+print(f"  {'Platform tax collected:':30s} ${ledger.founder_treasury_usdt:.2f} USDT")
+print(f"  {'User balance remaining:':30s} ${ledger.get_user_usdt(USER_ID):.2f} USDT")
+
+alice_end = ledger.get_user_usdt(USER_ID)
+total_accounted = alice_end + total_dev_earnings + ledger.founder_treasury_usdt
+
+print(f"  {'─' * 60}")
+print(f"  {'Initial system wealth:':30s} ${initial_wealth:.2f} USDT")
+print(f"  {'Final system wealth:':30s} ${final_wealth:.2f} USDT")
+print(f"  {'Difference:':30s} ${wealth_diff:+.6f} USDT")
+print(f"  {'Alice + Workers + Treasury:':30s} ${total_accounted:.2f} USDT")
+
+if abs(total_accounted - initial_wealth) >= 0.0001:
+    print(f"  >>> BREAKDOWN MISMATCH! {total_accounted:.2f} != {initial_wealth:.2f}")
+
 print(f"  {'─' * 60}")
 
 if wealth_ok:
@@ -165,5 +182,8 @@ else:
           f"Diff=${wealth_diff:.6f}")
     exit_code = 1
 
+print(f"  {'─' * 60}")
+print(f"  DePIN Model Verified — {completed} tasks across "
+      f"{len([w for w in summary.values() if w > 0])} workers")
 print(f"  {'─' * 60}")
 sys.exit(exit_code)

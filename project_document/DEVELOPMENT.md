@@ -77,6 +77,11 @@
 - **MockLedger 添加 threading.Lock() 线程安全保护**：所有 balance 修改通过 `with self._lock` 互斥，`total_system_wealth` 提供一致快照
 - **创建 tests/stress_test.py 高并发压力测试**：10 并发用户 × 5 次 = 50 笔并发交易，验证资金守恒
   - 结果：50/50 成功结算，$0.000000 差异，WEALTH AUDIT: PASSED ✓
+- **实现 DePIN 分布式 Worker 网络**：
+  - 创建 `gateway/broker.py`：`TaskBroker` 中央线程安全 FIFO 队列（publish_task / poll_task / record_result）
+  - `sandbox.py` 新增 `start_worker_loop()` 后台守护线程：自动轮询 Broker → 执行技能 → 调用 `release_escrow_dynamic()` 将 Gas 费记入自身 `worker_id`
+  - 更新 `tests/stress_test.py` 为 DePIN 模型：5 个 Worker × 30 任务，自动排空，工作量分布 5–7 任务/worker，Gas 费分配到 5 个独立 worker_id 余额
+  - 验证：WEALTH AUDIT: PASSED ✓（$70.00 Alice + $29.70 Workers + $0.30 Treasury = $100.00 ✓）
 
 ---
 *本文档由 Claude Code 自动维护，请勿手动编辑格式*

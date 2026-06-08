@@ -4,8 +4,9 @@ Receives LLM-triggered tool calls, looks up the skill implementation,
 executes it under try-except, validates output against the manifest's
 output_schema, and returns an ExecutionReceipt.
 
-The sandbox OWNS the SKILL_IMPLS registry — a dict of callables that
-implement each skill's actual functionality (scraping, analysis, etc.).
+Also hosts the **DePIN Worker Node** loop — a background daemon that
+polls the Task Broker for work, executes skills, and settles escrow
+to claim gas fees.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from __future__ import annotations
 import json
 import logging
 import random
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
@@ -284,3 +286,67 @@ def resolve_impl(manifest: SkillManifest, arguments: Dict[str, Any]) -> str:
             f"The AI client should implement this skill's logic per its rules.md."
         )
     return impl(arguments)
+
+
+# ── DePIN Worker Node ────────────────────────────────────────────────────
+
+
+def start_worker_loop(
+    worker_id: str,
+    ledger: "MockLedger",
+    broker: "TaskBroker",
+    engine: WorkflowEngine,
+    manifest: SkillManifest,
+    stop_event: threading.Event,
+) -> None:
+    """Background worker daemon — polls the broker and settles escrow.
+
+    Runs in an infinite loop (until *stop_event* is set):
+      1. Poll ``broker.poll_task(worker_id)`` with a 2 s timeout.
+      2. Execute the skill via ``engine.execute()``.
+      3. Call ``ledger.release_escrow_dynamic()`` to claim gas fees
+         to this worker's ``worker_id`` balance.
+
+    Each worker collects gas fees under its own ``worker_id`` so the
+    ledger can audit exactly how revenue is distributed across the
+    DePIN network.
+    """
+    from src.gateway.broker import TaskBroker
+    from src.ledger.mock_counter import MockLedger
+
+    logger.info("Worker '%s' online — polling for tasks ...", worker_id)
+
+    while not stop_event.is_set():
+        task = broker.poll_task(worker_id, timeout=2.0)
+        if task is None:
+            continue
+
+        logger.info(
+            "WORKER %s picked up %s (asin=%s, premium=$%.2f)",
+            worker_id, task.task_id, task.asin, task.developer_premium,
+        )
+
+        receipt = engine.execute(
+            manifest,
+            {"search_term": task.asin, "max_results": 1},
+        )
+
+        detail = ledger.release_escrow_dynamic(
+            task.escrow_hold.escrow_id,
+            user_id=task.user_id,
+            developer_id=worker_id,
+            execution_time=receipt.execution_time,
+            developer_premium=task.developer_premium,
+            success=receipt.status == "SUCCESS",
+        )
+
+        if detail is not None:
+            broker.record_result(task.task_id, detail)
+            logger.info(
+                "WORKER %s completed %s — earned $%.2f USDT  "
+                "[gas=$%.4f  premium=$%.2f]",
+                worker_id, task.task_id, detail.developer_payout,
+                detail.gas_cost, detail.developer_premium,
+            )
+
+    logger.info("Worker '%s' shutting down.", worker_id)
