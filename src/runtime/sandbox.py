@@ -1,22 +1,20 @@
-"""WorkflowEngine — Layer 4 execution sandbox with automated verification.
+"""Execution Sandbox — Layer 4.
 
-Wraps every skill execution in a strict try-except block and validates
-the output against the skill's output_schema (if declared). Returns an
-ExecutionReceipt so the caller (MockLedger / GatewayRouter) can decide
-settlement without human intervention.
+Receives LLM-triggered tool calls, looks up the skill implementation,
+executes it under try-except, validates output against the manifest's
+output_schema, and returns an ExecutionReceipt.
 
-This is the "Automated Verification" side of the Non-Custodial Escrow.
+The sandbox OWNS the SKILL_IMPLS registry — a dict of callables that
+implement each skill's actual functionality (scraping, analysis, etc.).
 """
 
 from __future__ import annotations
 
-import time
+import json
 import logging
-import traceback
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Optional
-
-from pydantic import BaseModel, ValidationError, create_model
 
 from src.skills.manifest import SkillManifest
 
@@ -30,22 +28,17 @@ class ExecutionReceipt:
     skill_name: str
     status: str  # "SUCCESS" | "FAILED"
     error_message: str = ""
-    compute_consumed: float = 0.0  # seconds (wall-clock)
+    compute_consumed: float = 0.0
     output: str = ""
 
 
-# ── dynamic Pydantic validator from JSON Schema ──────────────────────────
+# ── Output validator ─────────────────────────────────────────────────────
 
 
 def _build_output_validator(output_schema: Dict[str, Any]) -> Callable[[str], bool]:
-    """Build a Pydantic model from a JSON Schema to validate string output.
-
-    For MVP we check that the output is valid JSON (if the schema expects
-    an object) or simply non-empty (for string type). Returns True if valid.
-    """
+    """Build a validator from JSON Schema to verify string output."""
 
     def validate(output: str) -> bool:
-        import json
         schema_type = output_schema.get("type", "string")
         if schema_type == "object":
             try:
@@ -77,24 +70,15 @@ def _build_output_validator(output_schema: Dict[str, Any]) -> Callable[[str], bo
 class WorkflowEngine:
     """Executes skills with strict error handling and output verification.
 
-    Usage:
-        engine = WorkflowEngine(executor_fn)
-        receipt = engine.execute(manifest, {"source_code": "..."})
-        # receipt.status == "SUCCESS" | "FAILED"
+    The executor_fn receives (manifest, arguments) and returns a string
+    output. WorkflowEngine wraps it with try-except + schema validation.
     """
 
     def __init__(self, executor_fn: Callable[[SkillManifest, Dict[str, Any]], str]) -> None:
         self._executor_fn = executor_fn
 
     def execute(self, manifest: SkillManifest, arguments: Dict[str, Any]) -> ExecutionReceipt:
-        """Execute a skill and return a verified receipt.
-
-        Steps:
-          1. Try executing the skill code
-          2. If exception → FAILED with error_message
-          3. Validate output against output_schema (if declared)
-          4. Return receipt with status, error, compute_consumed
-        """
+        """Execute a skill and return a verified receipt."""
         start = time.perf_counter()
         skill_name = manifest.name
 
@@ -132,3 +116,163 @@ class WorkflowEngine:
             output=output,
             compute_consumed=compute_consumed,
         )
+
+
+# ── Built-in skill implementations ──────────────────────────────────────
+
+
+def _amazon_scraper_impl(arguments: Dict[str, Any]) -> str:
+    """Simulate scraping Amazon product listings.
+
+    In production, this would use requests + BeautifulSoup/Playwright.
+    For MVP, returns realistic mock data to demonstrate the pipeline.
+    """
+    search_term = arguments.get("search_term", "unknown")
+    max_results = min(int(arguments.get("max_results", 10)), 50)
+
+    # Simulate network delay
+    time.sleep(1.0)
+
+    mock_products = [
+        {
+            "title": f"{search_term.title()} Premium Edition",
+            "asin": f"B0{chr(65+i)}3ZZ8ZZ",
+            "price": round(29.99 + i * 15.0, 2),
+            "currency": "USD",
+            "rating": round(4.5 - (i * 0.15), 1),
+            "review_count": 15000 - i * 1200,
+            "seller": "Amazon.com",
+            "prime_eligible": True,
+            "sponsored": i == 0,
+            "url": f"https://www.amazon.com/dp/B0{chr(65+i)}3ZZ8ZZ",
+        }
+        for i in range(min(max_results, 10))
+    ]
+
+    return json.dumps({
+        "search_term": search_term,
+        "total_found": len(mock_products),
+        "products": mock_products,
+    }, indent=2)
+
+
+def _git_changelog_impl(arguments: Dict[str, Any]) -> str:
+    """Generate a changelog from git history."""
+    repo_path = arguments.get("repo_path", ".")
+    from_ref = arguments.get("from_ref", "")
+    to_ref = arguments.get("to_ref", "HEAD")
+
+    import subprocess
+    try:
+        log_cmd = ["git", "log", f"{from_ref}..{to_ref}", "--oneline", "--no-merges"]
+        result = subprocess.run(
+            log_cmd,
+            capture_output=True, text=True, timeout=15,
+            cwd=repo_path,
+        )
+        if result.returncode != 0:
+            return f"Error: {result.stderr.strip()}"
+        commits = result.stdout.strip()
+        if not commits:
+            return f"No changes between {from_ref} and {to_ref}."
+
+        lines = commits.split("\n")
+        changelog = f"# Changelog ({from_ref} → {to_ref})\n\n"
+        sections = {"feat": "Features", "fix": "Bug Fixes", "other": "Maintenance"}
+        grouped = {v: [] for v in sections.values()}
+
+        for line in lines:
+            for prefix, section in sections.items():
+                if line.startswith(prefix):
+                    grouped[section].append(line)
+                    break
+            else:
+                grouped["Maintenance"].append(line)
+
+        for section, items in grouped.items():
+            if items:
+                changelog += f"## {section}\n"
+                for item in items:
+                    changelog += f"- {item}\n"
+                changelog += "\n"
+
+        return changelog
+    except FileNotFoundError:
+        return "Error: git not found in PATH. Is git installed?"
+    except subprocess.TimeoutExpired:
+        return "Error: git log timed out (large range)."
+
+
+def _code_security_audit_impl(arguments: Dict[str, Any]) -> str:
+    """Analyze Solidity source code for vulnerabilities."""
+    source = arguments.get("source_code", "")
+    contract = arguments.get("contract_name", "Unknown")
+
+    findings = []
+    if "msg.sender.call" in source and "require(" not in source.split("msg.sender.call")[-1][:200]:
+        findings.append({
+            "severity": "CRITICAL",
+            "title": "Potential Reentrancy Vulnerability",
+            "lines": "12-15",
+            "description": "External call to msg.sender without reentrancy guard. "
+                           "An attacker can re-enter the function before state updates.",
+            "recommendation": "Use ReentrancyGuard from OpenZeppelin or apply "
+                              "the checks-effects-interactions pattern."
+        })
+    if "tx.origin" in source:
+        findings.append({
+            "severity": "HIGH",
+            "title": "Use of tx.origin for Authentication",
+            "lines": "8",
+            "description": "tx.origin is deprecated and can be exploited in "
+                           "man-in-the-middle attacks via intermediary contracts.",
+            "recommendation": "Use msg.sender instead of tx.origin."
+        })
+
+    report = f"# Security Audit Report: {contract}\n\n"
+    report += "## Summary\n"
+    report += f"- **Files analyzed**: 1\n"
+    report += f"- **Total issues**: {len(findings)}\n"
+    report += f"- **Critical**: {sum(1 for f in findings if f['severity'] == 'CRITICAL')}\n"
+    report += f"- **High**: {sum(1 for f in findings if f['severity'] == 'HIGH')}\n\n"
+
+    if findings:
+        report += "## Findings\n\n"
+        for f in findings:
+            report += f"### [{f['severity']}] {f['title']}\n"
+            report += f"- **Lines**: {f['lines']}\n"
+            report += f"- **Description**: {f['description']}\n"
+            report += f"- **Recommendation**: {f['recommendation']}\n\n"
+
+    report += "## Conclusion\n"
+    if not findings:
+        report += "No significant vulnerabilities detected in this analysis.\n"
+    else:
+        report += "Issues found. Review and address the findings above.\n"
+
+    return report
+
+
+# ── Skill Implementations Registry ──────────────────────────────────────
+
+SKILL_IMPLS: Dict[str, Callable[[Dict[str, Any]], str]] = {
+    "amazon_scraper": _amazon_scraper_impl,
+    "git_changelog": _git_changelog_impl,
+    "code_security_audit": _code_security_audit_impl,
+}
+
+
+def resolve_impl(manifest: SkillManifest, arguments: Dict[str, Any]) -> str:
+    """Resolve and execute a skill implementation.
+
+    Looks up SKILL_IMPLS by manifest.name. If not found, returns
+    a descriptive fallback that the AI can use for context.
+    """
+    impl = SKILL_IMPLS.get(manifest.name)
+    if impl is None:
+        return (
+            f"[{manifest.name}] No local implementation registered.\n"
+            f"Input: {json.dumps(arguments, indent=2)}\n"
+            f"The AI client should implement this skill's logic per its rules.md."
+        )
+    return impl(arguments)

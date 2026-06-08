@@ -56,6 +56,13 @@
 - 实现 Cool-down Jail 机制：3 次连续失败或 staked_points ≤ 0 → 24h 冻结，load_all() 自动过滤
 - 创建 data_analyzer（数据分析和报告）+ buggy_skill（故意失败用于测试监狱）两个种子 manifest
 - 实现 main.py 全生命周期演示（优先级评分、意图检测、托管结算、冷却监狱）
+- **重构为 Document-Driven 架构**：skills/manifests/ 改为子目录结构，每个技能独立 manifest.json + rules.md
+- 重写 gateway/router.py：去除 LLM 调用逻辑，改为轻量级上下文注入器，返回 rules.md 作为 LLM 上下文字符串
+- 重写 skills/registry.py：支持子目录遍历加载 + rules.md 缓存 + get_rules()/get_top_rules() 接口
+- 重写 runtime/sandbox.py：持有 SKILL_IMPLS 实现注册表 + resolve_impl() 调度执行
+- 创建 amazon_scraper 种子技能：Document-Driven 第一个种子，含完整 rules.md（输入/输出/限速/合规/示例）
+- 为 code_security_audit、git_changelog、data_analyzer、buggy_skill 补充 rules.md
+- 重写 main.py：展示 Document-Driven 工作流（技能发现 → 上下文注入 → 沙箱执行）
 
 ## 遇到的问题
 - 暂无

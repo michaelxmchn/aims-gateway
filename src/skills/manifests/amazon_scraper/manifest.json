@@ -1,0 +1,46 @@
+{
+  "name": "amazon_scraper",
+  "description": "Scrape Amazon product listings for a given search term and return structured competitor data including prices, ratings, review counts, and ASINs.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "search_term": {
+        "type": "string",
+        "description": "The product search term to look up on Amazon"
+      },
+      "max_results": {
+        "type": "number",
+        "description": "Maximum number of results to return (default: 10, max: 50)"
+      },
+      "sort_by": {
+        "type": "string",
+        "enum": ["relevance", "price_low_high", "price_high_low", "rating", "newest"],
+        "description": "Sort order for results"
+      }
+    },
+    "required": ["search_term"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "products": {
+        "type": "array",
+        "description": "List of scraped product data"
+      },
+      "total_found": {
+        "type": "number",
+        "description": "Total number of products found"
+      },
+      "search_term": {
+        "type": "string",
+        "description": "The original search term used"
+      }
+    },
+    "required": ["products", "total_found", "search_term"]
+  },
+  "version": "1.0.0",
+  "author": "aims_seed",
+  "price_points": 2,
+  "staked_points": 12.0,
+  "tags": ["scraping", "amazon", "competitor", "ecommerce", "data"]
+}

@@ -1,14 +1,12 @@
 """Skill Registry — Layer 2.
 
-Loads SkillManifests from the local manifests directory, provides
-tool-definition injection, priority scoring, domain-based filtering,
-consecutive-failure tracking, and cool-down jail management.
+Loads SkillManifests from subdirectories under skills/manifests/.
+Each skill lives in its own subdirectory containing:
+  - manifest.json   — metadata (Pydantic model)
+  - rules.md        — Document-Driven rule file (injected into LLM context)
 
-Extensions:
-  - Priority_Score = Usage_Frequency + (Staked_Points × 10)
-  - Cold-start promotion via staked_points
-  - 3 consecutive failures → 24h jail (frozen_until)
-  - Frozen skills excluded from load_all()
+Provides priority scoring, domain-based filtering, consecutive-failure
+tracking, and cool-down jail management.
 """
 
 from __future__ import annotations
@@ -36,13 +34,11 @@ DOMAIN_KEYWORDS: Dict[str, List[str]] = {
     "security": ["security", "audit", "vulnerability", "exploit", "hack", "solidity"],
     "git": ["git", "commit", "changelog", "log", "history", "repo", "branch"],
     "code": ["code", "generate", "review", "refactor", "implement", "function"],
-    "data": ["data", "analysis", "query", "csv", "json", "database", "sql"],
+    "data": ["data", "analysis", "query", "csv", "json", "database", "sql", "scrape", "scraping"],
     "devops": ["deploy", "ci", "cd", "docker", "kubernetes", "infra"],
     "writing": ["write", "article", "doc", "readme", "blog", "email"],
     "general": [],
 }
-
-# Register all tags as default - the catch-all domain
 
 
 def detect_domain(prompt: str) -> str:
@@ -64,11 +60,13 @@ def detect_domain(prompt: str) -> str:
 
 
 class SkillRegistry:
-    """Loads, validates, scores, and serves SkillManifests."""
+    """Loads, validates, scores, and serves SkillManifests from subdirectories."""
 
     def __init__(self, manifests_dir: Path = MANIFESTS_DIR) -> None:
         self._manifests_dir = manifests_dir
         self._cache: Optional[Dict[str, SkillManifest]] = None
+        self._rules_cache: Dict[str, str] = {}
+        self._skill_dirs: Dict[str, Path] = {}
 
         # Runtime tracking (not persisted — resets on restart)
         self._usage_frequency: Dict[str, int] = {}
@@ -78,7 +76,7 @@ class SkillRegistry:
     # ── loading (with frozen-skill filtering) ────────────────────────────
 
     def load_all(self) -> Dict[str, SkillManifest]:
-        """Load manifests, excluding frozen skills (frozen_until > now)."""
+        """Load manifests from subdirectories, excluding frozen skills."""
         if self._cache is not None:
             return self._cache
 
@@ -91,11 +89,20 @@ class SkillRegistry:
         errors: List[str] = []
         now = time.time()
 
-        for path in sorted(self._manifests_dir.glob("*.json")):
+        # Iterate subdirectories — each subdirectory = one skill
+        for skill_dir in sorted(self._manifests_dir.iterdir()):
+            if not skill_dir.is_dir() or skill_dir.name.startswith("."):
+                continue
+
+            manifest_path = skill_dir / "manifest.json"
+            if not manifest_path.exists():
+                logger.warning("Skipping '%s': no manifest.json found", skill_dir.name)
+                continue
+
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(manifest_path, "r", encoding="utf-8") as f:
                     raw = json.load(f)
-                # Apply runtime overrides before validation
+
                 name = raw.get("name", "")
                 if name in self._staked_points_override:
                     raw["staked_points"] = self._staked_points_override[name]
@@ -104,10 +111,18 @@ class SkillRegistry:
 
                 manifest = SkillManifest.model_validate(raw)
                 if manifest.name in raw_manifests:
-                    errors.append(f"Duplicate skill name '{manifest.name}' in {path.name}")
+                    errors.append(f"Duplicate skill name '{manifest.name}' in {skill_dir.name}")
+
                 raw_manifests[manifest.name] = manifest
+                self._skill_dirs[manifest.name] = skill_dir
+
+                # Load rules.md if it exists
+                rules_path = skill_dir / "rules.md"
+                if rules_path.exists():
+                    self._rules_cache[manifest.name] = rules_path.read_text(encoding="utf-8")
+
             except Exception as exc:
-                errors.append(f"{path.name}: {exc}")
+                errors.append(f"{skill_dir.name}: {exc}")
 
         # Filter out frozen skills
         manifests: Dict[str, SkillManifest] = {}
@@ -121,8 +136,12 @@ class SkillRegistry:
             logger.warning("Loading completed with %d error(s)", len(errors))
 
         self._cache = manifests
-        logger.info("Loaded %d skill(s) (%d frozen skipped)", len(manifests),
-                     len(raw_manifests) - len(manifests))
+        logger.info(
+            "Loaded %d skill(s) (%d frozen skipped, %d with rules.md)",
+            len(manifests),
+            len(raw_manifests) - len(manifests),
+            len(self._rules_cache),
+        )
         return manifests
 
     def reload(self) -> None:
@@ -134,6 +153,30 @@ class SkillRegistry:
 
     def get_all_manifests(self) -> List[SkillManifest]:
         return list(self.load_all().values())
+
+    # ── rules.md access ──────────────────────────────────────────────────
+
+    def get_rules(self, name: str) -> Optional[str]:
+        """Return the rules.md content for a skill, or None if not found."""
+        self.load_all()  # Ensure cache is populated
+        return self._rules_cache.get(name)
+
+    def get_top_rules(self, prompt: str, limit: int = 3) -> List[Dict[str, Any]]:
+        """Get the top-N matching skills with their rules and tool definitions.
+
+        Returns a list of dicts: [{name, description, rules_md, tool_def}, ...]
+        """
+        top = self.get_top_for_domain(prompt, limit=limit)
+        result = []
+        for m in top:
+            rules = self.get_rules(m.name) or ""
+            result.append({
+                "name": m.name,
+                "description": m.description,
+                "rules_md": rules,
+                "tool_def": to_anthropic_tool_def(m),
+            })
+        return result
 
     # ── frozen-skills overrides (used during jail events) ─────────────────
 
@@ -148,17 +191,13 @@ class SkillRegistry:
     def get_priority_score(self, name: str) -> float:
         """Priority_Score = Usage_Frequency + (Staked_Points × 10)."""
         freq = self._usage_frequency.get(name, 0)
-        manifest = self.get(name)  # This may return None if frozen
-        if manifest is None:
-            # Try raw manifest for score calculation even if frozen
-            pass
+        manifest = self.get(name)
         staked = 0.0
         if name in self._staked_points_override:
             staked = self._staked_points_override[name]
         elif manifest is not None:
             staked = manifest.staked_points
-        score = float(freq) + (staked * 10.0)
-        return score
+        return float(freq) + (staked * 10.0)
 
     def get_priority_breakdown(self, name: str) -> Dict[str, Any]:
         """Return a detailed breakdown of the priority score for logging."""
@@ -170,12 +209,11 @@ class SkillRegistry:
             m = self.get(name)
             if m:
                 staked = m.staked_points
-        score = float(freq) + (staked * 10.0)
         return {
             "skill": name,
             "usage_frequency": freq,
             "staked_points": staked,
-            "priority_score": score,
+            "priority_score": float(freq) + (staked * 10.0),
         }
 
     # ── domain-based filtering & top-N selection ─────────────────────────
@@ -185,13 +223,11 @@ class SkillRegistry:
         domain = detect_domain(prompt)
         manifests = self.load_all()
 
-        # Score all skills
         scored: List[Tuple[float, SkillManifest]] = []
         for name, manifest in manifests.items():
             score = self.get_priority_score(name)
             scored.append((score, manifest))
 
-        # Sort descending by score
         scored.sort(key=lambda x: -x[0])
 
         logger.info("Domain detected: '%s' — ranked %d skill(s)", domain, len(scored))
@@ -208,7 +244,6 @@ class SkillRegistry:
                 (s, m) for s, m in scored
                 if any(kw in m.tags for kw in domain_keywords)
             ]
-            # If domain filter yields nothing, fall back to all scored
             if domain_filtered:
                 scored = domain_filtered
 
@@ -219,13 +254,7 @@ class SkillRegistry:
     # ── execution tracking ───────────────────────────────────────────────
 
     def record_execution(self, skill_name: str, success: bool, slashed: float = 0.0) -> Dict[str, Any]:
-        """Record a skill execution outcome and return any jail event info.
-
-        Returns a dict with keys:
-          - consecutive_failures: int
-          - jailed: bool (True if sent to cool-down jail)
-          - jail_duration_hours: int (24 if jailed)
-        """
+        """Record a skill execution outcome and return any jail event info."""
         self._usage_frequency[skill_name] = self._usage_frequency.get(skill_name, 0) + 1
 
         event: Dict[str, Any] = {"consecutive_failures": 0, "jailed": False, "jail_duration_hours": 0}
@@ -234,11 +263,9 @@ class SkillRegistry:
             self._consecutive_failures[skill_name] = 0
             return event
 
-        # Failure tracking
         fails = self._consecutive_failures.get(skill_name, 0) + 1
         self._consecutive_failures[skill_name] = fails
 
-        # Apply staked_points slash from ledger
         if skill_name in self._staked_points_override:
             self._staked_points_override[skill_name] = max(0.0, self._staked_points_override[skill_name] - slashed)
         else:
@@ -247,12 +274,10 @@ class SkillRegistry:
                 self._staked_points_override[skill_name] = max(0.0, m.staked_points - slashed)
 
         current_staked = self._staked_points_override.get(skill_name, 0.0)
-
         event["consecutive_failures"] = fails
 
-        # Jail trigger: staked_points <= 0 OR >= 3 consecutive failures
         if current_staked <= 0.0 or fails >= 3:
-            jail_until = time.time() + 86400  # 24 hours
+            jail_until = time.time() + 86400
             self._set_frozen(skill_name, jail_until)
             event["jailed"] = True
             event["jail_duration_hours"] = 24
@@ -281,10 +306,12 @@ class SkillRegistry:
 
     def health_report(self) -> Dict[str, Any]:
         manifests = self.load_all()
+        skills_with_rules = sum(1 for name in manifests if self.get_rules(name) is not None)
         return {
             "status": "healthy" if manifests else "empty",
             "manifest_count": len(manifests),
             "manifest_names": sorted(manifests.keys()),
+            "skills_with_rules": skills_with_rules,
             "manifests_dir": str(self._manifests_dir),
             "frozen_skills": sorted(self._frozen_overrides.keys()),
         }

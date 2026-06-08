@@ -26,9 +26,15 @@
 - feat(ledger): 创建 MockLedger 非托管托管结算（freeze_points → settle_transaction + 罚没 2.0）
 - feat(manifests): 创建 data_analyzer（数据分析报告）和 buggy_skill（故意失败用于测试监狱）
 - feat(demo): 重写 main.py 为全生命周期演示（优先级评分、意图检测、托管结算、冷却监狱）
+- feat(amazon_scraper): 创建 amazon_scraper 种子技能（竞品爬虫，含 rules.md + Python 实现）
+- feat(rules): 为所有 5 个技能创建 rules.md Document-Driven 规则文件
 
-### 修改
-- 暂无
+### 重构
+- refactor(manifests): skills/manifests/ 改为子目录结构，每个技能独立 manifest.json + rules.md
+- refactor(registry): SkillRegistry 支持子目录遍历加载 + rules.md 缓存
+- refactor(router): GatewayRouter 简化为轻量级上下文注入器，去除所有 LLM 调用代码
+- refactor(sandbox): runtime/sandbox.py 重写为执行沙箱，持有 SKILL_IMPLS 实现注册表
+- refactor(main): main.py 重写为 Document-Driven 工作流演示
 
 ### 修复
 - 暂无
