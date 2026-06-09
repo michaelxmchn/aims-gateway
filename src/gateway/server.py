@@ -477,7 +477,64 @@ async def discovery():
     """
     base_url = "https://aims-gateway.fly.dev"
 
+    # ── Build dynamic skills list from registry + skill_store ──────────
+    # Registry may not be loaded yet; force a load so we see everything
+    all_manifests = await _run_in_thread(registry.get_all_manifests)
+    uploaded_ids = await _run_in_thread(skill_store.list_skills)
+
+    skills_list = []
+    seen_ids: set[str] = set()
+
+    for m in all_manifests:
+        sid = m.name
+        seen_ids.add(sid)
+        skills_list.append({
+            "skill_id": sid,
+            "manifest": {
+                "name": m.name,
+                "description": m.description,
+                "version": m.version,
+                "author": m.author,
+                "tags": m.tags,
+                "input_schema": m.input_schema,
+                "output_schema": m.output_schema,
+                "price_points": m.price_points,
+                "staked_points": m.staked_points,
+            },
+            "endpoint": "/api/run",
+            "auth_type": "HMAC-SHA256",
+            "source": "built-in",
+        })
+
+    for sid in uploaded_ids:
+        if sid in seen_ids:
+            continue
+        raw = await _run_in_thread(skill_store.get_manifest, sid)
+        if raw is None:
+            continue
+        seen_ids.add(sid)
+        skills_list.append({
+            "skill_id": sid,
+            "manifest": {
+                "name": raw.get("name", sid),
+                "description": raw.get("description", ""),
+                "version": raw.get("version", "1.0.0"),
+                "author": raw.get("author", "unknown"),
+                "tags": raw.get("tags", []),
+                "input_schema": raw.get("input_schema", {"type": "object", "properties": {}}),
+                "output_schema": raw.get("output_schema"),
+                "price_points": raw.get("price_points", 0),
+                "staked_points": raw.get("staked_points", 0.0),
+            },
+            "endpoint": "/api/run",
+            "auth_type": "HMAC-SHA256",
+            "source": "uploaded",
+        })
+
+    skills_list.sort(key=lambda s: s["skill_id"])
+
     return {
+        "discovery_version": "1.0.0",
         "api": {
             "name": "AIMS Gateway",
             "version": "1.0.0",
@@ -521,6 +578,7 @@ async def discovery():
                 '-H "Content-Type: application/json" -d "$BODY"'
             ),
         },
+        "skills": skills_list,
         "endpoints": [
             {
                 "category": "Task Management",
