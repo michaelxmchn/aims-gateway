@@ -117,6 +117,10 @@
   - 状态: 已完成 (2026-06-09)
   - 文件: tests/load_test_simulation.py
   - 结果: 20 Workers × 100 任务，111.7 tasks/s 吞吐量，100% 通过 ✓（HMAC-SHA256 签名）
+- **生产级 E2E 全流程测试**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: tests/e2e_full_flow.py
+  - 结果: 10 并发 Worker 线程，ThreadPoolExecutor，SOCKS5 代理轮换，2s 浏览器指纹模拟，60s 吞吐量基准
 
 ### 部署
 - **Fly.io 部署配置**
@@ -252,3 +256,9 @@
 - **requirements.txt 补充**：锁定额外的 starlette + pydantic_core 递依赖，+ redis/hiredis
 - **fly.toml 健康检查配置**：
   - 新增 `[http_service.health_check]`：指向 `GET /api/health`，15s 间隔 / 5s 超时 / 10s 宽限期
+- **创建生产级 E2E 全流程测试 tests/e2e_full_flow.py**：
+  - 10 并发 Worker 线程（ThreadPoolExecutor），独立 worker_id
+  - 可选 SOCKS5 代理轮换 + egress IP 检测
+  - 2s 浏览器指纹模拟 + HMAC-SHA256 签名全流程
+  - 双模式：本地自动起服务 / 连接生产网关
+  - 60s 运行 + 吞吐量 / 错误日志 / 成功率汇总
