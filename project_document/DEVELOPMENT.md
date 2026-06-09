@@ -321,3 +321,28 @@
   - 状态: 已完成 (2026-06-09)
   - 文件: src/gateway/server.py
   - 描述: `SKILL_CAPABILITIES` 静态映射为每个内置技能定义能力标签（如 amazon_scraper: `["web-scraping", "e-commerce", "price-tracking"]`）；discovery 响应中每个技能条目新增 `capabilities` 数组字段；上传的非内置技能默认 `["custom"]`
+- **Auto-Discovery 技能条目重构**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/gateway/server.py / tests/test_discovery.py
+  - 描述: 扁平化 `skill_id` → `id`，新增 `execution`（endpoint/method）、`resources`（logic_script_url/manifest_url）顶级字段，移除非必要的 `auth_type`/`source` 字段，AI Agent 解析更直观
+- **Agent-Readable 文档体系**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: docs/MASTER_INDEX.md
+  - 描述: 建立 AI Agent 单入口协议索引，索引 7 个协议（Discovery/HMAC Auth/Run API/Pipeline/Heartbeat/Upload/Bootstrap），每个含 `[Topic] → [Spec Link] → [Example JSON]`
+- **Hermes 元数据标记**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: 全部 12 个 markdown 文件
+  - 描述: 为全部 markdown 文件添加 `<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-09 | Hermes-Verified -->` 隐藏头部注释
+- **文档根 URL 指向 GitHub Raw**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/gateway/server.py
+  - 描述: `documentation_root` 从 Fly.io URL 改为 GitHub raw URL，外部 AI 代理免认证访问
+- **Agent Bootstrap 测试**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: tests/test_agent_bootstrap.py
+  - 结果: 14/14 PASSED ✓
+  - 描述: 模拟外部 AI Agent 自引导流程：discovery 获取 → documentation_root 可达性 → 7 个协议完整性 → input_schema 校验 → pipeline 文档验证 → AIMS_AGENT_BOOTSTRAP.md 和 bootstrap_helper.py 存在性验证
+- **完整测试套件验证**
+  - 状态: 已完成 (2026-06-09)
+  - 结果: 78/78 PASSED ✓（17 discovery + 14 agent bootstrap + 47 单元测试）
+  - 描述: 全部测试通过，覆盖 discovery 协议、agent bootstrap 协议和核心单元测试

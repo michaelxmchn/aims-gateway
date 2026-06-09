@@ -1,0 +1,21 @@
+{
+  "name": "hello_world",
+  "description": "A test skill that greets the user",
+  "version": "1.0.0",
+  "author": "test",
+  "input_schema": {
+    "type": "object",
+    "required": ["name"],
+    "properties": {
+      "name": {"type": "string", "description": "Name to greet"}
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "greeting": {"type": "string"},
+      "length": {"type": "number"}
+    }
+  },
+  "tags": ["test", "demo"]
+}

@@ -28,6 +28,8 @@
 - fix(deploy): 生产环境 500 — python-multipart 缺失导致 FastAPI File() 参数启动崩溃（POST /api/skills/upload 需 multipart 支持）
 - fix(test): e2e_full_flow.py 端口冲突 — 8765 被其他服务占用导致 404；改用 9876 + 智能健康检查验证网关字段
 - feat(gateway): broker.py 新增 succeeded_count / claimed_count 状态查询属性
+- feat(test): 创建 tests/test_agent_bootstrap.py — AI Agent 引导测试（14 个测试：discovery 获取 → documentation_root URL 可达性 → 7 个协议完整性 → input_schema 校验 → pipeline 文档验证 → 全流程端到端模拟）
+- fix(docs): documentation_root 指向 GitHub raw URL `https://raw.githubusercontent.com/michaelxmchn/aims-gateway/main/docs/MASTER_INDEX.md`，外部 AI 代理（Hermes）免认证访问
 - feat(gateway): server.py health 端点新增 tasks_succeeded 字段
 ### 修复
 - fix(server): health 端点缺失 tasks_succeeded 导致 Pydantic ValidationError (500)

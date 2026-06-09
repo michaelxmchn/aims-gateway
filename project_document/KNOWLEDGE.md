@@ -34,6 +34,16 @@ A: 待补充
 - **延迟结算**：`submit_task()` 在收到 `settle=False` 的完成信号时不结算托管金，仅返回 `PIPELINE_CONTINUED` 响应；仅在最终步骤才调用 `release_escrow_dynamic()`
 - **Context 存储**：`broker:context` Redis namespace，key 格式 `{task_id}:step_{step}`，存储当前步骤的中间结果供下游技能使用
 
+### Agent Bootstrap 测试模式
+- **`tests/test_agent_bootstrap.py`** 模拟外部 AI Agent 自引导流程，验证 7 个步骤：
+  - **Step 1 (Discovery)**：`GET /api/discovery` 返回 200，包含 `documentation_root` URL 和 `skills` 列表
+  - **Step 2 (Documentation)**：`documentation_root` URL（GitHub raw）可达，内容包含全部 7 个必需协议和关键技术主题
+  - **Step 3 (Schema)**：每个技能有完整的 `input_schema`（`type`/`properties`/`required`），AI Agent 据此构造请求参数
+  - **Step 4 (Auth)**：认证部分有 `example_curl` 示例，Agent 可直接适配
+  - **Step 5 (Pipeline)**：`POST /api/run` 端点文档化，Agent 发现支持 pipeline 多步骤任务
+  - **网络不可达降级**：`test_step2_documentation_root_reachable` 等远程测试在 GitHub raw URL 不可达时自动 `pytest.skip`，不影响本地 CI
+- **`TestBootstrapDocumentation`** 验证 `AIMS_AGENT_BOOTSTRAP.md`（System Prompt 存在性）和 `bootstrap_helper.py`（客户端库存在性）
+
 ### 多模态输入预处理模式
 - **Base64 解码**：`_detect_base64()` 识别长度 ≥20 的 base64 编码字符串 → 解码为临时文件，通过文件头字节检测图像格式（PNG/JPEG/GIF/WebP）
 - **URL 下载**：`_detect_url()` 识别 http/https/file 开头的 URL → `_download_to_temp()` 下载到临时文件，通过扩展名推断 MIME 类型
