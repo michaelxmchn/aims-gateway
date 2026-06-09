@@ -298,6 +298,27 @@ class SkillRegistry:
         targets = manifests if manifests is not None else list(self.load_all().values())
         return [to_openai_tool_def(m) for m in targets]
 
+    # ── Dynamic skill installation (from SkillStore) ────────────────────
+
+    def install_skill(self, skill_id: str, manifest_dict: dict, impl_path: str | None = None) -> None:
+        """Register a dynamically uploaded skill so it's served by the registry.
+
+        *manifest_dict* is the raw manifest JSON (already validated).
+        *impl_path* is the absolute path to ``logic.py`` on disk, if available.
+        """
+        from src.skills.manifest import SkillManifest
+        manifest = SkillManifest.model_validate(manifest_dict)
+        if self._cache is None:
+            self._cache = {}
+        self._cache[skill_id] = manifest
+        self._skill_dirs[skill_id] = Path(impl_path).parent if impl_path else self._manifests_dir
+        logger.info("INSTALLED dynamic skill '%s' v%s", skill_id, manifest.version)
+
+    def get_impl_path(self, skill_id: str) -> str | None:
+        """Return the path to the skill's implementation directory, or ``None``."""
+        d = self._skill_dirs.get(skill_id)
+        return str(d) if d else None
+
     # ── counts & health ─────────────────────────────────────────────────
 
     @property

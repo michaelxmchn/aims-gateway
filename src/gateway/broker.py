@@ -42,6 +42,8 @@ class BrokerTask:
     escrow_hold: EscrowHold
     skill_id: str = ""
     compute_tier: int = 1
+    payload: dict | None = None
+    """Input arguments for the skill execution (dynamic skills)."""
 
 
 class TaskBroker:
@@ -140,8 +142,13 @@ class TaskBroker:
         max_budget: float,
         skill_id: str = "",
         compute_tier: int = 1,
+        payload: dict | None = None,
     ) -> Optional[str]:
         """Create an escrow hold and register a PENDING task.
+
+        *payload* is an optional dict that carries input arguments for
+        dynamic skill execution (the ``/api/run`` path).  Static skill
+        tasks typically pass ``None``.
 
         Returns the ``task_id`` string, or ``None`` if the user has
         insufficient balance for the escrow hold.
@@ -163,6 +170,7 @@ class TaskBroker:
             escrow_hold=hold,
             skill_id=skill_id,
             compute_tier=compute_tier,
+            payload=payload,
         )
 
         with self._lock:
@@ -221,6 +229,7 @@ class TaskBroker:
                         "escrow_hold": task.escrow_hold,
                         "skill_id": task.skill_id,
                         "compute_tier": task.compute_tier,
+                        "payload": task.payload,
                     }
             return None
 

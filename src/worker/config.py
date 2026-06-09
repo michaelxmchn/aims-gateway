@@ -30,3 +30,4 @@ MAX_RETRIES: int = int(os.getenv("AIMS_MAX_RETRIES", "3"))
 CLAIM_ENDPOINT: str = f"{GATEWAY_URL}/api/tasks/claim"
 SUBMIT_ENDPOINT: str = f"{GATEWAY_URL}/api/tasks/submit"
 HEARTBEAT_ENDPOINT: str = f"{GATEWAY_URL}/api/workers/heartbeat"
+LOGIC_ENDPOINT: str = f"{GATEWAY_URL}/api/skills/{{skill_id}}/logic"

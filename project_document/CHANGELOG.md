@@ -20,6 +20,18 @@
 ### 测试
 - feat(test): 创建 tests/load_test_simulation.py — 20 Worker 多进程压力测试（HMAC-SHA256 签名，100 任务全通过 ✓）
 - test(load): 负载测试 100/100 任务完成，111.7 tasks/s 吞吐量 ✓
+- feat(gateway): 创建 src/gateway/skill_store.py — 动态 Skill zip 上传/校验/持久化（zip-slip 防护、manifest 验证、Redis + 磁盘双写）
+- feat(gateway): server.py 新增 POST /api/skills/upload、GET /api/skills/{id}/logic、POST /api/run、GET /api/tasks/{id}/status 端点
+- feat(gateway): server.py 中间件扩展覆盖 /api/skills/ 和 /api/run（HMAC-SHA256 全面认证）
+- feat(gateway): ClaimResponse 新增 skill_logic_url 字段（Worker 零配置发现）
+- feat(registry): install_skill 修复缓存空指针（_cache 为 None 时初始化空 dict）
+- feat(worker): 创建 src/worker/bootstrap.py — 动态技能引导模块（fetch_logic + importlib 加载 + execute 调用）
+- feat(worker): worker.py execute_task() 新增动态技能分支（有 payload 时 bootstrap 加载，无 payload 时 mock 回退）
+- feat(worker): config.py 新增 LOGIC_ENDPOINT 配置
+- feat(deploy): 创建 src/worker/Dockerfile — Worker 容器（Playwright Chromium + OpenClaw 集成）
+- feat(deploy): requirements.txt 新增 playwright + openclaw 依赖
+- feat(manifest): 创建 manifests/openclaw_skill.json — OpenClaw 互联 Manifest（/api/run 端点描述、HMAC 认证、输入/输出 Schema）
+- feat(test): 创建 tests/e2e_dynamic_skill.py — 动态插件 E2E 测试（上传→/api/run→claim→bootstrap→submit→status）
 ### 新增
 - feat(deploy): 创建 Dockerfile — python:3.11-slim，uvicorn 生产部署
 - feat(deploy): 创建 fly.toml — Fly.io 部署配置（sin 区域，256MB，min_machines_running=1）

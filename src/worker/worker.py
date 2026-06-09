@@ -25,6 +25,7 @@ import requests
 
 from src.worker.config import (
     CLAIM_ENDPOINT,
+    GATEWAY_URL,
     HEARTBEAT_INTERVAL,
     HEARTBEAT_ENDPOINT,
     MAX_RETRIES,
@@ -33,6 +34,9 @@ from src.worker.config import (
     WORKER_ID,
 )
 from src.worker.utils.signer import sign_headers
+
+# Dynamic skill bootstrap
+from src.worker.bootstrap import execute_dynamic_skill as _execute_dynamic
 
 logging.basicConfig(
     level=logging.INFO,
@@ -106,21 +110,44 @@ def claim_task() -> dict[str, Any] | None:
 def execute_task(task: dict[str, Any]) -> dict[str, Any]:
     """Execute the claimed task.
 
-    For now this simulates work with a short random delay.  In production
-    this would dispatch to ``WorkflowEngine.execute()``.
+    If the task carries a ``payload``, the worker uses the dynamic skill
+    bootstrap — fetching ``logic.py`` from the gateway, loading it via
+    ``importlib``, and calling ``execute(payload)``.
 
-    Returns ``result_data`` matching a generic skill output schema.
+    Otherwise it falls back to mock execution (simulated work with a
+    random delay).
     """
     task_id = task.get("task_id", "unknown")
+    skill_id = task.get("skill_id", "")
+    payload = task.get("payload")
+
+    # ── Dynamic skill path ───────────────────────────────────────────────
+    if payload is not None and skill_id:
+        try:
+            from src.worker.bootstrap import execute_dynamic_skill
+            logger.info("bootstrap dynamic skill '%s' for task %s", skill_id, task_id)
+            return execute_dynamic_skill(
+                gateway_url=GATEWAY_URL,
+                skill_id=skill_id,
+                payload=payload,
+                worker_id=WORKER_ID,
+            )
+        except Exception as exc:
+            logger.warning(
+                "dynamic skill '%s' failed for %s: %s — falling back to mock",
+                skill_id, task_id, exc,
+            )
+            # Fall through to mock execution
+
+    # ── Mock execution (legacy / static skills) ──────────────────────────
     asin = task.get("asin", "UNKNOWN-ASIN")
     compute_tier = task.get("compute_tier", 1)
 
-    # Simulate execution — tier-3 tasks take longer
     delay = random.uniform(0.1, 0.5) * compute_tier
     time.sleep(delay)
 
     logger.info(
-        "executed task %s (tier=%s, asin=%s) in %.2fs",
+        "executed (mock) task %s (tier=%s, asin=%s) in %.2fs",
         task_id, compute_tier, asin, delay,
     )
 

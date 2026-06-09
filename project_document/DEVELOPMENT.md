@@ -133,6 +133,11 @@
   - 状态: 已完成 (2026-06-09)
   - 文件: tests/e2e_full_flow.py
   - 结果: 10 并发 Worker 线程，ThreadPoolExecutor，SOCKS5 代理轮换，2s 浏览器指纹模拟，60s 吞吐量基准
+- **动态 Skill 插件系统**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/gateway/skill_store.py / server.py / src/worker/bootstrap.py / manifests/openclaw_skill.json
+  - 描述: SkillStore（zip 上传/校验/持久化）+ POST /api/skills/upload + GET /api/skills/{id}/logic + POST /api/run（输入校验/发单）+ GET /api/tasks/{id}/status + Worker 动态 importlib 引导 + skill_logic_url 字段 + OpenClaw 互联 Manifest
+  - 验证: E2E 全流程通过（上传→/api/run→claim→bootstrap→submit→status SUCCESS ✓）
 
 ### 部署
 - **Fly.io 部署配置**

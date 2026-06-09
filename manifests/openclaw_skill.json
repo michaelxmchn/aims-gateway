@@ -1,0 +1,81 @@
+{
+  "name": "aims-gateway",
+  "version": "1.0.0",
+  "description": "AIMS DePIN Network — Dynamic Skill Execution Gateway for OpenClaw agents",
+  "endpoint": "https://aims-gateway.fly.dev/api/run",
+  "method": "POST",
+  "auth": {
+    "type": "hmac-sha256",
+    "description": "HMAC-SHA256 signature over body|timestamp|user_id",
+    "headers": {
+      "X-Signature": "hex-encoded HMAC-SHA256",
+      "X-Timestamp": "UNIX epoch seconds",
+      "X-User-ID": "caller identifier"
+    }
+  },
+  "input_schema": {
+    "type": "object",
+    "required": ["skill_id", "user_id"],
+    "properties": {
+      "skill_id": {
+        "type": "string",
+        "description": "Skill identifier to execute (must be registered in the AIMS registry)"
+      },
+      "params": {
+        "type": "object",
+        "description": "Input parameters passed to the skill's execute() function"
+      },
+      "user_id": {
+        "type": "string",
+        "description": "Caller's user identifier for escrow and billing"
+      },
+      "developer_premium": {
+        "type": "number",
+        "description": "Developer premium fee in USDT",
+        "default": 0.0
+      },
+      "max_budget": {
+        "type": "number",
+        "description": "Maximum USDT budget for execution",
+        "default": 2.0
+      },
+      "compute_tier": {
+        "type": "integer",
+        "description": "Compute tier (1=1x, 2=2.5x, 3=6x gas multiplier)",
+        "default": 1,
+        "minimum": 1,
+        "maximum": 3
+      }
+    }
+  },
+  "output_schema": {
+    "type": "object",
+    "required": ["task_id", "status"],
+    "properties": {
+      "task_id": {"type": "string", "description": "Task ID for polling"},
+      "status": {"type": "string", "enum": ["PENDING"], "description": "Initial task status"}
+    }
+  },
+  "poll_endpoint": {
+    "path": "/api/tasks/{task_id}/status",
+    "method": "GET",
+    "description": "Poll task status after submission via /api/run",
+    "output_schema": {
+      "type": "object",
+      "properties": {
+        "task_id": {"type": "string"},
+        "status": {"type": "string", "enum": ["PENDING", "CLAIMED", "SUCCESS", "FAILED"]},
+        "worker_id": {"type": "string"},
+        "outcome": {"type": "string"}
+      }
+    }
+  },
+  "tags": ["decentralized", "compute", "skills", "ai-agent", "depin"],
+  "openclaw": {
+    "emoji": "⚡",
+    "category": "compute",
+    "requires": {
+      "env": ["AIMS_SIGNING_SECRET"]
+    }
+  }
+}

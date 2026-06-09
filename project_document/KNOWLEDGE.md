@@ -186,6 +186,15 @@ A: 待补充
 - **覆盖范围**: Broker 4 个 namespace（tasks/status/results/counter）+ Ledger 13 个 namespace（user_balance/dev_balance/escrow_vault/treasury/counter/collateral/strikes/skill_usage/reputation/rating_history/rating_entries/skill_score）
 - **原因**: 单机无需分布式锁，写时复制保证内存和 Redis 一致性。`dict_all` 全量加载适用于小数据量（MVP 阶段 < 10K 任务），后续可以加增量同步
 
+### 决策28：动态 Skill 插件系统（上传 → 引导 → 执行）
+- **背景**: 静态 manifest 技能无法热加载，每次新增技能都需要修改代码和重启服务器，且 Worker 固定逻辑无法扩展新能力
+- **决策**: 三层动态插件架构 — (1) **SkillStore**（`src/gateway/skill_store.py`）处理 zip 上传：zip-slip 防护、10MB 限制、manifest 校验、Pydantic 验证，元数据存 Redis，`logic.py` 写 `skills/uploaded/{skill_id}/` 磁盘；(2) **Registry 运行时注册**：`install_skill()` 将动态 SkillManifest 注入缓存（修复 `_cache` 为 None 的边界），`load_into_registry()` 启动时自动恢复已上传技能；(3) **Worker Bootstrap**（`src/worker/bootstrap.py`）：`fetch_logic()` 通过 HMAC 签名 GET 请求下载远程 `logic.py`，`_load_and_execute()` 用 `importlib.util.spec_from_file_location()` 编译临时文件 + exec_module() 执行 + 清理，最后调用 `module.execute(payload)` 返回结果
+- **API 端点**: `POST /api/skills/upload`（multipart zip 上传，免 HMAC）、`GET /api/skills/{id}/logic`（源码服务，HMAC 保护）、`POST /api/run`（输入 schema 校验 + escrow + 发单）、`GET /api/tasks/{id}/status`（轮询结果）
+- **Claim 响应增强**: `skill_logic_url` 字段携带完整 URL（基于 `request.base_url`），Worker 零配置即可定位技能代码
+- **Worker 执行策略**: `execute_task()` 检查 `payload` 字段 — 有 payload 走动态引导（fetch → importlib → execute），无 payload 回退 mock（静态技能兼容）
+- **HMAC 扩展**: 中间件覆盖除 `/api/admin/` 和 `/api/health` 外的所有 `/api/*` POST 请求，以及 `/api/skills/*` GET 请求（逻辑代码保护）
+- **E2E 验证**: 9 阶段测试全通过（上传→/api/run→claim→bootstrap→submit→SUCCESS ✓），`greeting: "Hello, AIMS!"` 正确返回
+
 ### 决策26：生产级 E2E 全流程测试（tests/e2e_full_flow.py）
 - **背景**: 负载测试（stress_test.py / load_test_simulation.py）侧重于后端并发和资金守恒，缺少模拟真实生产环境下多 Worker 独立网络出口和长运行时的端到端验证
 - **决策**: 创建 `tests/e2e_full_flow.py`，使用 `concurrent.futures.ThreadPoolExecutor` 启发 10 个 Worker 线程，每个 Worker 使用独立 `worker_id` 和可选 SOCKS5 代理出口。Worker 循环执行 `claim→2s 浏览器指纹模拟→submit` 全流程，所有请求携带 HMAC-SHA256 签名。运行时默认 60s，结束时汇总吞吐量、错误日志和成功率

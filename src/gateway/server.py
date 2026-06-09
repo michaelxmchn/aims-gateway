@@ -17,10 +17,11 @@ import time
 from threading import Lock
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
 from src.gateway.broker import TaskBroker
+from src.gateway.skill_store import SkillStore, SkillStoreError
 from src.gateway.storage import Storage
 from src.ledger.mock_counter import MockLedger
 from src.skills.registry import SkillRegistry
@@ -58,6 +59,10 @@ storage = Storage()
 ledger = MockLedger(storage=storage)
 broker = TaskBroker(ledger, storage=storage)
 registry = SkillRegistry()
+skill_store = SkillStore(storage=storage)
+
+# Load any previously uploaded skills into the registry
+skill_store.load_into_registry(registry)
 
 # Worker heartbeat tracking: worker_id → last_seen_unix_ts
 worker_heartbeats: dict[str, float] = {}
@@ -75,7 +80,7 @@ app = FastAPI(
 
 @app.middleware("http")
 async def verify_signature_middleware(request: Request, call_next):
-    """Verify HMAC-SHA256 signature on all ``/api/tasks/*`` POST requests.
+    """Verify HMAC-SHA256 signature on all ``/api/*`` requests (except health & admin).
 
     Required headers:
       - ``X-Signature``  — hex-encoded HMAC-SHA256
@@ -90,7 +95,17 @@ async def verify_signature_middleware(request: Request, call_next):
     are rejected as replay attempts.
     """
     path = request.url.path
-    if request.method == "POST" and (path.startswith("/api/tasks/") or path.startswith("/api/workers/")):
+
+    # Skip health and admin endpoints
+    if path == "/api/health" or path.startswith("/api/admin/"):
+        return await call_next(request)
+
+    # Skip HMAC auth for multipart uploads (body can't be pre-signed trivially)
+    if path == "/api/skills/upload":
+        return await call_next(request)
+
+    # Require auth on all other /api/ endpoints
+    if path.startswith("/api/"):
         sig = request.headers.get("x-signature", "")
         ts = request.headers.get("x-timestamp", "")
         uid = request.headers.get("x-user-id", "")
@@ -147,6 +162,9 @@ class ClaimResponse(BaseModel):
     escrow_id: str
     user_id: str
     asin: str
+    payload: dict[str, Any] | None = None
+    skill_logic_url: str | None = None
+    """URL where the worker can fetch ``logic.py`` for dynamic skills."""
 
 
 class SubmitRequest(BaseModel):
@@ -184,6 +202,34 @@ class HeartbeatRequest(BaseModel):
 class HeartbeatResponse(BaseModel):
     status: str
     worker_id: str
+
+
+class UploadResponse(BaseModel):
+    skill_id: str
+    name: str
+    version: str
+
+
+class RunRequest(BaseModel):
+    skill_id: str = Field(..., min_length=1, max_length=64)
+    params: dict[str, Any] = Field(default_factory=dict)
+    user_id: str = Field(..., min_length=1, max_length=128)
+    developer_premium: float = Field(default=0.0, ge=0.0)
+    max_budget: float = Field(default=2.0, ge=0.0)
+    compute_tier: int = Field(default=1, ge=1, le=3)
+
+
+class RunResponse(BaseModel):
+    task_id: str
+    status: str = "PENDING"
+
+
+class TaskStatusResponse(BaseModel):
+    task_id: str
+    status: str
+    worker_id: str | None = None
+    result: dict[str, Any] | None = None
+    outcome: str | None = None
 
 
 # ── Helper: run blocking calls off the event loop ─────────────────────────
@@ -246,7 +292,7 @@ async def admin_setup():
 
 
 @app.post("/api/tasks/claim")
-async def claim_task(req: ClaimRequest):
+async def claim_task(req: ClaimRequest, request: Request):
     """Claim a PENDING task from the broker.
 
     Returns the task metadata on success, or **204 No Content** if the
@@ -256,15 +302,21 @@ async def claim_task(req: ClaimRequest):
     if task is None:
         return Response(status_code=204)
 
+    skill_id = task.get("skill_id", "")
+    base_url = str(request.base_url).rstrip("/")
+    logic_url = f"{base_url}/api/skills/{skill_id}/logic" if skill_id else None
+
     return ClaimResponse(
         task_id=task["task_id"],
-        skill_id=task.get("skill_id", ""),
+        skill_id=skill_id,
         compute_tier=task.get("compute_tier", 1),
         developer_premium=task.get("developer_premium", 0.0),
         max_budget=task.get("max_budget", 0.0),
         escrow_id=task["escrow_hold"].escrow_id,
         user_id=task["user_id"],
         asin=task["asin"],
+        payload=task.get("payload"),
+        skill_logic_url=logic_url,
     )
 
 
@@ -412,4 +464,129 @@ async def health():
         workers_registered=workers_registered,
         workers_active=workers_active,
         treasury_usdt=treasury,
+    )
+
+
+# ── Dynamic Skill Upload & Execution ─────────────────────────────────────
+
+
+@app.post("/api/skills/upload", response_model=UploadResponse)
+async def upload_skill(zip_file: UploadFile = File(...)):
+    """Upload a zip containing ``manifest.json`` + ``logic.py``.
+
+    The archive is validated, extracted, and installed into the local
+    filesystem.  Metadata is persisted in Redis.
+
+    Returns the ``skill_id``, ``name``, and ``version`` on success.
+    """
+    zip_bytes = await zip_file.read()
+    try:
+        result = skill_store.install_zip(zip_bytes, author=zip_file.filename or "api")
+    except SkillStoreError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # Register in the runtime registry so workers can find it
+    raw_manifest = skill_store.get_manifest(result["skill_id"])
+    logic_path = skill_store.get_logic_path(result["skill_id"])
+    if raw_manifest:
+        registry.install_skill(result["skill_id"], raw_manifest, str(logic_path) if logic_path else None)
+
+    return UploadResponse(
+        skill_id=result["skill_id"],
+        name=result["name"],
+        version=result["version"],
+    )
+
+
+@app.get("/api/skills/{skill_id}/logic")
+async def serve_logic(skill_id: str):
+    """Serve the ``logic.py`` source for a dynamically uploaded skill.
+
+    Workers fetch this at startup to load the skill code dynamically.
+    """
+    source = skill_store.get_logic_source(skill_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail=f"Skill '{skill_id}' not found or has no logic.py")
+    return Response(content=source, media_type="text/plain")
+
+
+@app.post("/api/run", response_model=RunResponse)
+async def run_skill(req: RunRequest):
+    """Universal execution endpoint — validate input, enqueue a task, return task_id.
+
+    1. Looks up the skill manifest for ``input_schema`` validation.
+    2. Validates ``params`` against the required fields from the schema.
+    3. Creates an escrow hold and publishes a PENDING broker task.
+    4. The task is picked up by an idle worker via the normal claim cycle.
+
+    The caller polls ``GET /api/tasks/{task_id}/status`` to learn the outcome.
+    """
+    # ── 1. Look up manifest ─────────────────────────────────────────────
+    manifest = registry.get(req.skill_id)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail=f"Skill '{req.skill_id}' not found in registry")
+
+    # ── 2. Validate params against input_schema ─────────────────────────
+    schema = manifest.input_schema or {}
+    required = schema.get("required", [])
+    for field in required:
+        if field not in req.params:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing required parameter: {field}",
+            )
+
+    props = schema.get("properties", {})
+    for prop_name, prop_schema in props.items():
+        if prop_name not in req.params:
+            continue
+        expected_type = prop_schema.get("type")
+        val = req.params[prop_name]
+        if expected_type == "string" and not isinstance(val, str):
+            raise HTTPException(status_code=400, detail=f"{prop_name}: expected string, got {type(val).__name__}")
+        elif expected_type == "number" and not isinstance(val, (int, float)):
+            raise HTTPException(status_code=400, detail=f"{prop_name}: expected number, got {type(val).__name__}")
+        elif expected_type == "boolean" and not isinstance(val, bool):
+            raise HTTPException(status_code=400, detail=f"{prop_name}: expected boolean, got {type(val).__name__}")
+
+    # ── 3. Create escrow & publish task ─────────────────────────────────
+    task_id = await _run_in_thread(
+        broker.publish_task,
+        user_id=req.user_id,
+        asin=f"dynamic-{req.skill_id}",
+        developer_premium=req.developer_premium,
+        max_budget=req.max_budget,
+        skill_id=req.skill_id,
+        compute_tier=req.compute_tier,
+        payload=req.params,
+    )
+    if task_id is None:
+        raise HTTPException(status_code=402, detail="Insufficient balance for escrow hold")
+
+    return RunResponse(task_id=task_id, status="PENDING")
+
+
+@app.get("/api/tasks/{task_id}/status", response_model=TaskStatusResponse)
+async def task_status(task_id: str):
+    """Return the current status of a task (for polling after ``/api/run``)."""
+    status = await _run_in_thread(broker.get_task_status, task_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Task {task_id} not found")
+
+    result = None
+    outcome = None
+    if status["status"] == "SUCCESS":
+        detail = await _run_in_thread(lambda: broker._results.get(task_id))
+        if detail:
+            result = getattr(detail, "detail", None) or {}
+            outcome = getattr(detail, "outcome", None)
+    elif status["status"] == "FAILED":
+        outcome = "FAILED"
+
+    return TaskStatusResponse(
+        task_id=task_id,
+        status=status["status"],
+        worker_id=status.get("worker_id"),
+        result=result,
+        outcome=outcome,
     )

@@ -13,3 +13,9 @@ hiredis>=2.0,<4.0
 
 # Worker HTTP client
 requests>=2.31,<3.0
+
+# Worker browser automation (Playwright for scraping tasks)
+playwright>=1.40,<2.0
+
+# OpenClaw agent orchestration
+openclaw>=2026.3,<2027.0
