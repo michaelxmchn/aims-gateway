@@ -1,6 +1,6 @@
 FROM python:3.11-slim
 
-# ── System dependencies for Playwright browsers ─────────────────────────
+# ── System dependencies for Playwright browsers + multimodal ─────────────
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     gnupg \
@@ -18,6 +18,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2 \
     libasound2 \
     libatspi2.0-0 \
+    tesseract-ocr \
+    libleptonica-dev \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

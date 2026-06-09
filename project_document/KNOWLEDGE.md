@@ -26,6 +26,18 @@
 ### Q: 待补充
 A: 待补充
 
+### Pipeline 任务链模式
+- **BrokerTask** 新增 `pipeline: list[str] | None`（完整 skill ID 有序列表）和 `pipeline_step: int`（当前步骤索引，0-based）
+- **自动推进**：`complete_task()` 在 SUCCESS 时检查 pipeline 是否还有未完成的步骤 → 将中间结果写入 Redis context 命名空间 → 递增 `pipeline_step` → 更新 `skill_id` 为下一步 → 重置状态为 PENDING 重新排队
+- **延迟结算**：`submit_task()` 在收到 `settle=False` 的完成信号时不结算托管金，仅返回 `PIPELINE_CONTINUED` 响应；仅在最终步骤才调用 `release_escrow_dynamic()`
+- **Context 存储**：`broker:context` Redis namespace，key 格式 `{task_id}:step_{step}`，存储当前步骤的中间结果供下游技能使用
+
+### 多模态输入预处理模式
+- **Base64 解码**：`_detect_base64()` 识别长度 ≥20 的 base64 编码字符串 → 解码为临时文件，通过文件头字节检测图像格式（PNG/JPEG/GIF/WebP）
+- **URL 下载**：`_detect_url()` 识别 http/https/file 开头的 URL → `_download_to_temp()` 下载到临时文件，通过扩展名推断 MIME 类型
+- **值替换**：原始字符串值替换为文件元数据 dict `{"_type": "file", "path": "...", "mime_type": "...", "size_bytes": N}`，技能 `execute()` 可直接读取 `path`
+- **集成点**：`execute_dynamic_skill()` 入口处调用 `preprocess_multimodal(payload)`，对下游技能透明
+
 ## 技术决策记录
 
 ### 决策1：链上架构最小化

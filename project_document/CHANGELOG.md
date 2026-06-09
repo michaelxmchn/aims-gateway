@@ -14,6 +14,11 @@
 - feat(broker): TaskBroker Redis 持久化 — publish/claim/complete/check_timeouts 全链路写透 Redis，启动自动恢复
 - feat(ledger): MockLedger Redis 持久化 — 13 个 namespace 覆盖所有账本状态（balance/escrow/collateral/strikes/reputation/rating）
 - feat(server): 共享 Storage 实例注入 MockLedger + TaskBroker，`REDIS_URL` 未设置时自动降级内存模式
+- feat(broker): Pipeline 任务链 — BrokerTask 新增 `pipeline`/`pipeline_step`，`complete_task()` 自动推进并重新排队，`submit_task()` 延迟结算至最终步骤
+- feat(bootstrap): 多模态输入预处理 — `preprocess_multimodal()` 支持 base64 解码和 URL 下载，自动检测图像格式
+- feat(deploy): Worker Dockerfile 安装 tesseract-ocr；requirements.txt 新增 opencv-python-headless/pillow/pytesseract
+- feat(gateway): Discovery 端点技能 `capabilities` 字段 — 6 个内置技能定义能力标签，上传技能默认 `["custom"]`
+- feat(server): RunRequest 新增 `pipeline` 参数支持多步骤任务链声明
 ### 修复
 - fix(deploy): 生产环境 500 — python-multipart 缺失导致 FastAPI File() 参数启动崩溃（POST /api/skills/upload 需 multipart 支持）
 - fix(test): e2e_full_flow.py 端口冲突 — 8765 被其他服务占用导致 404；改用 9876 + 智能健康检查验证网关字段

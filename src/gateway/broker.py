@@ -44,6 +44,10 @@ class BrokerTask:
     compute_tier: int = 1
     payload: dict | None = None
     """Input arguments for the skill execution (dynamic skills)."""
+    pipeline: list[str] | None = None
+    """Sequential skill IDs for task chaining (multimodal task flows)."""
+    pipeline_step: int = 0
+    """Current step index in the pipeline (0-based)."""
 
 
 class TaskBroker:
@@ -76,6 +80,7 @@ class TaskBroker:
     NS_TASKS = "broker:tasks"
     NS_STATUS = "broker:status"
     NS_RESULTS = "broker:results"
+    NS_CONTEXT = "broker:context"
     KEY_COUNTER = "broker:counter"
 
     def _load_state(self) -> None:
@@ -132,6 +137,19 @@ class TaskBroker:
         if self._storage and self._storage.is_persistent:
             self._storage.set(self.KEY_COUNTER, self._task_counter)
 
+    # ── Context helpers (pipeline intermediate step storage) ──────────────
+
+    def _persist_context(self, context_key: str, data: dict) -> None:
+        """Write pipeline context data to Redis."""
+        if self._storage and self._storage.is_persistent:
+            self._storage.dict_set(self.NS_CONTEXT, context_key, data)
+
+    def get_context(self, task_id: str, step: int) -> dict | None:
+        """Read pipeline context for a specific task+step from Redis."""
+        if self._storage and self._storage.is_persistent:
+            return self._storage.dict_get(self.NS_CONTEXT, f"{task_id}:step_{step}")
+        return None
+
     # ── Publish ────────────────────────────────────────────────────────────
 
     def publish_task(
@@ -143,12 +161,18 @@ class TaskBroker:
         skill_id: str = "",
         compute_tier: int = 1,
         payload: dict | None = None,
+        pipeline: list[str] | None = None,
     ) -> Optional[str]:
         """Create an escrow hold and register a PENDING task.
 
         *payload* is an optional dict that carries input arguments for
         dynamic skill execution (the ``/api/run`` path).  Static skill
         tasks typically pass ``None``.
+
+        *pipeline* is an optional ordered list of skill IDs for sequential
+        chaining.  When provided, the broker automatically advances through
+        each skill on SUCCESS, storing intermediate context in Redis.
+        The first element must match *skill_id*.
 
         Returns the ``task_id`` string, or ``None`` if the user has
         insufficient balance for the escrow hold.
@@ -171,6 +195,8 @@ class TaskBroker:
             skill_id=skill_id,
             compute_tier=compute_tier,
             payload=payload,
+            pipeline=pipeline,
+            pipeline_step=0,
         )
 
         with self._lock:
@@ -230,6 +256,8 @@ class TaskBroker:
                         "skill_id": task.skill_id,
                         "compute_tier": task.compute_tier,
                         "payload": task.payload,
+                        "pipeline": task.pipeline,
+                        "pipeline_step": task.pipeline_step,
                     }
             return None
 
@@ -240,31 +268,94 @@ class TaskBroker:
         task_id: str,
         status: str,
         detail: Optional[DynamicSettlementDetail] = None,
-    ) -> None:
-        """Mark a CLAIMED task as SUCCESS or FAILED."""
+    ) -> Dict[str, Any]:
+        """Mark a CLAIMED task as SUCCESS or FAILED.
+
+        For pipeline tasks on an intermediate step (SUCCESS + more steps
+        remaining), the task is re-queued as PENDING with the next skill_id
+        and pipeline_step advanced.  In this case no settlement detail is
+        recorded — only the final step triggers escrow settlement.
+
+        Returns a dict with:
+          - ``completed``: True if the task is fully done
+          - ``settle``: True if escrow settlement should happen
+          - ``pipeline_step``: current step index (0-based)
+          - ``total_steps``: total pipeline length (1 for non-pipeline)
+        """
         with self._lock:
             state = self._status.get(task_id)
             if state is None:
                 logger.warning("COMPLETE %s — unknown task", task_id)
-                return
+                return {"completed": False, "settle": False,
+                        "pipeline_step": 0, "total_steps": 1}
             if state["status"] != "CLAIMED":
                 logger.warning(
                     "COMPLETE %s — expected CLAIMED, got %s",
                     task_id, state["status"],
                 )
-                return
+                return {"completed": False, "settle": False,
+                        "pipeline_step": 0, "total_steps": 1}
 
+            if status == "SUCCESS":
+                task = self._tasks.get(task_id)
+                if task and task.pipeline and task.pipeline_step < len(task.pipeline) - 1:
+                    # ── Intermediate pipeline step ──
+                    # Store context for this step
+                    context_key = f"{task_id}:step_{task.pipeline_step}"
+                    context_data = {
+                        "skill_id": task.skill_id,
+                        "step": task.pipeline_step,
+                        "worker_id": state.get("worker_id"),
+                    }
+                    self._persist_context(context_key, context_data)
+
+                    # Advance to next step
+                    task.pipeline_step += 1
+                    task.skill_id = task.pipeline[task.pipeline_step]
+
+                    # Re-queue as PENDING
+                    state["status"] = "PENDING"
+                    state["worker_id"] = None
+                    state["claimed_at"] = None
+
+                    self._persist_task(task_id, task)
+                    self._persist_status(task_id, state)
+
+                    logger.info(
+                        "PIPELINE %s → step %d/%d (%s)",
+                        task_id, task.pipeline_step + 1, len(task.pipeline),
+                        task.skill_id,
+                    )
+                    return {
+                        "completed": False,
+                        "settle": False,
+                        "pipeline_step": task.pipeline_step,
+                        "total_steps": len(task.pipeline),
+                    }
+
+            # ── Final step (or non-pipeline / FAILED) ──
             state["status"] = status
             if detail is not None:
                 self._results[task_id] = detail
                 self._persist_result(task_id, detail)
 
-        self._persist_status(task_id, state)
+            self._persist_status(task_id, state)
 
-        logger.info(
-            "COMPLETE %s → %s  (worker='%s')",
-            task_id, status, state["worker_id"],
-        )
+            total = 1
+            task = self._tasks.get(task_id)
+            if task and task.pipeline:
+                total = len(task.pipeline)
+
+            logger.info(
+                "COMPLETE %s → %s  (worker='%s')",
+                task_id, status, state["worker_id"],
+            )
+            return {
+                "completed": True,
+                "settle": status == "SUCCESS",
+                "pipeline_step": task.pipeline_step if task else 0,
+                "total_steps": total,
+            }
 
     # ── Timeout recovery ───────────────────────────────────────────────────
 

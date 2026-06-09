@@ -217,6 +217,7 @@ class RunRequest(BaseModel):
     developer_premium: float = Field(default=0.0, ge=0.0)
     max_budget: float = Field(default=2.0, ge=0.0)
     compute_tier: int = Field(default=1, ge=1, le=3)
+    pipeline: list[str] | None = Field(default=None, description="Sequential skill IDs for task chaining. First element must match skill_id.")
 
 
 class RunResponse(BaseModel):
@@ -230,6 +231,18 @@ class TaskStatusResponse(BaseModel):
     worker_id: str | None = None
     result: dict[str, Any] | None = None
     outcome: str | None = None
+
+
+# ── Static capability definitions (for discovery endpoint) ───────────────
+
+SKILL_CAPABILITIES: dict[str, list[str]] = {
+    "amazon_scraper": ["web-scraping", "e-commerce", "price-tracking"],
+    "code_security_audit": ["code-analysis", "security", "static-analysis"],
+    "git_changelog": ["git", "automation", "documentation"],
+    "data_analyzer": ["data-analysis", "visualization"],
+    "buggy_skill": ["testing", "debugging"],
+    "dashboard_skill": ["visualization", "monitoring", "dashboard"],
+}
 
 
 # ── Helper: run blocking calls off the event loop ─────────────────────────
@@ -387,7 +400,22 @@ async def submit_task(req: SubmitRequest):
             error="Result failed JSON Schema validation",
         )
 
-    # ── 4. Calculate execution time & settle escrow ──────────────────
+    # ── 4. Complete task (may re-queue for pipeline intermediate step) ─
+    completion = await _run_in_thread(broker.complete_task, req.task_id, "SUCCESS")
+
+    if not completion.get("settle", True):
+        # Pipeline intermediate step — task re-queued as PENDING, no settlement
+        return SubmitResponse(
+            task_id=req.task_id,
+            worker_id=req.worker_id,
+            outcome="PIPELINE_CONTINUED",
+            error=(
+                f"Pipeline step {completion.get('pipeline_step', 0)}/"
+                f"{completion.get('total_steps', 0)} completed"
+            ),
+        )
+
+    # ── 5. Final step — calculate execution time & settle escrow ──────
     execution_time = max(time.time() - claimed_at, 0.1)
 
     skill_meta = {
@@ -504,6 +532,7 @@ async def discovery():
             "endpoint": "/api/run",
             "auth_type": "HMAC-SHA256",
             "source": "built-in",
+            "capabilities": SKILL_CAPABILITIES.get(sid, []),
         })
 
     for sid in uploaded_ids:
@@ -529,6 +558,7 @@ async def discovery():
             "endpoint": "/api/run",
             "auth_type": "HMAC-SHA256",
             "source": "uploaded",
+            "capabilities": SKILL_CAPABILITIES.get(sid, ["custom"]),
         })
 
     skills_list.sort(key=lambda s: s["skill_id"])
@@ -925,6 +955,7 @@ async def run_skill(req: RunRequest):
         skill_id=req.skill_id,
         compute_tier=req.compute_tier,
         payload=req.params,
+        pipeline=req.pipeline,
     )
     if task_id is None:
         raise HTTPException(status_code=402, detail="Insufficient balance for escrow hold")

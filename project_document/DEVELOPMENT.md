@@ -297,3 +297,25 @@
   - 描述: 返回自文档化 JSON 结构，包含 API 元信息、HMAC 认证说明（含算法伪代码 + 请求头）、按类别分组的端点列表（Task Management/Skill Management/Worker/System）、每个端点的请求/响应 Schema、cURL 示例、OpenClaw Manifest 链接
   - 设计目标: "AI 一眼就能看懂怎么调这个接口" — 任何 AI 代理（Claude/GPT/Codex）读到此 JSON 即可编程化理解全部 API 能力
   - 认证策略: 公开可访问（无需 HMAC 签名），独立于其他受保护端点
+- **AIMS Agent Bootstrap 协议**：
+  - 文件: AIMS_AGENT_BOOTSTRAP.md / bootstrap_helper.py
+  - 描述: AI 代理一键接入协议（System Prompt + AIMSClient 封装类 + CLI）
+  - 验证: `python bootstrap_helper.py list` 成功列出 6 个技能 ✓
+
+### Layer 3.6: 多模态任务流
+- **Broker Pipeline 任务链支持**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/gateway/broker.py / server.py
+  - 描述: BrokerTask 新增 `pipeline` + `pipeline_step` 字段；`complete_task()` 自动推进 pipeline 步骤并重新排队为 PENDING；`submit_task()` 识别中间步骤跳过结算；Redis context 命名空间存储步骤中间数据；`RunRequest` 接受 `pipeline` 参数
+- **Bootstrap 多模态输入预处理**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/worker/bootstrap.py
+  - 描述: `preprocess_multimodal()` 扫描 payload 中的 base64 编码二进制数据（解码为临时文件）和可下载 URL（下载到临时文件）；自动检测图像格式（PNG/JPEG/GIF/WebP）表头字节；将原始值替换为文件元数据 dict（`_type`/`path`/`mime_type`/`size_bytes`）
+- **Worker Dockerfile 多模态依赖**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/worker/Dockerfile / requirements.txt
+  - 描述: 安装 tesseract-ocr + libleptonica-dev 系统包；添加 opencv-python-headless、pillow、pytesseract Python 依赖
+- **Discovery 端点技能能力标签**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/gateway/server.py
+  - 描述: `SKILL_CAPABILITIES` 静态映射为每个内置技能定义能力标签（如 amazon_scraper: `["web-scraping", "e-commerce", "price-tracking"]`）；discovery 响应中每个技能条目新增 `capabilities` 数组字段；上传的非内置技能默认 `["custom"]`
