@@ -14,12 +14,14 @@ Lifecycle:
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from src.gateway.storage import Storage
 from src.ledger.mock_counter import DynamicSettlementDetail, EscrowHold, MockLedger
 
 logger = logging.getLogger(__name__)
@@ -45,9 +47,9 @@ class BrokerTask:
 class TaskBroker:
     """Thread-safe stateful task store with claiming and timeout recovery."""
 
-    def __init__(self, ledger: MockLedger) -> None:
+    def __init__(self, ledger: MockLedger, storage: Storage | None = None) -> None:
         self._ledger = ledger
-        self._task_counter = 0
+        self._storage = storage
         self._lock = threading.Lock()
 
         # Task state store: task_id → task metadata
@@ -59,6 +61,74 @@ class TaskBroker:
 
         # Settlement results
         self._results: Dict[str, DynamicSettlementDetail] = {}
+
+        # Auto-incrementing task ID counter
+        self._task_counter: int = 0
+
+        # Restore state from Redis on startup if available
+        if storage and storage.is_persistent:
+            self._load_state()
+
+    # ── Redis persistence helpers ────────────────────────────────────────────
+
+    NS_TASKS = "broker:tasks"
+    NS_STATUS = "broker:status"
+    NS_RESULTS = "broker:results"
+    KEY_COUNTER = "broker:counter"
+
+    def _load_state(self) -> None:
+        """Restore all task state from Redis (called on startup)."""
+        assert self._storage is not None
+        store = self._storage
+
+        self._task_counter = store.get(self.KEY_COUNTER, 0) or 0
+
+        # Restore tasks
+        raw_tasks = store.dict_all(self.NS_TASKS)
+        for tid, data in raw_tasks.items():
+            if isinstance(data, dict):
+                hold_data = data.pop("escrow_hold", {})
+                hold = EscrowHold(**hold_data) if hold_data else None
+                task = BrokerTask(escrow_hold=hold, **data)
+                self._tasks[tid] = task
+
+        # Restore status
+        raw_status = store.dict_all(self.NS_STATUS)
+        for tid, state in raw_status.items():
+            if isinstance(state, dict):
+                self._status[tid] = state
+
+        # Restore results
+        raw_results = store.dict_all(self.NS_RESULTS)
+        for tid, detail in raw_results.items():
+            if isinstance(detail, dict):
+                self._results[tid] = DynamicSettlementDetail(**detail)
+
+        logger.info(
+            "Broker state restored from Redis — %d tasks, %d active",
+            len(self._tasks),
+            sum(1 for s in self._status.values() if s.get("status") == "PENDING"),
+        )
+
+    def _persist_task(self, task_id: str, task: BrokerTask) -> None:
+        """Write a single BrokerTask to Redis."""
+        if self._storage and self._storage.is_persistent:
+            raw = dataclasses.asdict(task)
+            self._storage.dict_set(self.NS_TASKS, task_id, raw)
+
+    def _persist_status(self, task_id: str, status: dict) -> None:
+        """Write a single status entry to Redis."""
+        if self._storage and self._storage.is_persistent:
+            self._storage.dict_set(self.NS_STATUS, task_id, status)
+
+    def _persist_result(self, task_id: str, detail: DynamicSettlementDetail) -> None:
+        """Write a single settlement result to Redis."""
+        if self._storage and self._storage.is_persistent:
+            self._storage.dict_set(self.NS_RESULTS, task_id, dataclasses.asdict(detail))
+
+    def _persist_counter(self) -> None:
+        if self._storage and self._storage.is_persistent:
+            self._storage.set(self.KEY_COUNTER, self._task_counter)
 
     # ── Publish ────────────────────────────────────────────────────────────
 
@@ -103,6 +173,11 @@ class TaskBroker:
                 "claimed_at": None,
             }
 
+        # Persist to Redis
+        self._persist_task(task_id, task)
+        self._persist_status(task_id, self._status[task_id])
+        self._persist_counter()
+
         logger.info(
             "PUBLISH %s → PENDING (asin=%s  premium=$%.2f  budget=$%.2f)",
             task_id, asin, developer_premium, max_budget,
@@ -127,6 +202,8 @@ class TaskBroker:
                     state["status"] = "CLAIMED"
                     state["worker_id"] = worker_id
                     state["claimed_at"] = time.time()
+
+                    self._persist_status(tid, state)
 
                     logger.info(
                         "CLAIM %s → worker '%s'  (asin=%s)",
@@ -171,11 +248,14 @@ class TaskBroker:
             state["status"] = status
             if detail is not None:
                 self._results[task_id] = detail
+                self._persist_result(task_id, detail)
 
-            logger.info(
-                "COMPLETE %s → %s  (worker='%s')",
-                task_id, status, state["worker_id"],
-            )
+        self._persist_status(task_id, state)
+
+        logger.info(
+            "COMPLETE %s → %s  (worker='%s')",
+            task_id, status, state["worker_id"],
+        )
 
     # ── Timeout recovery ───────────────────────────────────────────────────
 
@@ -260,6 +340,8 @@ class TaskBroker:
                     recycled.append(tid)
                     if worker:
                         timeout_workers.append((tid, worker))
+
+                    self._persist_status(tid, state)
 
         # Apply penalties outside the lock to avoid nested lock contention
         for tid, worker in timeout_workers:

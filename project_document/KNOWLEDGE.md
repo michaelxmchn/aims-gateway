@@ -178,6 +178,14 @@ A: 待补充
 - **模式**: 自动降级（fail-open） — 本地开发无需 Redis，`fly redis create` 创建实例后自动注入 `REDIS_URL` 环境变量，Storage 在下次启动时无缝切换为持久模式
 - **原因**: 最小侵入式设计 — Storage 抽象层让账本和 Broker 的 Redis 改造可以分步骤进行，不阻塞部署进度
 
+### 决策27：Redis 持久化 — 写时复制 + dict namespace 模式
+- **背景**: MockLedger 和 TaskBroker 所有状态在内存 dict 中，容器重启（部署/扩容/崩溃恢复）导致全部丢失。只有 1 台 Fly.io 机器，不需要分布式锁
+- **决策**: Storage 抽象层（`src/gateway/storage.py`）提供 `dict_set/dict_get/dict_all` 等 namespace 操作，Redis key 格式为 `{namespace}:{key}`（如 `broker:tasks:task-0001`、`ledger:user_balance:alice`）。Broker 和 Ledger 保持内存 dict 作为主存储，每个突变后在同一个 `with self._lock` 内写透 Redis
+- **启动恢复**: `_load_state()` 调用 `dict_all(namespace)` 全量加载该 namespace 下的所有 k-v 对，按类型（`FreezeReceipt`/`EscrowHold`/`DynamicSettlementDetail`）反序列化重建内存对象
+- **写时复制模式**: 写入 Redis 在锁内执行（串行化），不阻塞事件循环。`is_persistent` 属性区分 Redis 模式和内存模式，无 Redis 时行为零变化
+- **覆盖范围**: Broker 4 个 namespace（tasks/status/results/counter）+ Ledger 13 个 namespace（user_balance/dev_balance/escrow_vault/treasury/counter/collateral/strikes/skill_usage/reputation/rating_history/rating_entries/skill_score）
+- **原因**: 单机无需分布式锁，写时复制保证内存和 Redis 一致性。`dict_all` 全量加载适用于小数据量（MVP 阶段 < 10K 任务），后续可以加增量同步
+
 ### 决策26：生产级 E2E 全流程测试（tests/e2e_full_flow.py）
 - **背景**: 负载测试（stress_test.py / load_test_simulation.py）侧重于后端并发和资金守恒，缺少模拟真实生产环境下多 Worker 独立网络出口和长运行时的端到端验证
 - **决策**: 创建 `tests/e2e_full_flow.py`，使用 `concurrent.futures.ThreadPoolExecutor` 启发 10 个 Worker 线程，每个 Worker 使用独立 `worker_id` 和可选 SOCKS5 代理出口。Worker 循环执行 `claim→2s 浏览器指纹模拟→submit` 全流程，所有请求携带 HMAC-SHA256 签名。运行时默认 60s，结束时汇总吞吐量、错误日志和成功率

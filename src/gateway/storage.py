@@ -112,3 +112,67 @@ class Storage:
         else:
             with self._lock:
                 self._local.clear()
+
+    # ── Atomic counter ─────────────────────────────────────────────────────────
+
+    def incr(self, key: str, amount: int = 1) -> int:
+        """Atomically increment a counter at *key*, returning the new value.
+
+        Falls back to a lock-protected in-memory increment when Redis is
+        unavailable.
+        """
+        if self._redis:
+            return self._redis.incr(key, amount)
+        with self._lock:
+            raw = self._local.get(key, "0")
+            try:
+                val = int(raw) + amount
+            except (ValueError, TypeError):
+                val = amount
+            self._local[key] = str(val)
+            return val
+
+    # ── Dict namespace helpers ─────────────────────────────────────────────────
+
+    def _ns(self, namespace: str, key: str) -> str:
+        return f"{namespace}:{key}"
+
+    def dict_set(self, namespace: str, key: str, value: Any) -> None:
+        """Store *value* under ``{namespace}:{key}``."""
+        self.set(self._ns(namespace, key), value)
+
+    def dict_get(self, namespace: str, key: str, default: Any = None) -> Any:
+        """Retrieve value at ``{namespace}:{key}`` or return *default*."""
+        return self.get(self._ns(namespace, key), default)
+
+    def dict_delete(self, namespace: str, key: str) -> None:
+        """Remove ``{namespace}:{key}`` from the store."""
+        self.delete(self._ns(namespace, key))
+
+    def dict_keys(self, namespace: str) -> list[str]:
+        """Return all short keys within *namespace*.
+
+        e.g. ``dict_keys("ledger:user")`` when Redis has
+        ``ledger:user:alice`` and ``ledger:user:bob`` returns
+        ``["alice", "bob"]``.
+        """
+        prefix = f"{namespace}:"
+        full_keys = self.keys(f"{prefix}*")
+        return [k[len(prefix):] for k in full_keys]
+
+    def dict_all(self, namespace: str) -> dict[str, Any]:
+        """Load all key-value pairs in *namespace* as a plain dict.
+
+        Useful for restoring state on startup::
+
+            state = store.dict_all("broker:status")
+            # → {"task-0001": {"status": "PENDING", ...}, ...}
+        """
+        result: dict[str, Any] = {}
+        prefix = f"{namespace}:"
+        for full_key in self.keys(f"{prefix}*"):
+            short_key = full_key[len(prefix):]
+            val = self.get(full_key)
+            if val is not None:
+                result[short_key] = val
+        return result

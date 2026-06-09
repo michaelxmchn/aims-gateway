@@ -59,6 +59,18 @@
   - 状态: 已完成 (2026-06-09)
   - 文件: src/gateway/storage.py
   - 描述: Redis-backed KV 存储，自动降级为内存字典，JSON 序列化
+- **TaskBroker Redis 持久化**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/gateway/broker.py
+  - 描述: 所有任务状态（tasks/status/results/counter）通过 dict namespace 持久化到 Redis，`_load_state()` 启动恢复，`_persist_*()` 写入每个突变
+- **MockLedger Redis 持久化**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/ledger/mock_counter.py
+  - 描述: 所有账本状态（13 个 namespace）持久化到 Redis，启动时全量恢复，写时复制模式
+- **Storage 全局注入**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/gateway/server.py
+  - 描述: 共享 Storage 实例注入 MockLedger + TaskBroker，REDIS_URL 未设置时自动降级内存模式
 - **生产 DePIN Worker**
   - 状态: 已完成 (2026-06-09)
   - 文件: src/worker/

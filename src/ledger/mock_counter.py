@@ -21,11 +21,14 @@ Lifecycle:
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
+
+from src.gateway.storage import Storage
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +122,22 @@ class MockLedger:
     1% platform tax.
     """
 
-    def __init__(self) -> None:
+    # ── Redis namespace constants ────────────────────────────────────────
+    NS_USER_BAL = "ledger:user_balance"
+    NS_DEV_BAL = "ledger:dev_balance"
+    NS_ESCROW = "ledger:escrow_vault"
+    KEY_TREASURY = "ledger:treasury"
+    KEY_COUNTER = "ledger:counter"
+    NS_COLLATERAL = "ledger:collateral"
+    NS_STRIKES = "ledger:strikes"
+    NS_SKILL_USAGE = "ledger:skill_usage"
+    NS_REPUTATION = "ledger:reputation"
+    NS_RATING_HISTORY = "ledger:rating_history"
+    NS_RATING_ENTRIES = "ledger:rating_entries"
+    NS_SKILL_SCORE = "ledger:skill_score"
+
+    def __init__(self, storage: Storage | None = None) -> None:
+        self._storage = storage
         self._user_balances: Dict[str, float] = {}
         self._dev_balances: Dict[str, float] = {}
         self._escrow_vault: Dict[str, FreezeReceipt] = {}
@@ -143,6 +161,124 @@ class MockLedger:
         """Rating entries per skill: [{"user_id": ..., "reputation": ..., "rating": ...}, ...]."""
         self._skill_weighted_score: Dict[str, float] = {}
         """Weighted average score per skill (default 5.0)."""
+
+        # Restore state from Redis on startup if available
+        if storage and storage.is_persistent:
+            self._load_state()
+
+    # ── Redis persistence helpers ────────────────────────────────────────────
+
+    def _load_state(self) -> None:
+        """Restore all ledger state from Redis (called on startup)."""
+        assert self._storage is not None
+        store = self._storage
+
+        self._freeze_counter = store.get(self.KEY_COUNTER, 0) or 0
+        self._founder_treasury_usdt = float(store.get(self.KEY_TREASURY, 0.0) or 0.0)
+
+        # User balances
+        for uid, bal in store.dict_all(self.NS_USER_BAL).items():
+            self._user_balances[uid] = float(bal)
+
+        # Dev balances
+        for did, bal in store.dict_all(self.NS_DEV_BAL).items():
+            self._dev_balances[did] = float(bal)
+
+        # Escrow vault — reconstruct FreezeReceipt or EscrowHold from dict
+        for eid, data in store.dict_all(self.NS_ESCROW).items():
+            if isinstance(data, dict):
+                if "max_budget" in data:
+                    self._escrow_vault[eid] = EscrowHold(**data)
+                else:
+                    self._escrow_vault[eid] = FreezeReceipt(**data)
+
+        # Collateral
+        for wid, amt in store.dict_all(self.NS_COLLATERAL).items():
+            self._staked_collateral[wid] = float(amt)
+
+        # Strikes
+        for wid, cnt in store.dict_all(self.NS_STRIKES).items():
+            self.worker_strikes[wid] = int(cnt)
+
+        # Skill usage (stored as list in Redis, restored as set)
+        for uid, skills in store.dict_all(self.NS_SKILL_USAGE).items():
+            if isinstance(skills, list):
+                self._user_skill_usage[uid] = set(skills)
+
+        # Reputation
+        for uid, rep in store.dict_all(self.NS_REPUTATION).items():
+            self._user_reputation[uid] = float(rep)
+
+        # Rating history
+        for uid, history in store.dict_all(self.NS_RATING_HISTORY).items():
+            if isinstance(history, list):
+                self._rating_history[uid] = list(history)
+
+        # Rating entries
+        for sid, entries in store.dict_all(self.NS_RATING_ENTRIES).items():
+            if isinstance(entries, list):
+                self._skill_rating_entries[sid] = list(entries)
+
+        # Skill scores
+        for sid, score in store.dict_all(self.NS_SKILL_SCORE).items():
+            self._skill_weighted_score[sid] = float(score)
+
+        logger.info(
+            "Ledger state restored from Redis — %d users, %d devs, $%.2f treasury",
+            len(self._user_balances), len(self._dev_balances), self._founder_treasury_usdt,
+        )
+
+    def _persist_user_balance(self, user_id: str) -> None:
+        if self._storage and self._storage.is_persistent:
+            self._storage.dict_set(self.NS_USER_BAL, user_id, self._user_balances.get(user_id, 0.0))
+
+    def _persist_dev_balance(self, dev_id: str) -> None:
+        if self._storage and self._storage.is_persistent:
+            self._storage.dict_set(self.NS_DEV_BAL, dev_id, self._dev_balances.get(dev_id, 0.0))
+
+    def _persist_escrow_vault(self, escrow_id: str) -> None:
+        if self._storage and self._storage.is_persistent:
+            entry = self._escrow_vault.get(escrow_id)
+            if entry:
+                self._storage.dict_set(self.NS_ESCROW, escrow_id, dataclasses.asdict(entry))
+            else:
+                self._storage.dict_delete(self.NS_ESCROW, escrow_id)
+
+    def _persist_treasury(self) -> None:
+        if self._storage and self._storage.is_persistent:
+            self._storage.set(self.KEY_TREASURY, self._founder_treasury_usdt)
+
+    def _persist_counter(self) -> None:
+        if self._storage and self._storage.is_persistent:
+            self._storage.set(self.KEY_COUNTER, self._freeze_counter)
+
+    def _persist_collateral(self, worker_id: str) -> None:
+        if self._storage and self._storage.is_persistent:
+            self._storage.dict_set(self.NS_COLLATERAL, worker_id, self._staked_collateral.get(worker_id, 0.0))
+
+    def _persist_strikes(self, worker_id: str) -> None:
+        if self._storage and self._storage.is_persistent:
+            self._storage.dict_set(self.NS_STRIKES, worker_id, self.worker_strikes.get(worker_id, 0))
+
+    def _persist_skill_usage(self, user_id: str) -> None:
+        if self._storage and self._storage.is_persistent:
+            self._storage.dict_set(self.NS_SKILL_USAGE, user_id, list(self._user_skill_usage.get(user_id, set())))
+
+    def _persist_reputation(self, user_id: str) -> None:
+        if self._storage and self._storage.is_persistent:
+            self._storage.dict_set(self.NS_REPUTATION, user_id, self._user_reputation.get(user_id, 1.0))
+
+    def _persist_rating_history(self, user_id: str) -> None:
+        if self._storage and self._storage.is_persistent:
+            self._storage.dict_set(self.NS_RATING_HISTORY, user_id, self._rating_history.get(user_id, []))
+
+    def _persist_rating_entries(self, skill_id: str) -> None:
+        if self._storage and self._storage.is_persistent:
+            self._storage.dict_set(self.NS_RATING_ENTRIES, skill_id, self._skill_rating_entries.get(skill_id, []))
+
+    def _persist_skill_score(self, skill_id: str) -> None:
+        if self._storage and self._storage.is_persistent:
+            self._storage.dict_set(self.NS_SKILL_SCORE, skill_id, self._skill_weighted_score.get(skill_id, 5.0))
 
     # ── thread-safe read helpers ─────────────────────────────────────────
 
@@ -169,6 +305,7 @@ class MockLedger:
         """Seed a user with initial USDT for testing."""
         with self._lock:
             self._user_balances[user_id] = self._user_balances.get(user_id, 0.0) + amount
+            self._persist_user_balance(user_id)
         logger.info(
             "SEED  %s +$%.2f USDT (balance=$%.2f)",
             user_id, amount, self._user_balances[user_id],
@@ -193,6 +330,7 @@ class MockLedger:
         """Seed a worker's dev balance with USDT (for testing)."""
         with self._lock:
             self._dev_balances[worker_id] = self._dev_balances.get(worker_id, 0.0) + amount
+            self._persist_dev_balance(worker_id)
         logger.info(
             "SEED-DEV %s +$%.2f USDT (balance=$%.2f)",
             worker_id, amount, self._dev_balances[worker_id],
@@ -218,6 +356,10 @@ class MockLedger:
                 self._staked_collateral.get(worker_id, 0.0) + stake_amount, 2,
             )
             self.worker_strikes.setdefault(worker_id, 0)
+
+            self._persist_dev_balance(worker_id)
+            self._persist_collateral(worker_id)
+            self._persist_strikes(worker_id)
 
         logger.info(
             "REGISTER %s → staked $%.2f USDT (collateral=$%.2f, strikes=%d)",
@@ -271,6 +413,10 @@ class MockLedger:
                         worker_id, collateral,
                     )
 
+            self._persist_strikes(worker_id)
+            self._persist_collateral(worker_id)
+            self._persist_treasury()
+
             return 0.0
 
     # ── Reputation & Rating ────────────────────────────────────────────────
@@ -323,6 +469,7 @@ class MockLedger:
                 if abs(rating_value - historical_mean) > 2.5:
                     new_rep = max(0.0, rep - 0.1)
                     self._user_reputation[user_id] = new_rep
+                    self._persist_reputation(user_id)
                     logger.warning(
                         "[Audit] Anomaly detected from User '%s'. Rating suppressed. "
                         "User reputation penalized: %.2f → %.2f",
@@ -346,6 +493,10 @@ class MockLedger:
             self._skill_weighted_score[skill_id] = (
                 round(total_weighted / total_weight, 2) if total_weight > 0 else 5.0
             )
+
+            self._persist_rating_entries(skill_id)
+            self._persist_skill_score(skill_id)
+            self._persist_rating_history(user_id)
 
             logger.info(
                 "RATING: User '%s' rated '%s' = %.1f  (rep=%.2f)  weighted_score=%.2f",
@@ -379,6 +530,9 @@ class MockLedger:
                 skill_name="",
             )
             self._escrow_vault[receipt.freeze_id] = receipt
+            self._persist_user_balance(user_id)
+            self._persist_escrow_vault(receipt.freeze_id)
+            self._persist_counter()
         logger.info(
             "FREEZE %s → $%.2f USDT held in escrow  [user=%s]",
             receipt.freeze_id, amount, user_id,
@@ -405,6 +559,8 @@ class MockLedger:
                 logger.error("Escrow receipt not found: %s", freeze_id)
                 return None
 
+            self._persist_escrow_vault(freeze_id)
+
             gross = receipt.amount
 
             if success:
@@ -415,6 +571,10 @@ class MockLedger:
                 self._founder_treasury_usdt += tax
                 # 99% -> developer
                 self._dev_balances[dev_address] = self._dev_balances.get(dev_address, 0.0) + dev_net
+
+                self._persist_treasury()
+                self._persist_dev_balance(dev_address)
+                self._persist_user_balance(receipt.user_id)
 
                 detail = SettlementDetail(
                     freeze_id=freeze_id,
@@ -437,6 +597,7 @@ class MockLedger:
                     self._user_balances.get(receipt.user_id, 0.0) + gross
                 )
                 # NO tax, NO dev payment
+                self._persist_user_balance(receipt.user_id)
 
                 detail = SettlementDetail(
                     freeze_id=freeze_id,
@@ -480,6 +641,9 @@ class MockLedger:
                 max_budget=max_budget,
             )
             self._escrow_vault[hold.escrow_id] = hold
+            self._persist_user_balance(user_id)
+            self._persist_escrow_vault(hold.escrow_id)
+            self._persist_counter()
         logger.info(
             "ESCROW-HOLD %s → $%.2f USDT frozen (max budget)  [user=%s]",
             hold.escrow_id, max_budget, user_id,
@@ -522,6 +686,8 @@ class MockLedger:
                 logger.error("Escrow hold not found: %s", escrow_id)
                 return None
 
+            self._persist_escrow_vault(escrow_id)
+
             skill_meta = skill_meta or {}
             compute_tier = skill_meta.get("compute_tier", 1)
             developer_premium = skill_meta.get("developer_premium", 0.0)
@@ -547,6 +713,10 @@ class MockLedger:
                 self._user_balances[user_id] = (
                     self._user_balances.get(user_id, 0.0) + unused_refund
                 )
+
+                self._persist_treasury()
+                self._persist_dev_balance(developer_id)
+                self._persist_user_balance(user_id)
 
                 detail = DynamicSettlementDetail(
                     escrow_id=escrow_id,
@@ -577,11 +747,14 @@ class MockLedger:
                         self._user_skill_usage[user_id] = set()
                     self._user_skill_usage[user_id].add(skill_id)
                     self._user_reputation.setdefault(user_id, 1.0)
+                    self._persist_skill_usage(user_id)
+                    self._persist_reputation(user_id)
 
             else:  # FAILED - 100 % instant refund
                 self._user_balances[user_id] = (
                     self._user_balances.get(user_id, 0.0) + max_budget
                 )
+                self._persist_user_balance(user_id)
 
                 detail = DynamicSettlementDetail(
                     escrow_id=escrow_id,

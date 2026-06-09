@@ -7,6 +7,10 @@
 ### 新增
 - feat(test): 创建 tests/e2e_full_flow.py — 生产级 E2E 全流程测试（10 并发 Worker、SOCKS5 代理轮换、2s 浏览器指纹模拟、60s 吞吐量基准）
 - feat(test): 清理 src/skills/manifests/project_document/ 意外复制
+- feat(storage): storage.py 新增 dict namespace 操作（dict_set/dict_get/dict_delete/dict_keys/dict_all）和原子计数器（incr）
+- feat(broker): TaskBroker Redis 持久化 — publish/claim/complete/check_timeouts 全链路写透 Redis，启动自动恢复
+- feat(ledger): MockLedger Redis 持久化 — 13 个 namespace 覆盖所有账本状态（balance/escrow/collateral/strikes/reputation/rating）
+- feat(server): 共享 Storage 实例注入 MockLedger + TaskBroker，`REDIS_URL` 未设置时自动降级内存模式
 ### 修复
 - fix(test): e2e_full_flow.py 端口冲突 — 8765 被其他服务占用导致 404；改用 9876 + 智能健康检查验证网关字段
 - feat(gateway): broker.py 新增 succeeded_count / claimed_count 状态查询属性

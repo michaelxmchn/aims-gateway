@@ -21,6 +21,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from src.gateway.broker import TaskBroker
+from src.gateway.storage import Storage
 from src.ledger.mock_counter import MockLedger
 from src.skills.registry import SkillRegistry
 
@@ -53,8 +54,9 @@ def verify_signature(body: bytes, timestamp: str, user_id: str, sig: str) -> boo
 
 # ── Global instances (singleton per process) ──────────────────────────────
 
-ledger = MockLedger()
-broker = TaskBroker(ledger)
+storage = Storage()
+ledger = MockLedger(storage=storage)
+broker = TaskBroker(ledger, storage=storage)
 registry = SkillRegistry()
 
 # Worker heartbeat tracking: worker_id → last_seen_unix_ts
