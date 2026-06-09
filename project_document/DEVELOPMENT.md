@@ -230,5 +230,7 @@
   - `src/gateway/storage.py`：Storage 类 — 键值对存储，Redis 可用时持久化，不可用时自动降级为线程安全内存字典
   - 支持 get/set/delete/exists/keys/flushdb，值自动 JSON 序列化
   - 读取 `REDIS_URL` 环境变量，与 Fly.io Redis 插件无缝集成
+- **.gitignore 安全加固**：新增 .project.agents/ 和 logs/ 排除规则
+- **requirements.txt 补充**：锁定额外的 starlette + pydantic_core 递依赖，+ redis/hiredis
 - **fly.toml 健康检查配置**：
   - 新增 `[http_service.health_check]`：指向 `GET /api/health`，15s 间隔 / 5s 超时 / 10s 宽限期

@@ -22,6 +22,8 @@
 - feat(storage): 创建 src/gateway/storage.py — Redis KV 存储抽象层，自动降级为内存字典
 - feat(deploy): fly.toml 新增 /api/health 健康检查配置（15s 间隔 / 5s 超时 / 10s 宽限）
 - feat(deploy): requirements.txt 新增 redis + hiredis 依赖
+- fix(deploy): .gitignore 新增 .project.agents/ 和 logs/ 条目
+- chore(deploy): requirements.txt 补充 starlette + pydantic_core 递依赖锁定
 
 ## [2026-06-08]
 ### 新增

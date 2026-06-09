@@ -41,3 +41,10 @@ __pycache__/
 .venv/
 venv/
 .aims/ledger/
+*.egg-info/
+dist/
+build/
+
+# --- Project-specific ---
+.project.agents/
+logs/
