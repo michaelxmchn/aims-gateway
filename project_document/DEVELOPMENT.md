@@ -55,6 +55,10 @@
   - 状态: 已完成 (2026-06-09)
   - 文件: src/gateway/broker.py
   - 描述: 新增 succeeded_count / claimed_count 属性、get_task_meta / get_task_status 公开方法
+- **Redis 持久化存储层**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/gateway/storage.py
+  - 描述: Redis-backed KV 存储，自动降级为内存字典，JSON 序列化
 
 ### Layer 4: 执行沙箱
 - **WorkflowEngine**
@@ -221,4 +225,10 @@
   - `Dockerfile`：python:3.11-slim + uvicorn 生产启动（port 8000）
   - `fly.toml`：sin 区域，256MB，min_machines_running=1 保持在线
   - `.dockerignore`：排除 .git/tests/__pycache__/.env 等
-  - `requirements.txt`：fastapi/uvicorn/pydantic 版本锁定
+  - `requirements.txt`：fastapi/uvicorn/pydantic + redis/hiredis 版本锁定
+- **创建 Redis 持久化存储层**：
+  - `src/gateway/storage.py`：Storage 类 — 键值对存储，Redis 可用时持久化，不可用时自动降级为线程安全内存字典
+  - 支持 get/set/delete/exists/keys/flushdb，值自动 JSON 序列化
+  - 读取 `REDIS_URL` 环境变量，与 Fly.io Redis 插件无缝集成
+- **fly.toml 健康检查配置**：
+  - 新增 `[http_service.health_check]`：指向 `GET /api/health`，15s 间隔 / 5s 超时 / 10s 宽限期

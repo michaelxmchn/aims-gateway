@@ -172,6 +172,12 @@ A: 待补充
 - **Fly.io 配置**: `fly.toml` 设定 `internal_port=8000`，`min_machines_running=1` 保持网关常驻，`auto_stop_machines=false` 防止空闲休眠，sin（新加坡）区域降低亚太延迟
 - **原因**: Fly.io 支持 Dockerfile 直接部署、自动 HTTPS、按需付费，适合 DePIN 网络的全球分布 Worker 接入
 
+### 决策24：Redis 状态持久化 + Storage 抽象层
+- **背景**: MockLedger 和 TaskBroker 所有状态存储在 Python 内存 dict 中，Fly.io 容器重启（部署/扩容/崩溃恢复）会导致任务队列和账本数据全部丢失
+- **决策**: 创建 `src/gateway/storage.py` `Storage` 类 — 读取 `REDIS_URL` 环境变量，有 Redis 时使用 `redis.from_url()` 连接并持久化（`decode_responses=True`），连接失败时自动降级为 `threading.Lock()` 保护的内存 dict。所有值通过 `json.dumps/loads` 自动序列化，支持 `get/set/delete/exists/keys/flushdb`
+- **模式**: 自动降级（fail-open） — 本地开发无需 Redis，`fly redis create` 创建实例后自动注入 `REDIS_URL` 环境变量，Storage 在下次启动时无缝切换为持久模式
+- **原因**: 最小侵入式设计 — Storage 抽象层让账本和 Broker 的 Redis 改造可以分步骤进行，不阻塞部署进度
+
 ## 学习资源
 - 待补充
 

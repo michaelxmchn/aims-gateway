@@ -19,6 +19,9 @@
 - feat(deploy): 创建 requirements.txt — fastapi/uvicorn/pydantic 锁定版本
 ### 修复
 - fix(server): AIMS_SIGNING_SECRET 改为 os.getenv() 读取环境变量，生产部署不再硬编码
+- feat(storage): 创建 src/gateway/storage.py — Redis KV 存储抽象层，自动降级为内存字典
+- feat(deploy): fly.toml 新增 /api/health 健康检查配置（15s 间隔 / 5s 超时 / 10s 宽限）
+- feat(deploy): requirements.txt 新增 redis + hiredis 依赖
 
 ## [2026-06-08]
 ### 新增
