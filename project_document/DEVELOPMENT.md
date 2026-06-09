@@ -50,7 +50,7 @@
 - **FastAPI Gateway Server**
   - 状态: 已完成 (2026-06-09)
   - 文件: src/gateway/server.py
-  - 描述: POST /api/tasks/claim、POST /api/tasks/submit、GET /api/health、HMAC-SHA256 签名认证中间件、replay 保护（300s 窗口）
+  - 描述: POST /api/tasks/claim、POST /api/tasks/submit、POST /api/workers/heartbeat、GET /api/health、HMAC-SHA256 签名认证中间件、replay 保护（300s 窗口）
 - **TaskBroker 状态查询**
   - 状态: 已完成 (2026-06-09)
   - 文件: src/gateway/broker.py
@@ -59,6 +59,14 @@
   - 状态: 已完成 (2026-06-09)
   - 文件: src/gateway/storage.py
   - 描述: Redis-backed KV 存储，自动降级为内存字典，JSON 序列化
+- **生产 DePIN Worker**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/worker/
+  - 描述: 配置管理（config.py）、HMAC-SHA256 签名工具（signer.py）、无限循环 Worker（worker.py：claim → execute → submit + heartbeat）
+- **Worker 心跳机制**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/gateway/server.py
+  - 描述: POST /api/workers/heartbeat 端点 + workers_active 健康指标（60s 超时淘汰）
 
 ### Layer 4: 执行沙箱
 - **WorkflowEngine**
@@ -81,6 +89,16 @@
   - 状态: 已完成
   - 文件: src/client/cli.py
   - 描述: aims exec/list/login/mcp/dashboard 子命令
+
+### Layer 7: Worker 网络
+- **生产 DePIN Worker**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/worker/
+  - 描述: 配置管理、HMAC-SHA256 签名、无限 claim→execute→submit 循环 + 心跳
+- **Worker 心跳监控**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/gateway/server.py
+  - 描述: POST /api/workers/heartbeat 记录 last_seen，GET /api/health 返回 workers_active
 
 ### 测试
 - **单元测试**

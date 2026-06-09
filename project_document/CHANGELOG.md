@@ -24,6 +24,9 @@
 - feat(deploy): requirements.txt 新增 redis + hiredis 依赖
 - fix(deploy): .gitignore 新增 .project.agents/ 和 logs/ 条目
 - chore(deploy): requirements.txt 补充 starlette + pydantic_core 递依赖锁定
+- feat(worker): 创建 src/worker/ 生产 DePIN Worker（config.py / signer.py / worker.py）
+- feat(server): 新增 POST /api/workers/heartbeat 端点 + workers_active 健康指标
+- feat(deploy): requirements.txt 新增 requests 依赖（Worker HTTP 客户端）
 
 ## [2026-06-08]
 ### 新增

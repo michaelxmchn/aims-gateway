@@ -178,6 +178,12 @@ A: 待补充
 - **模式**: 自动降级（fail-open） — 本地开发无需 Redis，`fly redis create` 创建实例后自动注入 `REDIS_URL` 环境变量，Storage 在下次启动时无缝切换为持久模式
 - **原因**: 最小侵入式设计 — Storage 抽象层让账本和 Broker 的 Redis 改造可以分步骤进行，不阻塞部署进度
 
+### 决策25：Worker 心跳机制
+- **背景**: 生产环境中 Gateway 需要知道哪些 Worker 还活着，以便在 Worker 掉线时及时将任务重新分配给其他 Worker
+- **决策**: 新增 `POST /api/workers/heartbeat` 端点，Worker 每 15s 发送一次心跳（HMAC-SHA256 签名）。Gateway 在内存中维护 `worker_id → last_seen_unix_ts` 映射，超过 60s 未报告的 Worker 被标记为不活跃。`GET /api/health` 新增 `workers_active` 字段反映当前活跃 Worker 数
+- **Worker 端实现**: `src/worker/worker.py` 中的主循环独立于任务处理逻辑，每 `HEARTBEAT_INTERVAL` (15s) 调用 `send_heartbeat()`，心跳失败不阻塞任务处理
+- **原因**: 轻量级心跳避免了 TCP keepalive 的代理兼容性问题，HTTP 层的签名心跳还可以作为 Worker 身份合法性验证
+
 ## 学习资源
 - 待补充
 

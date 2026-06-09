@@ -14,6 +14,7 @@ import json
 import logging
 import os
 import time
+from threading import Lock
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, Response
@@ -56,6 +57,10 @@ ledger = MockLedger()
 broker = TaskBroker(ledger)
 registry = SkillRegistry()
 
+# Worker heartbeat tracking: worker_id → last_seen_unix_ts
+worker_heartbeats: dict[str, float] = {}
+_heartbeat_lock = Lock()
+
 app = FastAPI(
     title="AIMS Gateway",
     version="1.0.0",
@@ -83,7 +88,7 @@ async def verify_signature_middleware(request: Request, call_next):
     are rejected as replay attempts.
     """
     path = request.url.path
-    if request.method == "POST" and path.startswith("/api/tasks/"):
+    if request.method == "POST" and (path.startswith("/api/tasks/") or path.startswith("/api/workers/")):
         sig = request.headers.get("x-signature", "")
         ts = request.headers.get("x-timestamp", "")
         uid = request.headers.get("x-user-id", "")
@@ -166,7 +171,17 @@ class HealthResponse(BaseModel):
     tasks_completed: int
     tasks_succeeded: int
     workers_registered: int
+    workers_active: int = 0
     treasury_usdt: float
+
+
+class HeartbeatRequest(BaseModel):
+    worker_id: str = Field(..., min_length=1, max_length=128)
+
+
+class HeartbeatResponse(BaseModel):
+    status: str
+    worker_id: str
 
 
 # ── Helper: run blocking calls off the event loop ─────────────────────────
@@ -351,9 +366,28 @@ async def submit_task(req: SubmitRequest):
     )
 
 
+@app.post("/api/workers/heartbeat")
+async def worker_heartbeat(req: HeartbeatRequest):
+    """Receive a keep-alive heartbeat from a worker.
+
+    Records ``worker_id → time.time()`` so the health endpoint can report
+    the number of currently active workers.
+    """
+    with _heartbeat_lock:
+        worker_heartbeats[req.worker_id] = time.time()
+
+    # Prune workers that haven't reported in 60 s
+    cutoff = time.time() - 60.0
+    stale = [wid for wid, ts in worker_heartbeats.items() if ts < cutoff]
+    for wid in stale:
+        worker_heartbeats.pop(wid, None)
+
+    return HeartbeatResponse(status="ack", worker_id=req.worker_id)
+
+
 @app.get("/api/health")
 async def health():
-    """Health check returning broker and ledger state."""
+    """Health check returning broker, ledger, and worker-liveness state."""
     pending = await _run_in_thread(lambda: broker.pending_count)
     completed = await _run_in_thread(lambda: broker.completed_count)
     succeeded = await _run_in_thread(lambda: broker.succeeded_count)
@@ -363,11 +397,17 @@ async def health():
     staked_keys = await _run_in_thread(lambda: list(ledger._staked_collateral.keys()))
     workers_registered = len(staked_keys)
 
+    # Count active workers (heartbeat within last 60 s)
+    cutoff = time.time() - 60.0
+    with _heartbeat_lock:
+        workers_active = sum(1 for ts in worker_heartbeats.values() if ts >= cutoff)
+
     return HealthResponse(
         status="healthy",
         tasks_pending=pending,
         tasks_completed=completed,
         tasks_succeeded=succeeded,
         workers_registered=workers_registered,
+        workers_active=workers_active,
         treasury_usdt=treasury,
     )
