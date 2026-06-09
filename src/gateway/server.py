@@ -578,7 +578,7 @@ async def discovery():
 
     return {
         "discovery_version": "1.0.0",
-        "documentation_root": f"{base_url}/docs/MASTER_INDEX.md",
+        "documentation_root": "https://raw.githubusercontent.com/michaelxmchn/aims-gateway/main/docs/MASTER_INDEX.md",
         "api": {
             "name": "AIMS Gateway",
             "version": "1.0.0",
