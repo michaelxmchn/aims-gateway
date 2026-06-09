@@ -517,7 +517,17 @@ async def discovery():
         sid = m.name
         seen_ids.add(sid)
         skills_list.append({
-            "skill_id": sid,
+            "id": sid,
+            "description": m.description,
+            "execution": {
+                "endpoint": "/api/run",
+                "method": "POST",
+            },
+            "resources": {
+                "logic_script_url": f"{base_url}/api/skills/{sid}/logic",
+                "manifest_url": f"{base_url}/api/discovery",
+            },
+            "capabilities": SKILL_CAPABILITIES.get(sid, []),
             "manifest": {
                 "name": m.name,
                 "description": m.description,
@@ -529,10 +539,6 @@ async def discovery():
                 "price_points": m.price_points,
                 "staked_points": m.staked_points,
             },
-            "endpoint": "/api/run",
-            "auth_type": "HMAC-SHA256",
-            "source": "built-in",
-            "capabilities": SKILL_CAPABILITIES.get(sid, []),
         })
 
     for sid in uploaded_ids:
@@ -542,11 +548,22 @@ async def discovery():
         if raw is None:
             continue
         seen_ids.add(sid)
+        raw_desc = raw.get("description", "")
         skills_list.append({
-            "skill_id": sid,
+            "id": sid,
+            "description": raw_desc,
+            "execution": {
+                "endpoint": "/api/run",
+                "method": "POST",
+            },
+            "resources": {
+                "logic_script_url": f"{base_url}/api/skills/{sid}/logic",
+                "manifest_url": f"{base_url}/api/discovery",
+            },
+            "capabilities": SKILL_CAPABILITIES.get(sid, ["custom"]),
             "manifest": {
                 "name": raw.get("name", sid),
-                "description": raw.get("description", ""),
+                "description": raw_desc,
                 "version": raw.get("version", "1.0.0"),
                 "author": raw.get("author", "unknown"),
                 "tags": raw.get("tags", []),
@@ -555,13 +572,9 @@ async def discovery():
                 "price_points": raw.get("price_points", 0),
                 "staked_points": raw.get("staked_points", 0.0),
             },
-            "endpoint": "/api/run",
-            "auth_type": "HMAC-SHA256",
-            "source": "uploaded",
-            "capabilities": SKILL_CAPABILITIES.get(sid, ["custom"]),
         })
 
-    skills_list.sort(key=lambda s: s["skill_id"])
+    skills_list.sort(key=lambda s: s["id"])
 
     return {
         "discovery_version": "1.0.0",

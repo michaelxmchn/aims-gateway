@@ -79,28 +79,32 @@ class TestDiscoveryEndpoint:
         assert len(skills) > 0, "Expected at least one built-in skill"
 
         for skill in skills:
-            assert "skill_id" in skill
+            assert "id" in skill
+            assert "description" in skill
+            assert "execution" in skill
+            assert "resources" in skill
             assert "manifest" in skill
-            assert "endpoint" in skill
-            assert "auth_type" in skill
-            assert skill["endpoint"] == "/api/run"
-            assert skill["auth_type"] == "HMAC-SHA256"
-            assert skill["source"] in ("built-in", "uploaded")
+            exec_info = skill["execution"]
+            assert exec_info["endpoint"] == "/api/run"
+            assert exec_info["method"] == "POST"
+            res = skill["resources"]
+            assert "logic_script_url" in res
+            assert "manifest_url" in res
 
             manifest = skill["manifest"]
             for field in ("name", "description", "version", "author", "input_schema"):
-                assert field in manifest, f"Skill {skill['skill_id']} missing manifest.{field}"
+                assert field in manifest, f"Skill {skill['id']} missing manifest.{field}"
 
     def test_skills_include_known_builtins(self) -> None:
         """Verify known built-in skills appear in the list."""
-        skill_ids = {s["skill_id"] for s in self.data["skills"]}
+        skill_ids = {s["id"] for s in self.data["skills"]}
         # These are the 5 static manifests plus dashboard_skill
         known = {"amazon_scraper", "code_security_audit", "git_changelog", "data_analyzer", "buggy_skill", "dashboard_skill"}
         found = known & skill_ids
         assert len(found) >= 5, f"Expected ≥5 built-in skills, found {len(found)}: {skill_ids}"
 
     def test_skills_sorted(self) -> None:
-        ids = [s["skill_id"] for s in self.data["skills"]]
+        ids = [s["id"] for s in self.data["skills"]]
         assert ids == sorted(ids), "Skills should be sorted by skill_id"
 
     def test_endpoints_section(self) -> None:
@@ -164,9 +168,7 @@ class TestDiscoveryEndpoint:
         assert resp.status_code == 200
 
     def test_uploaded_skills_appear(self) -> None:
-        """Verify that skills from skill_store are merged into the list."""
-        skill_ids = {s["skill_id"] for s in self.data["skills"]}
-        uploaded_ids = set(self.data["skills"][i]["skill_id"] for i in range(len(self.data["skills"]))
-                          if self.data["skills"][i]["source"] == "uploaded")
-        # No uploaded skills expected in this test environment, but the field should exist
-        assert isinstance(uploaded_ids, set)
+        """Verify that all skills (including uploaded) appear in the list."""
+        skill_ids = {s["id"] for s in self.data["skills"]}
+        assert isinstance(skill_ids, set)
+        assert len(skill_ids) == len(self.data["skills"]), "Duplicate skill IDs found"
