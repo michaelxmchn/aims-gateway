@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import logging
+import os
 import time
 from typing import Any
 
@@ -26,8 +27,12 @@ logger = logging.getLogger(__name__)
 
 # ── Auth config ─────────────────────────────────────────────────────────────
 
-AIMS_SIGNING_SECRET: bytes = b"AIMS_MOCK_SECRET_2026"
-"""Shared secret for HMAC-SHA256 request signing (testing only)."""
+AIMS_SIGNING_SECRET: bytes = os.getenv("AIMS_SIGNING_SECRET", "AIMS_MOCK_SECRET_2026").encode()
+"""Shared secret for HMAC-SHA256 request signing.
+
+Reads from the ``AIMS_SIGNING_SECRET`` environment variable in production
+(Fly.io secrets).  Falls back to ``AIMS_MOCK_SECRET_2026`` for local dev/testing.
+"""
 
 SIGNATURE_TIMEOUT: float = 300.0
 """Maximum age (seconds) for a signed request — replay protection."""

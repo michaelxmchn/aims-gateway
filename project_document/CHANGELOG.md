@@ -17,6 +17,8 @@
 - feat(deploy): 创建 fly.toml — Fly.io 部署配置（sin 区域，256MB，min_machines_running=1）
 - feat(deploy): 创建 .dockerignore — 排除 .git/tests/__pycache__/.env 等
 - feat(deploy): 创建 requirements.txt — fastapi/uvicorn/pydantic 锁定版本
+### 修复
+- fix(server): AIMS_SIGNING_SECRET 改为 os.getenv() 读取环境变量，生产部署不再硬编码
 
 ## [2026-06-08]
 ### 新增
