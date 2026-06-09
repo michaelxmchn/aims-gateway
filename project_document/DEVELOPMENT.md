@@ -279,3 +279,8 @@
   - 2s 浏览器指纹模拟 + HMAC-SHA256 签名全流程
   - 双模式：本地自动起服务 / 连接生产网关
   - 60s 运行 + 吞吐量 / 错误日志 / 成功率汇总
+- **Auto-Discovery 端点 GET /api/discovery**：
+  - 文件: src/gateway/server.py
+  - 描述: 返回自文档化 JSON 结构，包含 API 元信息、HMAC 认证说明（含算法伪代码 + 请求头）、按类别分组的端点列表（Task Management/Skill Management/Worker/System）、每个端点的请求/响应 Schema、cURL 示例、OpenClaw Manifest 链接
+  - 设计目标: "AI 一眼就能看懂怎么调这个接口" — 任何 AI 代理（Claude/GPT/Codex）读到此 JSON 即可编程化理解全部 API 能力
+  - 认证策略: 公开可访问（无需 HMAC 签名），独立于其他受保护端点

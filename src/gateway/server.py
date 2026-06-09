@@ -96,8 +96,8 @@ async def verify_signature_middleware(request: Request, call_next):
     """
     path = request.url.path
 
-    # Skip health and admin endpoints
-    if path == "/api/health" or path.startswith("/api/admin/"):
+    # Skip health, discovery, and admin endpoints
+    if path in ("/api/health", "/api/discovery") or path.startswith("/api/admin/"):
         return await call_next(request)
 
     # Skip HMAC auth for multipart uploads (body can't be pre-signed trivially)
@@ -465,6 +465,314 @@ async def health():
         workers_active=workers_active,
         treasury_usdt=treasury,
     )
+
+
+@app.get("/api/discovery")
+async def discovery():
+    """Auto-discovery endpoint — returns the full API surface as self-documenting JSON.
+
+    An AI agent (Claude, GPT, etc.) can read this response to understand
+    every endpoint, its authentication requirements, request/response
+    schemas, and how to interact with the gateway programmatically.
+    """
+    base_url = "https://aims-gateway.fly.dev"
+
+    return {
+        "api": {
+            "name": "AIMS Gateway",
+            "version": "1.0.0",
+            "description": "AI-Mediated Skill Network — Task Dispatch & Settlement Gateway",
+            "protocol": "REST over HTTP",
+            "content_type": "application/json",
+        },
+        "server": {
+            "current_time": time.time(),
+            "timezone": "UTC",
+        },
+        "authentication": {
+            "scheme": "HMAC-SHA256",
+            "description": (
+                "Every request to /api/* POST endpoints must include three headers. "
+                "GET /api/discovery, GET /api/health, GET /api/skills/{id}/logic, "
+                "GET /api/tasks/{id}/status, and POST /api/skills/upload are exempt."
+            ),
+            "headers": {
+                "X-Signature": {
+                    "type": "string",
+                    "description": "Hex-encoded HMAC-SHA256 of the request body",
+                    "algorithm": "HMAC-SHA256(secret, body_bytes + '|' + timestamp + '|' + user_id)",
+                },
+                "X-Timestamp": {
+                    "type": "string",
+                    "description": "UNIX epoch seconds (float). Must be within 300s of server time.",
+                },
+                "X-User-ID": {
+                    "type": "string",
+                    "description": "Worker or user identifier matching the signing key.",
+                },
+            },
+            "example_curl": (
+                'SECRET="AIMS_MOCK_SECRET_2026"; '
+                'BODY=\'{"worker_id":"worker-01"}\'; '
+                'TS=$(date +%s); UID="worker-01"; '
+                'SIG=$(echo -n "$BODY|$TS|$UID" | openssl dgst -sha256 -hmac "$SECRET" | cut -d" " -f2); '
+                'curl -s -X POST "$BASE_URL/api/tasks/claim" '
+                '-H "X-Signature: $SIG" -H "X-Timestamp: $TS" -H "X-User-ID: $UID" '
+                '-H "Content-Type: application/json" -d "$BODY"'
+            ),
+        },
+        "endpoints": [
+            {
+                "category": "Task Management",
+                "description": "Claim, submit, and monitor tasks in the broker queue.",
+                "operations": [
+                    {
+                        "method": "POST",
+                        "path": "/api/tasks/claim",
+                        "summary": "Claim a PENDING task from the broker queue.",
+                        "auth_required": True,
+                        "request_schema": {
+                            "type": "object",
+                            "required": ["worker_id"],
+                            "properties": {
+                                "worker_id": {"type": "string", "min_length": 1, "max_length": 128, "example": "worker-01"},
+                            },
+                        },
+                        "response_schema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {"type": "string", "description": "Unique task identifier"},
+                                "skill_id": {"type": "string", "description": "Skill this task executes"},
+                                "compute_tier": {"type": "integer", "description": "1=standard, 2=premium, 3=enterprise"},
+                                "developer_premium": {"type": "number", "description": "Developer tip multiplier"},
+                                "max_budget": {"type": "number", "description": "Maximum budget for this task"},
+                                "escrow_id": {"type": "string", "description": "Escrow hold ID for settlement"},
+                                "user_id": {"type": "string", "description": "User who published the task"},
+                                "asin": {"type": "string", "description": "Product ASIN or resource identifier"},
+                                "payload": {"type": "object", "description": "Dynamic skill parameters (null for built-in skills)"},
+                                "skill_logic_url": {"type": "string", "description": "URL to fetch logic.py for dynamic skills"},
+                            },
+                        },
+                        "response_codes": {
+                            "200": "Task claimed successfully",
+                            "204": "No pending tasks available",
+                        },
+                    },
+                    {
+                        "method": "POST",
+                        "path": "/api/tasks/submit",
+                        "summary": "Submit a completed task result for validation and settlement.",
+                        "auth_required": True,
+                        "request_schema": {
+                            "type": "object",
+                            "required": ["task_id", "worker_id", "result_data"],
+                            "properties": {
+                                "task_id": {"type": "string", "example": "task-0001"},
+                                "worker_id": {"type": "string", "example": "worker-01"},
+                                "result_data": {"type": "object", "description": "Task output — validated against the skill's output_schema"},
+                            },
+                        },
+                        "response_schema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {"type": "string"},
+                                "worker_id": {"type": "string"},
+                                "outcome": {"type": "string", "enum": ["COMPLETED", "REFUNDED", "REJECTED"]},
+                                "gas_cost": {"type": "number"},
+                                "total_cost": {"type": "number"},
+                                "platform_tax": {"type": "number"},
+                                "developer_payout": {"type": "number"},
+                                "unused_refund": {"type": "number"},
+                                "error": {"type": "string"},
+                            },
+                        },
+                    },
+                    {
+                        "method": "GET",
+                        "path": "/api/tasks/{task_id}/status",
+                        "summary": "Poll the current status and result of a task.",
+                        "auth_required": False,
+                        "response_schema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {"type": "string"},
+                                "status": {"type": "string", "enum": ["PENDING", "CLAIMED", "SUCCESS", "FAILED"]},
+                                "worker_id": {"type": "string", "nullable": True},
+                                "result": {"type": "object", "nullable": True, "description": "Task output (only on SUCCESS)"},
+                                "outcome": {"type": "string", "nullable": True},
+                            },
+                        },
+                    },
+                ],
+            },
+            {
+                "category": "Skill Management",
+                "description": "Upload, inspect, and execute dynamic skills.",
+                "operations": [
+                    {
+                        "method": "POST",
+                        "path": "/api/skills/upload",
+                        "summary": "Upload a zip containing manifest.json + logic.py to register a new skill dynamically.",
+                        "auth_required": False,
+                        "body_type": "multipart/form-data",
+                        "request_schema": {
+                            "type": "object",
+                            "required": ["zip_file"],
+                            "properties": {
+                                "zip_file": {"type": "file", "description": "ZIP archive containing: manifest.json (Pydantic-validated metadata) + logic.py (Python module with execute(payload) function)"},
+                            },
+                        },
+                        "response_schema": {
+                            "type": "object",
+                            "properties": {
+                                "skill_id": {"type": "string", "description": "Auto-generated skill ID"},
+                                "name": {"type": "string", "description": "Human-readable skill name from manifest"},
+                                "version": {"type": "string", "description": "Semantic version from manifest"},
+                            },
+                        },
+                        "constraints": {
+                            "max_zip_size": "10 MB",
+                            "zip_slip_protection": True,
+                            "supported_files": ["manifest.json", "logic.py"],
+                        },
+                    },
+                    {
+                        "method": "GET",
+                        "path": "/api/skills/{skill_id}/logic",
+                        "summary": "Fetch the logic.py source for a dynamic skill (workers use this for importlib bootstrap).",
+                        "auth_required": False,
+                        "response": {
+                            "content_type": "text/plain",
+                            "description": "Python source code of the skill's execute() function",
+                        },
+                        "response_codes": {
+                            "200": "Source code returned as text/plain",
+                            "404": "Skill not found",
+                        },
+                    },
+                    {
+                        "method": "POST",
+                        "path": "/api/run",
+                        "summary": "Universal execution endpoint — validate params against the skill's input_schema, create escrow, enqueue a task.",
+                        "auth_required": True,
+                        "request_schema": {
+                            "type": "object",
+                            "required": ["skill_id", "params", "user_id"],
+                            "properties": {
+                                "skill_id": {"type": "string", "example": "hello_world"},
+                                "params": {"type": "object", "description": "Parameters validated against the skill's input_schema.required"},
+                                "user_id": {"type": "string", "example": "alice"},
+                                "developer_premium": {"type": "number", "default": 0.0, "ge": 0.0},
+                                "max_budget": {"type": "number", "default": 2.0, "ge": 0.0},
+                                "compute_tier": {"type": "integer", "default": 1, "minimum": 1, "maximum": 3},
+                            },
+                        },
+                        "response_schema": {
+                            "type": "object",
+                            "properties": {
+                                "task_id": {"type": "string"},
+                                "status": {"type": "string", "default": "PENDING"},
+                            },
+                        },
+                        "workflow": [
+                            "1. Look up manifest by skill_id",
+                            "2. Validate params against input_schema (required fields + type checks)",
+                            "3. Create escrow hold in MockLedger",
+                            "4. Publish broker task with payload",
+                            "5. Return task_id — caller polls GET /api/tasks/{task_id}/status",
+                        ],
+                    },
+                ],
+            },
+            {
+                "category": "Worker",
+                "description": "Worker registration and liveness.",
+                "operations": [
+                    {
+                        "method": "POST",
+                        "path": "/api/workers/heartbeat",
+                        "summary": "Send a keep-alive heartbeat. Workers call this every ~30s. 60s silence = worker considered inactive.",
+                        "auth_required": True,
+                        "request_schema": {
+                            "type": "object",
+                            "required": ["worker_id"],
+                            "properties": {
+                                "worker_id": {"type": "string", "example": "worker-01"},
+                            },
+                        },
+                        "response_schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {"type": "string", "example": "ack"},
+                                "worker_id": {"type": "string"},
+                            },
+                        },
+                    },
+                ],
+            },
+            {
+                "category": "System",
+                "description": "Health check, discovery, and admin operations.",
+                "operations": [
+                    {
+                        "method": "GET",
+                        "path": "/api/health",
+                        "summary": "Return broker queue depth, ledger treasury, and active worker count.",
+                        "auth_required": False,
+                        "response_schema": {
+                            "type": "object",
+                            "properties": {
+                                "status": {"type": "string", "example": "healthy"},
+                                "tasks_pending": {"type": "integer"},
+                                "tasks_completed": {"type": "integer"},
+                                "tasks_succeeded": {"type": "integer"},
+                                "workers_registered": {"type": "integer", "description": "Workers with staked collateral"},
+                                "workers_active": {"type": "integer", "description": "Workers with heartbeat < 60s ago"},
+                                "treasury_usdt": {"type": "number", "description": "Founder treasury balance in USDT"},
+                            },
+                        },
+                    },
+                    {
+                        "method": "GET",
+                        "path": "/api/discovery",
+                        "summary": "This document — auto-discover the full API surface.",
+                        "auth_required": False,
+                    },
+                    {
+                        "method": "POST",
+                        "path": "/api/admin/setup",
+                        "summary": "Seed test data (ledger balances + 100 sample tasks). Intended for load-testing only.",
+                        "auth_required": False,
+                        "notes": "Not available in production. Seeded user: loadtest_user, dev: loadtest_dev.",
+                    },
+                ],
+            },
+        ],
+        "links": {
+            "openclaw_manifest": {
+                "url": f"{base_url}/manifests/openclaw_skill.json",
+                "description": "OpenClaw-compatible manifest for autonomous agent orchestration",
+                "format": "OpenClaw Discovery Format",
+            },
+            "skill_logic_template": {
+                "url_pattern": f"{base_url}/api/skills/{{skill_id}}/logic",
+                "description": "Fetch logic.py source for any uploaded skill. Workers use this for dynamic importlib bootstrap.",
+            },
+            "health": {
+                "url": f"{base_url}/api/health",
+                "description": "Quick health check — returns 200 when the gateway is operational.",
+            },
+        },
+        "notes": [
+            "The HMAC secret is configured via the AIMS_SIGNING_SECRET environment variable.",
+            "Signature uses SHA256, not SHA1 or MD5.",
+            "X-Timestamp must be a Unix timestamp (seconds since epoch) within 300s of server time.",
+            "Multipart uploads (/api/skills/upload) are exempt from signature verification.",
+            "The gateway uses FastAPI; all request/response bodies are JSON (except logic.py which is text/plain).",
+            "Tasks progress through: PENDING -> CLAIMED -> SUCCESS | FAILED.",
+            "Workers must heartbeat every ~30s or they'll be marked inactive after 60s.",
+        ],
+    }
 
 
 # ── Dynamic Skill Upload & Execution ─────────────────────────────────────

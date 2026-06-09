@@ -203,6 +203,13 @@ A: 待补充
 - **双模式**: 无参数时启动本地 uvicorn 实例 + seed 数据后运行；设 `AIMS_GATEWAY_URL` 环境变量时直接连接生产网关（需确保已有任务数据）
 - **原因**: 端到端的代理出口验证和 60s 长期运行，比纯本地单元测试更接近生产环境，能发现网络层和签名层的问题
 
+### 决策29：Auto-Discovery 协议（GET /api/discovery）
+- **背景**: AI 代理（Claude/GPT/Cursor 等）首次接入 AIMS Gateway 时，需要理解完整的 API 表面——有多少端点、每个端点做什么、如何认证、请求体格式是什么。手动阅读 OpenAPI 文档耗时且不通用
+- **决策**: 在 `/src/gateway/server.py` 中实现 `GET /api/discovery` 端点，返回一份**自文档化 JSON**，包含：(1) API 元信息（名称/版本/描述）；(2) 服务器时间（当前时间戳）；(3) HMAC 认证说明（scheme + 算法伪代码 + 三个必需请求头 + cURL 示例）；(4) 按类别分组的端点列表（Task Management/Skill Management/Worker/System），每个端点包含 method/path/summary/request_schema/response_schema/response_codes；5) links（OpenClaw Manifest URL、Health Check URL）；(6) notes（附加约束说明）
+- **设计原则**: "如果我是 AI，我一眼就能看懂怎么调这个接口" — 每个端点的 `request_schema` 包含完整的 `type/required/properties` 字段，`authentication` 部分给出 `algorithm` 伪代码和可直接运行的 cURL 示例
+- **安全策略**: `/api/discovery` 公开可访问（豁免 HMAC 签名），不暴露任何敏感数据（密钥/密码等）
+- **原因**: 自动发现协议让任何 AI 客户端在首次连接时就能获得完整的 API 使用指南，无需预配置或读取外部文档。结构化 JSON 比自然语言文档更适合程序化消费
+
 ### 决策25：Worker 心跳机制
 - **背景**: 生产环境中 Gateway 需要知道哪些 Worker 还活着，以便在 Worker 掉线时及时将任务重新分配给其他 Worker
 - **决策**: 新增 `POST /api/workers/heartbeat` 端点，Worker 每 15s 发送一次心跳（HMAC-SHA256 签名）。Gateway 在内存中维护 `worker_id → last_seen_unix_ts` 映射，超过 60s 未报告的 Worker 被标记为不活跃。`GET /api/health` 新增 `workers_active` 字段反映当前活跃 Worker 数
