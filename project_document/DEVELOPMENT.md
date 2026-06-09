@@ -96,6 +96,16 @@
   - 文件: tests/load_test_simulation.py
   - 结果: 20 Workers × 100 任务，111.7 tasks/s 吞吐量，100% 通过 ✓（HMAC-SHA256 签名）
 
+### 部署
+- **Fly.io 部署配置**
+  - 状态: 待部署
+  - 文件: Dockerfile / fly.toml / .dockerignore / requirements.txt
+  - 描述: python:3.11-slim 容器，sin 区域，256MB，min_machines_running=1
+
+## 部署指南
+
+参见下方 Fly.io 部署命令。
+
 ## 最近完成
 - 初始化 Git 仓库（main 分支，Git Flow 策略）
 - 运行 ADS scaffold 脚本，生成 .project.agents/ 治理框架（17 个文件）
@@ -207,3 +217,8 @@
 - **修复 health 端点缺失 tasks_succeeded 字段**：
   - `src/gateway/server.py`：HealthResponse 新增 tasks_succeeded 字段，broker 新增 succeeded_count / claimed_count 属性
   - 原因：Pydantic 验证导致 GET /api/health 返回 500
+- **Fly.io 生产部署配置**：
+  - `Dockerfile`：python:3.11-slim + uvicorn 生产启动（port 8000）
+  - `fly.toml`：sin 区域，256MB，min_machines_running=1 保持在线
+  - `.dockerignore`：排除 .git/tests/__pycache__/.env 等
+  - `requirements.txt`：fastapi/uvicorn/pydantic 版本锁定

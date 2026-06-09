@@ -1,0 +1,13 @@
+.git/
+.gitignore
+__pycache__/
+*.pyc
+*.pyo
+tests/
+.env
+.env.*
+.project.agents/
+.claude/
+logs/
+project_document/
+.DS_Store

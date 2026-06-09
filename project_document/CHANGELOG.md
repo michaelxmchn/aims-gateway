@@ -12,6 +12,11 @@
 ### 测试
 - feat(test): 创建 tests/load_test_simulation.py — 20 Worker 多进程压力测试（HMAC-SHA256 签名，100 任务全通过 ✓）
 - test(load): 负载测试 100/100 任务完成，111.7 tasks/s 吞吐量 ✓
+### 新增
+- feat(deploy): 创建 Dockerfile — python:3.11-slim，uvicorn 生产部署
+- feat(deploy): 创建 fly.toml — Fly.io 部署配置（sin 区域，256MB，min_machines_running=1）
+- feat(deploy): 创建 .dockerignore — 排除 .git/tests/__pycache__/.env 等
+- feat(deploy): 创建 requirements.txt — fastapi/uvicorn/pydantic 锁定版本
 
 ## [2026-06-08]
 ### 新增

@@ -166,6 +166,12 @@ A: 待补充
 - **模式**: 常量时间比较 `hmac.compare_digest()` 防止 timing attack；`/api/admin/setup` 和 `GET /api/health` 豁免签名认证
 - **原因**: 轻量级对称签名方案，无需 PKI 或 OAuth 基础设施，适合 DePIN Worker 网络中的机器间认证
 
+### 决策23：Fly.io 生产部署（Docker + 最小化容器）
+- **背景**: AIMS Gateway 需要部署到生产环境，提供公网 HTTP 端点供 DePIN Worker 远程连接
+- **决策**: 使用 `python:3.11-slim` 基础镜像（~120MB），`requirements.txt` 锁定 fastapi==0.134.0 / uvicorn[standard]==0.41.0 / pydantic==2.12.5，`.dockerignore` 排除 CI/测试/文档文件减少构建上下文
+- **Fly.io 配置**: `fly.toml` 设定 `internal_port=8000`，`min_machines_running=1` 保持网关常驻，`auto_stop_machines=false` 防止空闲休眠，sin（新加坡）区域降低亚太延迟
+- **原因**: Fly.io 支持 Dockerfile 直接部署、自动 HTTPS、按需付费，适合 DePIN 网络的全球分布 Worker 接入
+
 ## 学习资源
 - 待补充
 
