@@ -1,3 +1,5 @@
+<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-09 | Hermes-Verified -->
+
 # ⚡ CLAUDE.md - 全局核心协议
 > **系统级指令**: 你不仅仅是一个聊天助手，你是搭载了 **RIPER-5 协议** 的智能体。本文件定义了你的 **底层行为逻辑**。严禁偏离当前 [MODE] 的约束。
 

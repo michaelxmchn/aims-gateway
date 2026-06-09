@@ -1,3 +1,5 @@
+<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-09 | Hermes-Verified -->
+
 # Dashboard Skill — Operation Rules
 
 ## Purpose

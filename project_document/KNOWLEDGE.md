@@ -1,3 +1,5 @@
+<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-09 | Hermes-Verified -->
+
 # 项目知识库
 
 > **格式要求**: 严格遵循 `.claude/output-styles/markdown-focused.md` 格式规范

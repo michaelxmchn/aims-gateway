@@ -1,3 +1,5 @@
+<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-09 | Hermes-Verified -->
+
 # 变更日志
 
 > **格式要求**: 严格遵循 `.claude/output-styles/bullet-points.md` 格式规范  
@@ -19,6 +21,9 @@
 - feat(deploy): Worker Dockerfile 安装 tesseract-ocr；requirements.txt 新增 opencv-python-headless/pillow/pytesseract
 - feat(gateway): Discovery 端点技能 `capabilities` 字段 — 6 个内置技能定义能力标签，上传技能默认 `["custom"]`
 - feat(server): RunRequest 新增 `pipeline` 参数支持多步骤任务链声明
+- feat(gateway): Discovery 响应新增 `documentation_root` 字段指向 `docs/MASTER_INDEX.md`
+- feat(docs): 创建 `docs/MASTER_INDEX.md` — AI Agent 单入口协议索引（Discovery/HMAC/Run/Pipeline/Heartbeat/Upload/Bootstrap）
+- feat(docs): 所有 markdown 文件添加 `<!-- Hermes-Verified -->` 版本元数据头部注释
 ### 修复
 - fix(deploy): 生产环境 500 — python-multipart 缺失导致 FastAPI File() 参数启动崩溃（POST /api/skills/upload 需 multipart 支持）
 - fix(test): e2e_full_flow.py 端口冲突 — 8765 被其他服务占用导致 404；改用 9876 + 智能健康检查验证网关字段

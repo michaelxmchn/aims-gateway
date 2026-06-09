@@ -42,7 +42,7 @@ class TestDiscoveryEndpoint:
         assert parsed == self.data
 
     def test_top_level_fields(self) -> None:
-        required = {"discovery_version", "api", "server", "authentication", "skills", "endpoints", "links", "notes"}
+        required = {"discovery_version", "documentation_root", "api", "server", "authentication", "skills", "endpoints", "links", "notes"}
         missing = required - set(self.data.keys())
         assert not missing, f"Missing top-level fields: {missing}"
 

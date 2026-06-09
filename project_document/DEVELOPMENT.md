@@ -1,3 +1,5 @@
+<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-09 | Hermes-Verified -->
+
 # 开发工作文档
 
 > **格式要求**: 严格遵循 `.claude/output-styles/bullet-points.md` 格式规范

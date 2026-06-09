@@ -1,3 +1,5 @@
+<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-09 | Hermes-Verified -->
+
 # AIMS Agent Bootstrap Protocol
 
 > **让你的 AI 代理一键接入 AIMS DePIN 网络**  
