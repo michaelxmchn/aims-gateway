@@ -5,6 +5,7 @@
 
 ## [2026-06-09]
 ### 新增
+- feat(docs): 创建 AIMS_AGENT_BOOTSTRAP.md — AI 代理一键接入协议（System Prompt + bootstrap_helper.py + 使用说明）
 - feat(gateway): GET /api/discovery — Auto-Discovery 自文档化端点，动态扫描 registry + skill_store 生成技能列表，OpenAPI 3.0 子集格式，discovery_version 1.0.0
 - feat(test): 创建 tests/test_discovery.py — 17 个测试覆盖端点结构/字段/技能动态列表/API 关键路径/免认证访问
 - feat(test): 创建 tests/e2e_full_flow.py — 生产级 E2E 全流程测试（10 并发 Worker、SOCKS5 代理轮换、2s 浏览器指纹模拟、60s 吞吐量基准）

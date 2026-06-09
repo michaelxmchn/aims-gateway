@@ -205,10 +205,16 @@ A: 待补充
 
 ### 决策29：Auto-Discovery 协议（GET /api/discovery）
 - **背景**: AI 代理（Claude/GPT/Cursor 等）首次接入 AIMS Gateway 时，需要理解完整的 API 表面——有多少端点、每个端点做什么、如何认证、请求体格式是什么。手动阅读 OpenAPI 文档耗时且不通用
-- **决策**: 在 `/src/gateway/server.py` 中实现 `GET /api/discovery` 端点，返回一份**自文档化 JSON**，包含：(1) API 元信息（名称/版本/描述）；(2) 服务器时间（当前时间戳）；(3) HMAC 认证说明（scheme + 算法伪代码 + 三个必需请求头 + cURL 示例）；(4) 按类别分组的端点列表（Task Management/Skill Management/Worker/System），每个端点包含 method/path/summary/request_schema/response_schema/response_codes；5) links（OpenClaw Manifest URL、Health Check URL）；(6) notes（附加约束说明）
+- **决策**: 在 `/src/gateway/server.py` 中实现 `GET /api/discovery` 端点，返回一份**自文档化 JSON**，包含：(1) `discovery_version` 协议版本号；(2) API 元信息（名称/版本/描述）；(3) 服务器时间（当前时间戳）；(4) HMAC 认证说明（scheme + 算法伪代码 + 三个必需请求头 + cURL 示例）；(5) `skills` 数组——动态扫描 `registry.get_all_manifests()` + `skill_store.list_skills()` 构建的活跃技能列表，每个 skill 包含 `skill_id`/完整 `manifest`（input_schema、output_schema、version、tags）/`endpoint`（/api/run）/`auth_type`（HMAC-SHA256）/`source`（built-in 或 uploaded）；(6) 按类别分组的端点列表；(7) links；(8) notes
 - **设计原则**: "如果我是 AI，我一眼就能看懂怎么调这个接口" — 每个端点的 `request_schema` 包含完整的 `type/required/properties` 字段，`authentication` 部分给出 `algorithm` 伪代码和可直接运行的 cURL 示例
 - **安全策略**: `/api/discovery` 公开可访问（豁免 HMAC 签名），不暴露任何敏感数据（密钥/密码等）
 - **原因**: 自动发现协议让任何 AI 客户端在首次连接时就能获得完整的 API 使用指南，无需预配置或读取外部文档。结构化 JSON 比自然语言文档更适合程序化消费
+
+### 决策30：AIMS Agent Bootstrap 协议
+- **背景**: 外部 AI 代理（Claude、GPT、Codex 等）需要一份清晰的接入指南，包含 System Prompt、认证算法和代码实现，才能以 Worker 身份参与 AIMS 网络
+- **决策**: 创建 `AIMS_AGENT_BOOTSTRAP.md`，包含三部分：(1) **System Prompt 块**——可直接复制到 AI 代理的 Custom Instructions，指令代理在每次会话开始时调用 `GET /api/discovery`，解析 JSON 理解可用技能和认证要求，根据用户自然语言请求映射到对应 `skill_id`，构造 HMAC 签名并执行；(2) **`bootstrap_helper.py`**——Python 封装类 `AIMSClient`，提供 `discover()`/`list_skills()`/`find_skill()`/`run_skill()`/`heartbeat()` 方法，自动处理 discovery → HMAC 签名 → run → poll 全流程，支持 CLI 调用（`python bootstrap_helper.py list` 和 `run`）；(3) **使用说明**——Step 1 设置网关地址、Step 2 粘贴 System Prompt，以及 Claude Code/Cursor/GPTs/Python 脚本的集成方法
+- **Agent 接入流程**: `GET /api/discovery` → 解析 skills → 匹配 skill_id → `POST /api/run`（HMAC 签名） → 轮询 `GET /api/tasks/{id}/status` → 返回结果
+- **原因**: 无需 SDK 依赖，任何 HTTP 客户端 + 标准库 `hmac` 即可接入。System Prompt + 代码双重保障，确保 AI 代理能以最少配置成为 AIMS Worker
 
 ### 决策25：Worker 心跳机制
 - **背景**: 生产环境中 Gateway 需要知道哪些 Worker 还活着，以便在 Worker 掉线时及时将任务重新分配给其他 Worker

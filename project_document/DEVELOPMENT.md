@@ -147,6 +147,10 @@
   - 文件: src/gateway/server.py / tests/test_discovery.py
   - 描述: 动态扫描 registry + skill_store 生成活跃技能列表，OpenAPI 3.0 子集结构，discovery_version 1.0.0
   - 验证: 17/17 测试通过（结构/字段完整性/技能动态列表/API 关键路径/免认证访问 ✓）
+- **AIMS Agent Bootstrap 协议**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: AIMS_AGENT_BOOTSTRAP.md
+  - 描述: AI 代理一键接入指南 — 可复制 System Prompt + bootstrap_helper.py（Discovery → HMAC → Run → Poll 封装）+ 多平台集成说明
 
 ### 部署
 - **Fly.io 部署配置**
