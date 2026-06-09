@@ -1,3 +1,6 @@
+# Form / multipart upload support (required by /api/skills/upload)
+python-multipart>=0.0.19,<1.0
+
 # Core web framework
 fastapi==0.134.0
 starlette==0.52.1

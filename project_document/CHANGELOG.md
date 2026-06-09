@@ -13,6 +13,7 @@
 - feat(ledger): MockLedger Redis 持久化 — 13 个 namespace 覆盖所有账本状态（balance/escrow/collateral/strikes/reputation/rating）
 - feat(server): 共享 Storage 实例注入 MockLedger + TaskBroker，`REDIS_URL` 未设置时自动降级内存模式
 ### 修复
+- fix(deploy): 生产环境 500 — python-multipart 缺失导致 FastAPI File() 参数启动崩溃（POST /api/skills/upload 需 multipart 支持）
 - fix(test): e2e_full_flow.py 端口冲突 — 8765 被其他服务占用导致 404；改用 9876 + 智能健康检查验证网关字段
 - feat(gateway): broker.py 新增 succeeded_count / claimed_count 状态查询属性
 - feat(gateway): server.py health 端点新增 tasks_succeeded 字段
