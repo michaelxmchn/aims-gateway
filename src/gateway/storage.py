@@ -15,6 +15,7 @@ Usage::
 
 from __future__ import annotations
 
+import fnmatch
 import json
 import logging
 import os
@@ -103,7 +104,7 @@ class Storage:
         if self._redis:
             return self._redis.keys(pattern)
         with self._lock:
-            return list(self._local.keys())
+            return [k for k in self._local.keys() if fnmatch.fnmatch(k, pattern)]
 
     def flushdb(self) -> None:
         """Remove all keys from the store (use with care)."""
@@ -176,3 +177,61 @@ class Storage:
             if val is not None:
                 result[short_key] = val
         return result
+
+    # ── Atomic pipeline support ─────────────────────────────────────────────────
+
+    def pipeline(self) -> _InMemoryPipeline | Any:
+        """Return an atomic pipeline for multi-key operations.
+
+        Usage::
+
+            with storage.pipeline() as pipe:
+                pipe.set("a", 1)
+                pipe.set("b", 2)
+                pipe.execute()  # atomically applied under a single lock
+
+        When backed by Redis, returns a ``redis.client.Pipeline`` (``MULTI/EXEC``).
+        When in memory, returns an ``_InMemoryPipeline`` that applies all
+        buffered writes under a single ``threading.Lock()`` acquisition.
+        """
+        if self._redis:
+            return self._redis.pipeline()
+        return _InMemoryPipeline(self._local, self._lock)
+
+
+class _InMemoryPipeline:
+    """Buffered write pipeline for in-memory storage.
+
+    All ``set()`` calls are buffered and applied atomically when ``execute()``
+    is called, under a single acquisition of the parent ``Storage`` lock.
+    """
+
+    def __init__(self, local: dict, lock: threading.Lock) -> None:
+        self._local = local
+        self._lock = lock
+        self._ops: list[tuple[str, str]] = []
+
+    def set(self, key: str, value: Any) -> None:
+        payload = json.dumps(value, default=str)
+        self._ops.append((key, payload))
+
+    def get(self, key: str, default: Any = None) -> Any:
+        """Read immediately (not buffered — useful for WATCH-like checks)."""
+        with self._lock:
+            raw = self._local.get(key)
+            return json.loads(raw) if raw is not None else default
+
+    def execute(self) -> list[bool]:
+        with self._lock:
+            results: list[bool] = []
+            for key, payload in self._ops:
+                self._local[key] = payload
+                results.append(True)
+            self._ops.clear()
+            return results
+
+    def __enter__(self) -> _InMemoryPipeline:
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        pass

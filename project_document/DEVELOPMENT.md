@@ -149,6 +149,12 @@
   - 文件: src/gateway/server.py / tests/test_discovery.py
   - 描述: 动态扫描 registry + skill_store 生成活跃技能列表，OpenAPI 3.0 子集结构，discovery_version 1.0.0
   - 验证: 17/17 测试通过（结构/字段完整性/技能动态列表/API 关键路径/免认证访问 ✓）
+- **Credit & Revenue 信用计费系统（Layer 3.5）**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/gateway/billing.py / ledger.py / server.py
+  - 描述: BillingEngine（COST_PER_TASK=0.05 信用扣费 + 80/20 分账）+ TransactionLedger（四类交易历史）+ Wallet API（POST /api/wallet/deposit + GET /api/wallet/balance）
+  - 关键设计: Lua 脚本 Redis 原子结算 / threading.Lock() 内存回退 / Reservation 模式防双花 / Idempotent receipt
+  - 验证: 35/35 测试通过（余额/预留/结算/账本/全生命周期 ✓）
 - **AIMS Agent Bootstrap 协议**
   - 状态: 已完成 (2026-06-09)
   - 文件: AIMS_AGENT_BOOTSTRAP.md
@@ -344,5 +350,5 @@
   - 描述: 模拟外部 AI Agent 自引导流程：discovery 获取 → documentation_root 可达性 → 7 个协议完整性 → input_schema 校验 → pipeline 文档验证 → AIMS_AGENT_BOOTSTRAP.md 和 bootstrap_helper.py 存在性验证
 - **完整测试套件验证**
   - 状态: 已完成 (2026-06-09)
-  - 结果: 78/78 PASSED ✓（17 discovery + 14 agent bootstrap + 47 单元测试）
-  - 描述: 全部测试通过，覆盖 discovery 协议、agent bootstrap 协议和核心单元测试
+  - 结果: 113/113 PASSED ✓（35 billing + 17 discovery + 14 agent bootstrap + 47 单元测试）
+  - 描述: 全部测试通过，覆盖 credit 计费（余额/预留/结算/账本/生命周期）、discovery 协议、agent bootstrap 协议和核心单元测试

@@ -246,6 +246,16 @@ A: 待补充
 - **Worker 端实现**: `src/worker/worker.py` 中的主循环独立于任务处理逻辑，每 `HEARTBEAT_INTERVAL` (15s) 调用 `send_heartbeat()`，心跳失败不阻塞任务处理
 - **原因**: 轻量级心跳避免了 TCP keepalive 的代理兼容性问题，HTTP 层的签名心跳还可以作为 Worker 身份合法性验证
 
+### Credit & Revenue 信用计费模式（Layer 3.5）
+- **BillingEngine**（`src/gateway/billing.py`）— 平行信用计费层，独立于 USDT Escrow 系统
+- **COST_PER_TASK = 0.05** 固定信用单价，各任务同价
+- **Revenue Split** — 成功时 80% Worker + 20% Gateway Owner，Worker 与 Owner 同一实体时全额归 Worker
+- **Reservation 模式** — `reserve_credits(task_id, user_id)` 预授权 COST_PER_TASK 存入 reservation `{"user_id": ..., "amount": ..., "timestamp": ...}`，settle 时读取 reservation 确定扣费来源
+- **双路径原子结算** — Redis 可用时通过 Lua 脚本（`EVAL`）跨 5 个 Key 原子操作；Redis 不可用时通过 `Storage.pipeline()` + `threading.Lock()` 内存事务回退
+- **Idempotent Receipt** — `settle_task()` 第二次调用时 reservation 已删除，自动查找 `billing:reserved:receipt:{task_id}` 返回已有收据，防止双花
+- **TransactionLedger**（`src/gateway/ledger.py`）— 追加式交易历史，支持四类交易（deposit/task_deduction/worker_payout/owner_revenue），每用户索引最近 200 条，`get_all()` 全局排序查询
+- **Wallet API** — `POST /api/wallet/deposit`（HMAC 保护）+ `GET /api/wallet/balance`（HMAC 保护），通过现有 `/api/` 中间件自动认证
+
 ## 学习资源
 - 待补充
 

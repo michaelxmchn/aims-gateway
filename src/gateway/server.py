@@ -25,6 +25,8 @@ from src.gateway.skill_store import SkillStore, SkillStoreError
 from src.gateway.storage import Storage
 from src.ledger.mock_counter import MockLedger
 from src.skills.registry import SkillRegistry
+from src.gateway.billing import BillingEngine
+from src.gateway.ledger import TransactionLedger
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +65,10 @@ skill_store = SkillStore(storage=storage)
 
 # Load any previously uploaded skills into the registry
 skill_store.load_into_registry(registry)
+
+# Credit & Revenue system singletons
+billing = BillingEngine(storage=storage)
+txn_ledger = TransactionLedger(storage=storage)
 
 # Worker heartbeat tracking: worker_id → last_seen_unix_ts
 worker_heartbeats: dict[str, float] = {}
@@ -222,6 +228,24 @@ class RunRequest(BaseModel):
 
 class RunResponse(BaseModel):
     task_id: str
+
+
+# ── Wallet & Credit models ─────────────────────────────────────────────────
+
+class DepositRequest(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=128, description="User or agent identifier")
+    amount: float = Field(..., gt=0.0, description="Credit amount to deposit")
+
+
+class DepositResponse(BaseModel):
+    user_id: str
+    amount: float
+    new_balance: float
+
+
+class BalanceResponse(BaseModel):
+    user_id: str
+    credits: float
     status: str = "PENDING"
 
 
@@ -393,6 +417,8 @@ async def submit_task(req: SubmitRequest):
     if not valid:
         # Penalty already applied inside validate_result_generic
         await _run_in_thread(broker.complete_task, req.task_id, "FAILED")
+        # Release credit reservation (no deduction on failure)
+        await _run_in_thread(billing.settle_task, req.task_id, req.worker_id, False)
         return SubmitResponse(
             task_id=req.task_id,
             worker_id=req.worker_id,
@@ -436,6 +462,37 @@ async def submit_task(req: SubmitRequest):
 
     await _run_in_thread(broker.complete_task, req.task_id, "SUCCESS", detail)
 
+    # ── 6. Settle credits (parallel to USDT settlement) ─────────────────
+    credit_receipt = await _run_in_thread(
+        billing.settle_task, req.task_id, req.worker_id, True,
+    )
+    if credit_receipt and credit_receipt.get("status") == "COMPLETED":
+        cost = credit_receipt.get("cost", 0.0)
+        txn_ledger.record(
+            "task_deduction", task_meta.user_id, -cost,
+            f"Task {req.task_id} — credit deduction",
+            metadata={
+                "task_id": req.task_id,
+                "worker_id": req.worker_id,
+                "worker_payout": credit_receipt.get("worker_payout", 0.0),
+                "gateway_payout": credit_receipt.get("gateway_payout", 0.0),
+            },
+        )
+        wp = credit_receipt.get("worker_payout", 0.0)
+        if wp > 0:
+            txn_ledger.record(
+                "worker_payout", req.worker_id, wp,
+                f"Task {req.task_id} — worker payout (80%)",
+                metadata={"task_id": req.task_id},
+            )
+        gp = credit_receipt.get("gateway_payout", 0.0)
+        if gp > 0:
+            txn_ledger.record(
+                "owner_revenue", billing._owner_id, gp,
+                f"Task {req.task_id} — platform fee (20%)",
+                metadata={"task_id": req.task_id},
+            )
+
     return SubmitResponse(
         task_id=req.task_id,
         worker_id=req.worker_id,
@@ -448,7 +505,37 @@ async def submit_task(req: SubmitRequest):
     )
 
 
-@app.post("/api/workers/heartbeat")
+# ── Wallet endpoints ──────────────────────────────────────────────────────
+
+
+@app.post("/api/wallet/deposit", response_model=DepositResponse)
+async def wallet_deposit(req: DepositRequest):
+    """Deposit credits into a user/agent wallet.
+
+    Requires HMAC-SHA256 signature (enforced by middleware on all POST /api/*).
+    """
+    new_balance = await _run_in_thread(billing.deposit, req.user_id, req.amount)
+    txn_ledger.record(
+        "deposit", req.user_id, req.amount,
+        f"Deposit {req.amount} credits",
+        metadata={"new_balance": new_balance},
+    )
+    return DepositResponse(
+        user_id=req.user_id,
+        amount=req.amount,
+        new_balance=new_balance,
+    )
+
+
+@app.get("/api/wallet/balance")
+async def wallet_balance(user_id: str):
+    """Get credit balance for a user/agent.
+
+    Query parameter: ``?user_id=<id>``. Requires HMAC-SHA256 signature
+    (enforced by middleware on all GET /api/* paths).
+    """
+    credits = await _run_in_thread(billing.get_balance, user_id)
+    return BalanceResponse(user_id=user_id, credits=credits)
 async def worker_heartbeat(req: HeartbeatRequest):
     """Receive a keep-alive heartbeat from a worker.
 
@@ -849,6 +936,53 @@ async def discovery():
                     },
                 ],
             },
+            {
+                "category": "Wallet & Credits",
+                "description": "Manage user/agent credit balances — deposit and check balance.",
+                "operations": [
+                    {
+                        "method": "POST",
+                        "path": "/api/wallet/deposit",
+                        "summary": "Deposit credits into a user/agent wallet.",
+                        "auth_required": True,
+                        "request_schema": {
+                            "type": "object",
+                            "required": ["user_id", "amount"],
+                            "properties": {
+                                "user_id": {"type": "string", "example": "alice"},
+                                "amount": {"type": "number", "example": 10.0, "gt": 0},
+                            },
+                        },
+                        "response_schema": {
+                            "type": "object",
+                            "properties": {
+                                "user_id": {"type": "string"},
+                                "amount": {"type": "number"},
+                                "new_balance": {"type": "number"},
+                            },
+                        },
+                    },
+                    {
+                        "method": "GET",
+                        "path": "/api/wallet/balance",
+                        "summary": "Get credit balance for a user/agent.",
+                        "auth_required": True,
+                        "request_schema": {
+                            "type": "object",
+                            "properties": {
+                                "user_id": {"type": "string", "description": "Query parameter"},
+                            },
+                        },
+                        "response_schema": {
+                            "type": "object",
+                            "properties": {
+                                "user_id": {"type": "string"},
+                                "credits": {"type": "number"},
+                            },
+                        },
+                    },
+                ],
+            },
         ],
         "links": {
             "openclaw_manifest": {
@@ -959,7 +1093,18 @@ async def run_skill(req: RunRequest):
         elif expected_type == "boolean" and not isinstance(val, bool):
             raise HTTPException(status_code=400, detail=f"{prop_name}: expected boolean, got {type(val).__name__}")
 
-    # ── 3. Create escrow & publish task ─────────────────────────────────
+    # ── 3. Check credit balance (early exit) ────────────────────────────
+    credit_balance = await _run_in_thread(billing.get_balance, req.user_id)
+    if credit_balance < BillingEngine.COST_PER_TASK:
+        raise HTTPException(
+            status_code=402,
+            detail=(
+                f"Insufficient credits. Required: {BillingEngine.COST_PER_TASK}, "
+                f"balance: {credit_balance}"
+            ),
+        )
+
+    # ── 4. Create escrow & publish task ─────────────────────────────────
     task_id = await _run_in_thread(
         broker.publish_task,
         user_id=req.user_id,
@@ -973,6 +1118,14 @@ async def run_skill(req: RunRequest):
     )
     if task_id is None:
         raise HTTPException(status_code=402, detail="Insufficient balance for escrow hold")
+
+    # ── 5. Reserve credits for this task ────────────────────────────────
+    reserved = await _run_in_thread(billing.reserve_credits, task_id, req.user_id)
+    if not reserved:
+        logger.warning("Credit reservation failed after pre-check for task %s (user %s)", task_id, req.user_id)
+        # Task is published but credit reservation failed (race condition).
+        # The task will still be claimable but settle_task will find no reservation.
+        # This is logged for audit; we don't fail the request.
 
     return RunResponse(task_id=task_id, status="PENDING")
 

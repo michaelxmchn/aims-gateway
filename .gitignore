@@ -48,3 +48,4 @@ build/
 # --- Project-specific ---
 .project.agents/
 logs/
+skills/uploaded/

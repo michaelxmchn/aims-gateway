@@ -7,7 +7,13 @@
 
 ## [2026-06-09]
 ### 新增
-- feat(docs): 创建 AIMS_AGENT_BOOTSTRAP.md — AI 代理一键接入协议（System Prompt + bootstrap_helper.py + 使用说明）
+- feat(billing): 创建 src/gateway/billing.py — BillingEngine 信用计费引擎（COST_PER_TASK=0.05、80/20 分账、Lua 脚本原子结算、Reservation 防双花模式）
+- feat(ledger): 创建 src/gateway/ledger.py — TransactionLedger 交易历史账本（deposit/task_deduction/worker_payout/owner_revenue 四类交易、每用户索引、全局排序查询）
+- feat(server): POST /api/wallet/deposit + GET /api/wallet/balance — Wallet API（HMAC-SHA256 自动认证）
+- feat(server): run_skill() 集成信用预检（402 余额不足）+ reserve 预留；submit_task() 集成 settle 结算 + txn_ledger 记录
+- feat(server): Discovery 端点新增 "Wallet & Credits" 类别文档
+- feat(storage): storage.py pipeline() 上下文管理器 + _InMemoryPipeline 类（多 Key 原子操作支持）
+- feat(test): 创建 tests/test_billing.py — 35 个测试（余额/预留/结算/账本/全生命周期）
 - feat(gateway): GET /api/discovery — Auto-Discovery 自文档化端点，动态扫描 registry + skill_store 生成技能列表，OpenAPI 3.0 子集格式，discovery_version 1.0.0
 - feat(test): 创建 tests/test_discovery.py — 17 个测试覆盖端点结构/字段/技能动态列表/API 关键路径/免认证访问
 - feat(test): 创建 tests/e2e_full_flow.py — 生产级 E2E 全流程测试（10 并发 Worker、SOCKS5 代理轮换、2s 浏览器指纹模拟、60s 吞吐量基准）
@@ -27,6 +33,8 @@
 ### 修复
 - fix(deploy): 生产环境 500 — python-multipart 缺失导致 FastAPI File() 参数启动崩溃（POST /api/skills/upload 需 multipart 支持）
 - fix(test): e2e_full_flow.py 端口冲突 — 8765 被其他服务占用导致 404；改用 9876 + 智能健康检查验证网关字段
+- fix(billing): _settle_in_memory worker==owner 时管道双写同一 Key 覆盖 — 合并 worker_share + owner_share 为一次 SET（#49）
+- fix(storage): keys() 内存回退路径忽略 glob pattern — dict_all 误返回其他 namespace 数据（#49）
 - feat(gateway): broker.py 新增 succeeded_count / claimed_count 状态查询属性
 - feat(test): 创建 tests/test_agent_bootstrap.py — AI Agent 引导测试（14 个测试：discovery 获取 → documentation_root URL 可达性 → 7 个协议完整性 → input_schema 校验 → pipeline 文档验证 → 全流程端到端模拟）
 - fix(docs): documentation_root 指向 GitHub raw URL `https://raw.githubusercontent.com/michaelxmchn/aims-gateway/main/docs/MASTER_INDEX.md`，外部 AI 代理（Hermes）免认证访问

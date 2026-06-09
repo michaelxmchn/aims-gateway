@@ -144,6 +144,8 @@ class TestDiscoveryEndpoint:
             "POST /api/workers/heartbeat",
             "GET /api/health",
             "GET /api/discovery",
+            "POST /api/wallet/deposit",
+            "GET /api/wallet/balance",
         }
         missing = critical - paths_found
         assert not missing, f"Critical paths missing from discovery: {missing}"
