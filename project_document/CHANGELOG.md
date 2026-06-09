@@ -3,6 +3,16 @@
 > **格式要求**: 严格遵循 `.claude/output-styles/bullet-points.md` 格式规范  
 > **提交规范**: 遵循 commitlint 规范（type(scope): subject）
 
+## [2026-06-09]
+### 新增
+- feat(gateway): broker.py 新增 succeeded_count / claimed_count 状态查询属性
+- feat(gateway): server.py health 端点新增 tasks_succeeded 字段
+### 修复
+- fix(server): health 端点缺失 tasks_succeeded 导致 Pydantic ValidationError (500)
+### 测试
+- feat(test): 创建 tests/load_test_simulation.py — 20 Worker 多进程压力测试（HMAC-SHA256 签名，100 任务全通过 ✓）
+- test(load): 负载测试 100/100 任务完成，111.7 tasks/s 吞吐量 ✓
+
 ## [2026-06-08]
 ### 新增
 - feat(test): 创建 tests/e2e_integration_test.py — 8 阶段 E2E 集成测试（身份/Staking/Fault-Tolerance/Slashing/Tier-2 Billing/Wealth Audit/Dashboard）

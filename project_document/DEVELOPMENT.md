@@ -48,9 +48,13 @@
 
 ### Layer 3.5: HTTP 网关
 - **FastAPI Gateway Server**
-  - 状态: 已完成 (2026-06-08)
+  - 状态: 已完成 (2026-06-09)
   - 文件: src/gateway/server.py
-  - 描述: POST /api/tasks/claim、POST /api/tasks/submit、GET /api/health
+  - 描述: POST /api/tasks/claim、POST /api/tasks/submit、GET /api/health、HMAC-SHA256 签名认证中间件、replay 保护（300s 窗口）
+- **TaskBroker 状态查询**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: src/gateway/broker.py
+  - 描述: 新增 succeeded_count / claimed_count 属性、get_task_meta / get_task_status 公开方法
 
 ### Layer 4: 执行沙箱
 - **WorkflowEngine**
@@ -87,6 +91,10 @@
   - 状态: 已完成 (2026-06-08)
   - 文件: tests/e2e_integration_test.py
   - 结果: 11/11 全通过 ✓，$180.00→$180.00 资金守恒 ✓，100% 架构闭合 ✓
+- **负载压力测试**
+  - 状态: 已完成 (2026-06-09)
+  - 文件: tests/load_test_simulation.py
+  - 结果: 20 Workers × 100 任务，111.7 tasks/s 吞吐量，100% 通过 ✓（HMAC-SHA256 签名）
 
 ## 最近完成
 - 初始化 Git 仓库（main 分支，Git Flow 策略）
@@ -190,3 +198,12 @@
   - `src/gateway/server.py`：FastAPI 生产级服务器（POST /api/tasks/claim / POST /api/tasks/submit / GET /api/health）
   - `src/gateway/broker.py`：新增 get_task_meta / get_task_status 公开方法
   - 验证：FastAPI 启动成功，3 条路由注册 ✓
+- **实现 HMAC-SHA256 签名认证中间件**：
+  - `src/gateway/server.py`：verify_signature_middleware 对所有 /api/tasks/* POST 请求验证 HMAC-SHA256 签名 + replay 保护（300s 窗口）
+  - 验证：签名缺失/过期/无效均返回 403 ✓
+- **创建多进程负载测试**：
+  - `tests/load_test_simulation.py`：20 Worker 多进程并发，HMAC-SHA256 签名请求，自愈重试（3 次 backoff）
+  - 验证：100/100 任务完成，111.7 tasks/s 吞吐量 ✓
+- **修复 health 端点缺失 tasks_succeeded 字段**：
+  - `src/gateway/server.py`：HealthResponse 新增 tasks_succeeded 字段，broker 新增 succeeded_count / claimed_count 属性
+  - 原因：Pydantic 验证导致 GET /api/health 返回 500

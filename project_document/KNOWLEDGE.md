@@ -160,6 +160,12 @@ A: 待补充
 - **模式**: 全局单例 `ledger`/`broker`/`registry`，同步 broker/ledger 调用通过 `loop.run_in_executor()` 跑在线程池中，不阻塞事件循环
 - **原因**: FastAPI 的 OpenAPI 文档自动生成，Worker 可以用任何 HTTP 客户端接入，无需 Python SDK
 
+### 决策22：HMAC-SHA256 签名认证 + Replay 保护
+- **背景**: Gateway Server 暴露在 HTTP 上，未认证的端点任何人都可以 claim/submit 任务，可能导致 Worker 冒充或重放攻击
+- **决策**: 使用 `@app.middleware("http")` 对所有 `POST /api/tasks/*` 请求进行签名验证 — `Signature = HMAC-SHA256(secret, body + "|" + timestamp + "|" + user_id)`，`X-Timestamp` 必须在服务端时钟 300s 窗口内。签名缺失/过期/无效返回 403
+- **模式**: 常量时间比较 `hmac.compare_digest()` 防止 timing attack；`/api/admin/setup` 和 `GET /api/health` 豁免签名认证
+- **原因**: 轻量级对称签名方案，无需 PKI 或 OAuth 基础设施，适合 DePIN Worker 网络中的机器间认证
+
 ## 学习资源
 - 待补充
 

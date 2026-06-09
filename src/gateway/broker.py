@@ -366,6 +366,20 @@ class TaskBroker:
         with self._lock:
             return len(self._results)
 
+    @property
+    def succeeded_count(self) -> int:
+        with self._lock:
+            return sum(
+                1 for s in self._status.values() if s["status"] == "SUCCESS"
+            )
+
+    @property
+    def claimed_count(self) -> int:
+        with self._lock:
+            return sum(
+                1 for s in self._status.values() if s["status"] == "CLAIMED"
+            )
+
     def worker_summary(self) -> Dict[str, int]:
         """Return {worker_id: completed_task_count}."""
         with self._lock:

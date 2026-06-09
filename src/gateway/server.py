@@ -1,17 +1,21 @@
 """Gateway Server — production-grade FastAPI task dispatcher for AIMS (Layer 5).
 
 Provides HTTP endpoints for DePIN workers to claim and submit tasks,
-with JSON Schema validation, tier-based gas billing, and slashing.
+with JSON Schema validation, tier-based gas billing, slashing, and
+HMAC-SHA256 signature authentication.
 """
 
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
+import json
 import logging
 import time
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 
 from src.gateway.broker import TaskBroker
@@ -19,6 +23,27 @@ from src.ledger.mock_counter import MockLedger
 from src.skills.registry import SkillRegistry
 
 logger = logging.getLogger(__name__)
+
+# ── Auth config ─────────────────────────────────────────────────────────────
+
+AIMS_SIGNING_SECRET: bytes = b"AIMS_MOCK_SECRET_2026"
+"""Shared secret for HMAC-SHA256 request signing (testing only)."""
+
+SIGNATURE_TIMEOUT: float = 300.0
+"""Maximum age (seconds) for a signed request — replay protection."""
+
+
+def compute_signature(body: bytes, timestamp: str, user_id: str) -> str:
+    """HMAC-SHA256 of ``body + b'|' + timestamp + b'|' + user_id``."""
+    msg = body + b"|" + timestamp.encode() + b"|" + user_id.encode()
+    return hmac.new(AIMS_SIGNING_SECRET, msg, hashlib.sha256).hexdigest()
+
+
+def verify_signature(body: bytes, timestamp: str, user_id: str, sig: str) -> bool:
+    """Constant-time comparison of the provided signature against the computed one."""
+    expected = compute_signature(body, timestamp, user_id)
+    return hmac.compare_digest(expected, sig)
+
 
 # ── Global instances (singleton per process) ──────────────────────────────
 
@@ -31,6 +56,67 @@ app = FastAPI(
     version="1.0.0",
     description="AIMS DePIN Network — Task Dispatch & Settlement Gateway",
 )
+
+
+# ── Signature verification middleware (applied to /api/tasks/*) ────────────
+
+
+@app.middleware("http")
+async def verify_signature_middleware(request: Request, call_next):
+    """Verify HMAC-SHA256 signature on all ``/api/tasks/*`` POST requests.
+
+    Required headers:
+      - ``X-Signature``  — hex-encoded HMAC-SHA256
+      - ``X-Timestamp``  — UNIX epoch seconds as string
+      - ``X-User-ID``    — worker/user identifier
+
+    The signature is computed over::
+
+        HMAC-SHA256(secret, body_bytes + "|" + timestamp + "|" + user_id)
+
+    Requests with a timestamp older than ``SIGNATURE_TIMEOUT`` (300 s)
+    are rejected as replay attempts.
+    """
+    path = request.url.path
+    if request.method == "POST" and path.startswith("/api/tasks/"):
+        sig = request.headers.get("x-signature", "")
+        ts = request.headers.get("x-timestamp", "")
+        uid = request.headers.get("x-user-id", "")
+
+        if not sig or not ts or not uid:
+            return Response(
+                status_code=403,
+                content=json.dumps({"detail": "Missing signature headers"}),
+                media_type="application/json",
+            )
+
+        # Replay protection — reject requests older than SIGNATURE_TIMEOUT
+        try:
+            ts_float = float(ts)
+        except ValueError:
+            return Response(
+                status_code=403,
+                content=json.dumps({"detail": "Invalid X-Timestamp"}),
+                media_type="application/json",
+            )
+
+        if abs(time.time() - ts_float) > SIGNATURE_TIMEOUT:
+            return Response(
+                status_code=403,
+                content=json.dumps({"detail": "Timestamp outside allowed window — possible replay"}),
+                media_type="application/json",
+            )
+
+        body = await request.body()
+        if not verify_signature(body, ts, uid, sig):
+            return Response(
+                status_code=403,
+                content=json.dumps({"detail": "Invalid signature"}),
+                media_type="application/json",
+            )
+
+    response = await call_next(request)
+    return response
 
 
 # ── Pydantic models ────────────────────────────────────────────────────────
@@ -73,6 +159,7 @@ class HealthResponse(BaseModel):
     status: str
     tasks_pending: int
     tasks_completed: int
+    tasks_succeeded: int
     workers_registered: int
     treasury_usdt: float
 
@@ -84,6 +171,53 @@ async def _run_in_thread(fn, *args, **kwargs):
     """Run a synchronous function in a thread pool so we don't block the event loop."""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+
+
+# ── Admin / test-only endpoints (no signature required) ────────────────────
+
+
+class SetupResponse(BaseModel):
+    seeded: bool
+    user_balance: float
+    tasks_published: int
+
+
+@app.post("/api/admin/setup", response_model=SetupResponse)
+async def admin_setup():
+    """Seed test data into the ledger and publish sample tasks.
+
+    Intended for load-test / unattended-testing scenarios only.
+    """
+    user_id = "loadtest_user"
+    dev_id = "loadtest_dev"
+
+    ledger.seed_usdt(user_id, 10000.0)
+    ledger.seed_dev_usdt(dev_id, 10000.0)
+
+    # Register a worker identity for the dev
+    from src.chain.settlement import ChainSettlement
+    chain = ChainSettlement("http://localhost")
+    chain.simulate_stripe_webhook(user_id, 10000.0, ledger)
+
+    count = 0
+    for i in range(100):
+        tid = await _run_in_thread(
+            broker.publish_task,
+            user_id=user_id,
+            asin=f"LOAD-{i:04d}",
+            developer_premium=0.01,
+            max_budget=2.0,
+            skill_id="amazon_scraper",
+            compute_tier=1,
+        )
+        if tid:
+            count += 1
+
+    return SetupResponse(
+        seeded=True,
+        user_balance=ledger.get_user_usdt(user_id),
+        tasks_published=count,
+    )
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────
@@ -217,6 +351,7 @@ async def health():
     """Health check returning broker and ledger state."""
     pending = await _run_in_thread(lambda: broker.pending_count)
     completed = await _run_in_thread(lambda: broker.completed_count)
+    succeeded = await _run_in_thread(lambda: broker.succeeded_count)
     treasury = await _run_in_thread(lambda: ledger.founder_treasury_usdt)
 
     # Count registered workers by inspecting staked collateral keys
@@ -227,6 +362,7 @@ async def health():
         status="healthy",
         tasks_pending=pending,
         tasks_completed=completed,
+        tasks_succeeded=succeeded,
         workers_registered=workers_registered,
         treasury_usdt=treasury,
     )
