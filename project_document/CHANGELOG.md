@@ -240,6 +240,7 @@
 - chore(bootstrap): 移除 hmac/hashlib 导入和 SIGNING_SECRET
 
 ### 新增
+- feat(contract): 创建 contracts/AIMSAgentGateway.sol — 生产级 Solidity 合约（USDC 托管、PoT 链上验证、70/25/5 三方分账、超时退款、Compound Nonce 防重放、开发者注册表）
 - feat(deploy): 全局域名 aims-gateway.fly.dev → api.aimsgateway.com（8 个文件）
 - fix(billing): check_user_balance() 自动注入 10 USDC 初始额度（InMemory 模式，签约通过的钱包自动获得）
 

@@ -26,7 +26,8 @@
 - **Domain Detection**：通过关键词匹配将用户 Prompt 分类到 7 个领域（security/git/code/data/devops/writing/general）
 - **Top-3 注入**：`get_top_for_domain()` 按 `Priority_Score = Frequency + (Staked × 10)` 排序，只注入匹配领域的前 3 个 Skill
 - **EIP-191 personal_sign 认证**：用户钱包签署原始请求体 bytes，网关 middleware 通过 `encode_defunct` + `Account.recover_message` 恢复签名者比对 X-Wallet-Address，替代 EIP-712 typed data（更简单，无需 nonce/deadline）
-- **Proof-of-Task (PoT)**：任务完成后网关 ECDSA 签署 `keccak256(taskId ++ workerAddress)`，Worker 持 PoT 调用合约 `claimReward()` 领取 80% 报酬
+- **Proof-of-Task (PoT)**：任务完成后网关 ECDSA 签署 `keccak256(taskId ++ workerAddress)`，Worker 持 PoT 调用合约 `claimReward()` 领取报酬
+- **结算分账 (70/25/5)**：每笔成功任务按 70% 开发者 / 25% Worker / 5% Treasury 自动分配，开发者未注册时份额归 Treasury
 - **合约部署底链**：Base（EVM 兼容，L2，低 Gas），USDC 6 位小数
 - **部署脚本硬编码 PLATFORM_OWNER**：`scripts/deploy_settlement.js` 中 `PLATFORM_OWNER = "0x08c9fd0a915f2b0856353850b8adea943f226bcf"`（Solidity `immutable`，烧入合约字节码，永久不可更改）
 - **Base 网络配置**：`hardhat.config.js` 包含 mainnet（chainId 8453）和 baseSepolia（chainId 84532）双网络，`DEPLOYER_PRIVATE_KEY` 环境变量注入
@@ -185,6 +186,14 @@ A: 待补充
 - **背景**: MVP 要快速验证核心路由逻辑
 - **决策**: 沙箱隔离不做（信任模式，仅种子开发者）+ 串行执行（不做并行 DAG）
 - **原因**: 沙箱和并行调度会增加数倍复杂度，MVP 场景线性的就够用了
+
+### AIMSAgentGateway 生产级合约架构
+- **70/25/5 三方分账**：70% 开发者（Skill 作者）、25% Worker（带宽执行者）、5% Treasury（协议可持续性），替代旧版 80/20 分账
+- **Compound Nonce 防重放**：`keccak256(abi.encodePacked(nonce, taskId))` 复合索引，即使 nonce 或 taskId 单独重复也不可重放
+- **Task 生命周期状态机**：`None → Settled → (Claimed | Refunded)`，三种状态互斥，防双重索赔/退款
+- **超时退款保护**：`refundTask()` 仅 Gateway 可触发，`MAX_TIMEOUT = 300s` 窗口，自动撤销结算并归还用户
+- **开发者注册表**：`skillIdHash → developer address` 映射，Gateway 通过 `registerDeveloper()` 注册，settleTask 时自动查表分配 70% 份额
+- **TaskSettlement 快照**：存储任务完整结算记录（worker/developer/各份额/时间戳），供各方独立 claim
 
 ### Raw ECDSA 签名模式（Hardhat / Solidity ECDSA.recover）
 - **不要使用 `wallet.signMessage()`**：该函数添加 `\x19Ethereum Signed Message:\n32` 前缀，Solidity `ECDSA.recover()` 期望的是 raw hash 签名

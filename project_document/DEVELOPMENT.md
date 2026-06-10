@@ -6,8 +6,9 @@
 
 ## 当前任务
 - [x] 编写 AIMS 智能合约（Solidity on Base）
-- [ ] 实现 Skill 市场的发布/检索/获取端到端流程
-- [ ] 集成 Anthropic SDK 做端到端 route() 测试
+- [ ] Phase 2: Python web3.py 后端重构 — 移除所有 InMemory 回退，纯链上调用
+- [ ] Phase 3: 生产安全 — Gas 重试、Nonce+UUID 复合防重放
+- [ ] Phase 4: E2E 测试 — Anvil/Hardhat 三方余额差验证
 
 ## 已完成任务清单
 
@@ -403,3 +404,8 @@
   - 描述: web3_utils.py（verify_personal_sign / verify_eip712_signature / generate_settlement_proof / verify_settlement_proof / _compute_settlement_message_hash）；18 个 Hardhat 测试覆盖 Deposits/Withdrawals/Settlement/Claim/OwnerFees/KeyRotation
   - 关键修复: Solidity claimReward PoT hash 增加 amount 参数保证跨平台一致性；raw ECDSA signing 替代 personal_sign 适配 ECDSA.recover()
   - 验证: 18/18 Hardhat 测试通过 ✓ + 147/147 Python 测试通过 ✓
+
+	- **AIMSAgentGateway 生产级智能合约（Phase 1）**
+	  - 状态: 已完成 (2026-06-10)
+	  - 文件: contracts/AIMSAgentGateway.sol
+	  - 描述: 生产级 Solidity 合约（USDC 托管、PoT 链上验证、70/25/5 三方分账、超时退款防护、Compound Nonce 防重放、开发者注册表）
