@@ -124,9 +124,11 @@ async def verify_wallet_middleware(request: Request, call_next):
     if path in EXEMPT_PATHS or path.startswith("/api/admin/"):
         return await call_next(request)
 
-    # GET requests to /api/tasks/ and /api/skills/ are public
+    # GET requests to public read endpoints are exempt from auth
     if request.method == "GET" and (
-        path.startswith("/api/tasks/") or path.startswith("/api/skills/")
+        path.startswith("/api/tasks/")
+        or path.startswith("/api/skills/")
+        or path.startswith("/api/wallet/balance")
     ):
         return await call_next(request)
 
