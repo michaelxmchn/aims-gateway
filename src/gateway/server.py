@@ -51,6 +51,17 @@ AIMS_CONTRACT_ADDRESS: str = os.getenv(
     "0x0000000000000000000000000000000000000001",
 )
 
+# ── Rate limiter config ──────────────────────────────────────────────────────
+
+RATE_LIMIT_WINDOW: int = 60
+"""Sliding window size in seconds for the per-wallet rate limiter."""
+
+RATE_LIMIT_MAX: int = 100
+"""Maximum requests per ``RATE_LIMIT_WINDOW`` per wallet address."""
+
+RATE_LIMIT_NS = "rate:limiter"
+"""Storage namespace for rate limiter counters."""
+
 # ── Global instances (singleton per process) ──────────────────────────────
 
 storage = Storage()
@@ -188,6 +199,22 @@ async def verify_eip712_middleware(request: Request, call_next):
         return Response(
             status_code=403,
             content=json.dumps({"detail": "Nonce already used — replay detected"}),
+            media_type="application/json",
+        )
+
+    # ── 5b. Sliding-window rate limiter (per wallet address) ──────────
+    window_start = int(time.time() // RATE_LIMIT_WINDOW)
+    rate_key = f"{RATE_LIMIT_NS}:{user_id}:{window_start}"
+    current_count = storage.incr(rate_key)
+    # Set expiry so the counter auto-cleans after two windows
+    if current_count == 1 and storage.is_persistent:
+        storage._redis.expire(rate_key, RATE_LIMIT_WINDOW * 2)
+    if current_count > RATE_LIMIT_MAX:
+        return Response(
+            status_code=429,
+            content=json.dumps({
+                "detail": f"Rate limit exceeded: {RATE_LIMIT_MAX} requests per {RATE_LIMIT_WINDOW}s per wallet",
+            }),
             media_type="application/json",
         )
 
@@ -675,11 +702,14 @@ async def submit_task(req: SubmitRequest):
 
     # ── 6. On-chain settlement & PoT generation ───────────────────────
     pot_sig: str | None = None
+    # Use the locked worker address from broker storage (not self-reported)
+    # to prevent worker-address tampering in the settlement flow.
+    locked_worker = claimed_worker
     settlement = await _run_in_thread(
         billing.request_settlement,
         req.task_id,
         task_meta.user_id,
-        req.worker_id,
+        locked_worker,
     )
     if settlement.get("status") == "COMPLETED":
         pot = settlement.get("pot")
@@ -900,6 +930,20 @@ async def run_skill(req: RunRequest):
             detail=(
                 f"Insufficient USDC balance. Required: {required_str}, "
                 f"balance: {balance_str}"
+            ),
+        )
+
+    # ── 3b. Budget control: max_fee vs minimum pipeline cost ────────────
+    num_steps = len(req.pipeline) if req.pipeline else 1
+    min_cost_atomic = BillingEngine.COST_PER_TASK_USDC * num_steps
+    max_budget_atomic = int(round(req.max_budget * 10**6))
+    if max_budget_atomic < min_cost_atomic:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Insufficient budget allocated. Minimum: "
+                f"{min_cost_atomic / 10**6:.6f} USDC for {num_steps} step(s), "
+                f"provided: {req.max_budget:.6f} USDC"
             ),
         )
 

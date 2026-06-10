@@ -98,21 +98,17 @@ def verify_eip712_signature(
 
 def _compute_settlement_message_hash(
     task_id_bytes: bytes,
-    user_address: str,
     worker_address: str,
     amount: int,
-    nonce: int,
 ) -> bytes:
-    """Compute ``keccak256(abi.encodePacked(taskId, user, worker, amount, nonce))``.
+    """Compute ``keccak256(abi.encodePacked(taskId, worker, amount))``.
 
-    Matches the Solidity ``AIMSSettlement.settleTask`` message format so a
-    signature produced here can be verified on-chain via ``ECDSA.recover``.
+    Matches the Solidity ``AIMSSettlement._verifyWorkerBinding`` message
+    format so a signature produced here can be verified on-chain.
     """
-    user_bytes = to_canonical_address(user_address)
     worker_bytes = to_canonical_address(worker_address)
     amount_bytes = amount.to_bytes(32, "big")
-    nonce_bytes = nonce.to_bytes(32, "big")
-    return keccak(task_id_bytes + user_bytes + worker_bytes + amount_bytes + nonce_bytes)
+    return keccak(task_id_bytes + worker_bytes + amount_bytes)
 
 
 def generate_settlement_proof(

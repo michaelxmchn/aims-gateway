@@ -202,11 +202,9 @@ class BillingEngine:
         if not self._gateway_signing_key:
             logger.warning("No gateway signing key configured — settlement won't verify on-chain")
             return ""
-        user_bytes = to_canonical_address(user_address)
         worker_bytes = to_canonical_address(worker_address)
         amount_bytes = amount.to_bytes(32, 'big')
-        nonce_bytes = nonce.to_bytes(32, 'big')
-        message_hash = keccak(task_id_bytes + user_bytes + worker_bytes + amount_bytes + nonce_bytes)
+        message_hash = keccak(task_id_bytes + worker_bytes + amount_bytes)
         signed = Account.unsafe_sign_hash(message_hash, self._gateway_signing_key)
         return signed.signature.hex()
 

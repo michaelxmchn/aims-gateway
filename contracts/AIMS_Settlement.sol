@@ -85,6 +85,10 @@ contract AIMSSettlement {
     );
 
     /// @notice Emitted when a worker successfully claims their reward.
+    /// @param taskId       The settled task identifier.
+    /// @param claimant     The worker that claimed.
+    /// @param workerAmount The worker's 80 % share.
+    /// @param ownerAmount  The platform owner's 20 % share (0 in claimReward, set in settleTask).
     event RewardClaimed(
         bytes32 indexed taskId,
         address indexed claimant,
@@ -168,10 +172,10 @@ contract AIMSSettlement {
         require(!settledTasks[taskId], "AIMSSettlement: task already settled");
         require(balances[user] >= amount, "AIMSSettlement: insufficient user balance");
 
-        // Recover the gateway signer from the ECDSA signature
-        bytes32 message = keccak256(abi.encodePacked(taskId, user, worker, amount, nonce));
-        address recovered = ECDSA.recover(message, gatewaySignature);
-        require(recovered == gateway, "AIMSSettlement: invalid gateway signature");
+        // ── Verify gateway signature via explicit ECDSA wrapper ─────────
+        // The gateway signs the worker-binding commitment
+        // keccak256(abi.encodePacked(taskId, worker, amount)).
+        _verifyWorkerBinding(taskId, worker, amount, gatewaySignature);
 
         usedNonces[nonce] = true;
         settledTasks[taskId] = true;
@@ -209,11 +213,12 @@ contract AIMSSettlement {
         uint256 workerAmount = pendingPayouts[msg.sender];
         require(workerAmount > 0, "AIMSSettlement: no pending payout for caller");
 
-        // Recover the signer from the PoT — includes the exact payout amount
-        // so the signature cannot be replayed for a different amount.
-        bytes32 message = keccak256(abi.encodePacked(taskId, msg.sender, workerAmount));
-        address recovered = ECDSA.recover(message, gatewaySignature);
-        require(recovered == gateway, "AIMSSettlement: invalid PoT signature");
+        // Recover the signer from the PoT — reuses the same ECDSA wrapper
+        // as settleTask.  Both verify keccak256(abi.encodePacked(taskId, claimant, amount))
+        // where amount is the full settlement in settleTask and the worker's
+        // 80 % share in claimReward — the different amounts provide implicit
+        // domain separation.
+        _verifyWorkerBinding(taskId, msg.sender, workerAmount, gatewaySignature);
 
         claimedTasks[taskId] = true;
 
@@ -237,6 +242,30 @@ contract AIMSSettlement {
         pendingPayouts[msg.sender] = 0;
         usdc.safeTransfer(msg.sender, amount);
         emit OwnerFeesClaimed(msg.sender, amount);
+    }
+
+    // ── ECDSA verification wrapper ────────────────────────────────────────────
+
+    /// @notice Explicitly verify that the gateway signed a binding commitment
+    ///         ``keccak256(abi.encodePacked(taskId, worker, amount))`` for this
+    ///         worker.  Uses OpenZeppelin's ``ECDSA.tryRecover`` for transparent
+    ///         error handling (no magic ``ecrecover`` inlined).
+    /// @param taskId    The task identifier (bytes32).
+    /// @param worker    The worker address.
+    /// @param amount    The settlement amount (USDC, 6 decimals).
+    /// @param signature The ECDSA signature (r, s, v — 65 bytes).
+    function _verifyWorkerBinding(
+        bytes32 taskId,
+        address worker,
+        uint256 amount,
+        bytes calldata signature
+    ) internal view {
+        bytes32 message = keccak256(abi.encodePacked(taskId, worker, amount));
+        (address recovered, ECDSA.RecoverError err, ) = ECDSA.tryRecover(message, signature);
+        require(
+            err == ECDSA.RecoverError.NoError && recovered == gateway,
+            "AIMSSettlement: invalid gateway signature"
+        );
     }
 
     // ── Admin ────────────────────────────────────────────────────────────────

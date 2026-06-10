@@ -58,11 +58,13 @@ describe("AIMSSettlement", function () {
     return ethers.Signature.from(sigObj).serialized;
   }
 
-  /** Build settleTask message hash matching Solidity ABI-encodePacked. */
-  function buildSettleMsg(taskId, user, worker, amount, nonce) {
+  /** Build settleTask message hash matching Solidity ABI-encodePacked.
+   *  Format: keccak256(abi.encodePacked(taskId, worker, amount))
+   *  (user and nonce are function params but not in the signed message.) */
+  function buildSettleMsg(taskId, worker, amount) {
     return ethers.solidityPackedKeccak256(
-      ["bytes32", "address", "address", "uint256", "uint256"],
-      [taskId, user, worker, amount, nonce]
+      ["bytes32", "address", "uint256"],
+      [taskId, worker, amount]
     );
   }
 
@@ -126,7 +128,7 @@ describe("AIMSSettlement", function () {
     });
 
     it("should settle a task and split 80/20", async function () {
-      const hash = buildSettleMsg(taskId, user, worker, AMOUNT, nonce);
+      const hash = buildSettleMsg(taskId, worker, AMOUNT);
       const sig = rawSign(hash);
 
       await settlement
@@ -146,7 +148,7 @@ describe("AIMSSettlement", function () {
     });
 
     it("should reject double-settle of the same task", async function () {
-      const hash = buildSettleMsg(taskId, user, worker, AMOUNT, nonce);
+      const hash = buildSettleMsg(taskId, worker, AMOUNT);
       const sig = rawSign(hash);
 
       await settlement
@@ -156,7 +158,7 @@ describe("AIMSSettlement", function () {
       // Use a different nonce so we pass the nonce check and hit the
       // task-already-settled check instead.
       const nonce2 = 2;
-      const hash2 = buildSettleMsg(taskId, user, worker, AMOUNT, nonce2);
+      const hash2 = buildSettleMsg(taskId, worker, AMOUNT);
       const sig2 = rawSign(hash2);
       await expect(
         settlement
@@ -166,14 +168,14 @@ describe("AIMSSettlement", function () {
     });
 
     it("should reject nonce reuse", async function () {
-      const hash = buildSettleMsg(taskId, user, worker, AMOUNT, nonce);
+      const hash = buildSettleMsg(taskId, worker, AMOUNT);
       const sig = rawSign(hash);
       await settlement
         .connect(workerSigner)
         .settleTask(taskId, user, worker, AMOUNT, nonce, sig);
 
       const taskId2 = ethers.solidityPackedKeccak256(["string"], ["task-0002"]);
-      const hash2 = buildSettleMsg(taskId2, user, worker, AMOUNT, nonce);
+      const hash2 = buildSettleMsg(taskId2, worker, AMOUNT);
       const sig2 = rawSign(hash2);
       await expect(
         settlement
@@ -187,7 +189,7 @@ describe("AIMSSettlement", function () {
       // valid signature that won't recover to the gateway address.
       const wrongHash = buildSettleMsg(
         ethers.solidityPackedKeccak256(["string"], ["wrong-task"]),
-        user, worker, AMOUNT, nonce
+        worker, AMOUNT
       );
       const badSig = rawSign(wrongHash);
       await expect(
@@ -198,7 +200,7 @@ describe("AIMSSettlement", function () {
     });
 
     it("should reject when user has insufficient balance", async function () {
-      const hash = buildSettleMsg(taskId, user, worker, DEPOSIT + 1n, nonce);
+      const hash = buildSettleMsg(taskId, worker, DEPOSIT + 1n);
       const sig = rawSign(hash);
       await expect(
         settlement
@@ -220,7 +222,7 @@ describe("AIMSSettlement", function () {
       workerShare = (AMOUNT * WORKER_BPS) / BPS_DENOM;
 
       // Settle a task first
-      const hash = buildSettleMsg(taskId, user, worker, AMOUNT, nonce);
+      const hash = buildSettleMsg(taskId, worker, AMOUNT);
       const sig = rawSign(hash);
       await settlement
         .connect(workerSigner)
@@ -256,7 +258,7 @@ describe("AIMSSettlement", function () {
       const fakeSig = rawSign(wrongPotHash);
       await expect(
         settlement.connect(workerSigner).claimReward(taskId, fakeSig)
-      ).to.be.revertedWith("AIMSSettlement: invalid PoT signature");
+      ).to.be.revertedWith("AIMSSettlement: invalid gateway signature");
     });
 
     it("should reject claim with wrong-amount PoT signature", async function () {
@@ -265,7 +267,7 @@ describe("AIMSSettlement", function () {
       const wrongPotSig = rawSign(wrongPotHash);
       await expect(
         settlement.connect(workerSigner).claimReward(taskId, wrongPotSig)
-      ).to.be.revertedWith("AIMSSettlement: invalid PoT signature");
+      ).to.be.revertedWith("AIMSSettlement: invalid gateway signature");
     });
   });
 
@@ -279,7 +281,7 @@ describe("AIMSSettlement", function () {
       taskId = ethers.solidityPackedKeccak256(["string"], ["task-0001"]);
       nonce = 1;
 
-      const hash = buildSettleMsg(taskId, user, worker, AMOUNT, nonce);
+      const hash = buildSettleMsg(taskId, worker, AMOUNT);
       const sig = rawSign(hash);
       await settlement
         .connect(workerSigner)

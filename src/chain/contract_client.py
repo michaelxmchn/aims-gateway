@@ -147,16 +147,16 @@ class InMemorySettlementContract(SettlementContractClient):
     def _compute_settlement_hash(
         task_id: bytes, user: str, worker: str, amount: int, nonce: int,
     ) -> bytes:
-        """Compute ``keccak256(abi.encodePacked(taskId, user, worker, amount, nonce))``
-        in Python, matching the Solidity contract's message format.
+        """Compute ``keccak256(abi.encodePacked(taskId, worker, amount))``
+        in Python, matching the Solidity contract's ``_verifyWorkerBinding``
+        message format.  User and nonce are function parameters but are not
+        part of the signed message.
         """
         from eth_utils import keccak as _keccak, to_canonical_address
 
-        user_bytes = to_canonical_address(user)
         worker_bytes = to_canonical_address(worker)
         amount_bytes = amount.to_bytes(32, 'big')
-        nonce_bytes = nonce.to_bytes(32, 'big')
-        return _keccak(task_id + user_bytes + worker_bytes + amount_bytes + nonce_bytes)
+        return _keccak(task_id + worker_bytes + amount_bytes)
 
     @staticmethod
     def _compute_pot_hash(task_id: bytes, claimant: str, amount: int) -> bytes:

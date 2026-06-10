@@ -50,12 +50,13 @@ def _settle_sig(
 
     Produces the same signature that ``BillingEngine._sign_settlement``
     creates, matching the Solidity ``ECDSA.recover`` path.
+
+    The gateway signs ``keccak256(abi.encodePacked(taskId, worker, amount))``
+    — user and nonce are function parameters only, not part of the signed hash.
     """
-    user_bytes = to_canonical_address(user)
     worker_bytes = to_canonical_address(worker)
     amount_bytes = amount.to_bytes(32, 'big')
-    nonce_bytes = nonce.to_bytes(32, 'big')
-    msg_hash = keccak(task_id + user_bytes + worker_bytes + amount_bytes + nonce_bytes)
+    msg_hash = keccak(task_id + worker_bytes + amount_bytes)
     signed = Account.unsafe_sign_hash(msg_hash, GATEWAY_KEY)
     return signed.signature.hex()
 
@@ -176,11 +177,9 @@ class TestSettleTask:
         task_id = keccak(text="task-001")
         # Sign with USER's key instead of gateway — recovered signer won't match
         user_key = Account.create().key.hex()
-        user_bytes = to_canonical_address(USER)
         worker_bytes = to_canonical_address(WORKER)
         amount_bytes = (50_000).to_bytes(32, 'big')
-        nonce_bytes = (0).to_bytes(32, 'big')
-        msg_hash = keccak(task_id + user_bytes + worker_bytes + amount_bytes + nonce_bytes)
+        msg_hash = keccak(task_id + worker_bytes + amount_bytes)
         bad_sig = Account.unsafe_sign_hash(msg_hash, user_key).signature.hex()
         with pytest.raises(PermissionError, match="invalid gateway signature"):
             contract.settle_task(task_id, USER, WORKER, 50_000, 0, GATEWAY, bad_sig)
