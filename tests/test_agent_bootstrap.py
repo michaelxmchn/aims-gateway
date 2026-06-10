@@ -77,7 +77,7 @@ class TestAgentBootstrap:
         """Agent reads authentication scheme from discovery response."""
         data = client.get("/api/discovery").json()
         auth = data.get("authentication", {})
-        assert auth.get("scheme") == "HMAC-SHA256"
+        assert auth.get("scheme") == "EIP-712"
         assert "X-Signature" in auth.get("headers", {})
 
     def test_step2_documentation_root_reachable(self) -> None:

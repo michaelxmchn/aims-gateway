@@ -1,11 +1,11 @@
-<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-09 | Hermes-Verified -->
+<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-10 | Hermes-Verified -->
 
 # 开发工作文档
 
 > **格式要求**: 严格遵循 `.claude/output-styles/bullet-points.md` 格式规范
 
 ## 当前任务
-- [ ] 编写 AIMS 智能合约（Solidity on Base）
+- [x] 编写 AIMS 智能合约（Solidity on Base）
 - [ ] 实现 Skill 市场的发布/检索/获取端到端流程
 - [ ] 集成 Anthropic SDK 做端到端 route() 测试
 
@@ -338,7 +338,7 @@
 - **Hermes 元数据标记**
   - 状态: 已完成 (2026-06-09)
   - 文件: 全部 12 个 markdown 文件
-  - 描述: 为全部 markdown 文件添加 `<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-09 | Hermes-Verified -->` 隐藏头部注释
+  - 描述: 为全部 markdown 文件添加 `<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-10 | Hermes-Verified -->` 隐藏头部注释
 - **文档根 URL 指向 GitHub Raw**
   - 状态: 已完成 (2026-06-09)
   - 文件: src/gateway/server.py
@@ -352,3 +352,11 @@
   - 状态: 已完成 (2026-06-09)
   - 结果: 113/113 PASSED ✓（35 billing + 17 discovery + 14 agent bootstrap + 47 单元测试）
   - 描述: 全部测试通过，覆盖 credit 计费（余额/预留/结算/账本/生命周期）、discovery 协议、agent bootstrap 协议和核心单元测试
+- **Web3/On-Chain Billing Re-architecture (Layer 5)**
+  - 状态: 已完成 (2026-06-10)
+  - 文件: src/chain/eip712.py / pot.py / nonce_manager.py / contract_client.py / abi.py / contracts/AIMS_Settlement.sol / src/gateway/server.py / billing.py / settlement.py / wallet.py / requirements.txt
+  - 描述: EIP-712 签名认证（替换 HMAC-SHA256）+ NonceManager 每地址单调 nonce + POTManager Proof-of-Task（ECDSA 签署）+ InMemorySettlementContract（纯 Python 镜像 Solidity）+ Web3SettlementContract（web3.py 生产封装）+ Solidity 合约（80/20 分账、双重防重放）+ BillingEngine 重写为 on-chain orchestrator + Wallet ECDSA 密钥对
+- **完整测试套件验证 (2026-06-10)**
+  - 状态: 已完成 (2026-06-10)
+  - 结果: 147/147 PASSED ✓（11 auth + 24 contract + 9 eip712 + 9 pot + 14 billing + 17 discovery + 14 agent bootstrap + 9 manifest + 16 registry + 12 log + 11 sandbox）
+  - 描述: 全部测试通过，涵盖 EIP-712 认证、智能合约交互、Proof-of-Task、billing orchestrator 和所有现有模块

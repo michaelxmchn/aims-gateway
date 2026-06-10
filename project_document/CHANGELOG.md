@@ -1,4 +1,4 @@
-<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-09 | Hermes-Verified -->
+<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-10 | Hermes-Verified -->
 
 # 变更日志
 
@@ -162,6 +162,34 @@
 
 ### 重构
 - 暂无
+
+## [2026-06-10]
+### 新增
+- feat(chain): 创建 src/chain/eip712.py — EIP-712 签名/验签（sign_eip712_message / verify_eip712_signature），支持 AIMSRunRequest/AIMSSubmitRequest/AIMSDepositRequest 三种类型
+- feat(chain): 创建 src/chain/nonce_manager.py — NonceManager 每地址单调 nonce 追踪（Storage 持久化）
+- feat(chain): 创建 src/chain/pot.py — POTManager 生成/验证/存储 Proof-of-Task（ECDSA 签名 keccak256(taskId ++ workerAddress)）
+- feat(chain): 创建 src/chain/contract_client.py — SettlementContractClient ABC + InMemorySettlementContract（纯 Python 镜像 Solidity）+ Web3SettlementContract（web3.py 生产封装）
+- feat(chain): 创建 src/chain/abi.py — 合约 ABI JSON 常量和 USDC 6 位小数常量
+- feat(contracts): 创建 contracts/AIMS_Settlement.sol — Solidity 合约（deposit/withdraw/settleTask/claimReward/claimOwnerFees，80/20 分账，nonce + taskId 双重防重放）
+- feat(server): EIP-712 签名认证中间件 — 替换 HMAC-SHA256，验证 EVM 地址/时间窗口/deadline/nonce/签名恢复
+- feat(server): POST /api/tasks/{task_id}/pot — 获取 Proof-of-Task 端点
+- feat(test): 创建 tests/test_eip712.py — 9 个测试（sign/verify/wrong_signer/tampered/value_builders）
+- feat(test): 创建 tests/test_pot.py — 9 个测试（generate/verify/tamper/storage）
+- feat(test): 创建 tests/test_contract_interactions.py — 24 个测试（deposit/withdraw/settle/claim/split/replay）
+- feat(test): 创建 tests/test_server_auth.py — 11 个测试（valid/missing/expired/wrong_signer/nonce_replay/exempt_paths）
+
+### 修改
+- refactor(billing): BillingEngine 重写为 on-chain settlement orchestrator — 移除 Redis 余额管理，新增 check_user_balance() + request_settlement() + generate_pot()
+- refactor(wallet): 替换 UUID-based SessionKey 为 ECDSA 密钥对（eth_account.Account.create()）
+- refactor(settlement): ChainSettlement 新增 contract 属性惰性初始化（Sentinel 地址 ↔ InMemory/Web3）
+- refactor(server): 中间件 HMAC-SHA256 → EIP-712；submit_task 集成 billing.request_settlement() + PoT 生成；wallet_deposit/wallet_balance 代理到合约
+- refactor(test_billing): 重写为 14 个测试（check_balance/request_settlement/insufficient/nonce/PoT）
+- refactor(test_discovery): 认证断言 HMAC-SHA256 → EIP-712，添加 X-Nonce/X-Deadline 头部检查
+- refactor(requirements): 添加 web3>=7.0 / eth-account>=0.12 / eth-hash[pycryptodome] / pycryptodome
+
+### 修复
+- fix(test_auth): 修复 EIP-712 paramsHash 不匹配 — 测试签名用空 params 而 body 含 search_term，导致 middleware 重建 hash 不一致返回 403
+- fix(test_bootstrap): 更新认证 scheme 断言 HMAC-SHA256 → EIP-712
 
 ---
 *本文档由 Claude Code 自动维护，请勿手动编辑格式*

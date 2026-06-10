@@ -67,9 +67,9 @@ class TestDiscoveryEndpoint:
 
     def test_authentication_section(self) -> None:
         auth = self.data["authentication"]
-        assert auth["scheme"] == "HMAC-SHA256"
+        assert auth["scheme"] == "EIP-712"
         assert "headers" in auth
-        for hdr in ("X-Signature", "X-Timestamp", "X-User-ID"):
+        for hdr in ("X-Signature", "X-Timestamp", "X-User-ID", "X-Nonce", "X-Deadline"):
             assert hdr in auth["headers"], f"Missing auth header: {hdr}"
         assert "example_curl" in auth
 
@@ -146,6 +146,7 @@ class TestDiscoveryEndpoint:
             "GET /api/discovery",
             "POST /api/wallet/deposit",
             "GET /api/wallet/balance",
+            "GET /api/tasks/{task_id}/pot",
         }
         missing = critical - paths_found
         assert not missing, f"Critical paths missing from discovery: {missing}"

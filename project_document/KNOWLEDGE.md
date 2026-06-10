@@ -1,4 +1,4 @@
-<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-09 | Hermes-Verified -->
+<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-10 | Hermes-Verified -->
 
 # 项目知识库
 
@@ -7,7 +7,19 @@
 ## 代码模式
 
 ### 认证模式
-- 待补充（不使用传统用户登录，用户通过 AI 客户端（Claude Code/Cursor 等）本地操作，链上身份通过智能钱包关联）
+- **EIP-712 签名认证**：替代 HMAC-SHA256，所有 `/api/run`、`/api/tasks/claim`、`/api/tasks/submit`、`/api/wallet/*` POST 请求必须携带 5 个头部：
+  - `X-User-ID`：EVM 地址（0x + 40 hex）
+  - `X-Signature`：EIP-712 typed data 签名（130 hex chars）
+  - `X-Timestamp`：UNIX 秒（300s 窗口防 replay）
+  - `X-Nonce`：每地址单调递增 nonce（防 replay）
+  - `X-Deadline`：签名过期时间
+- **Middleware 验证流程**：免认证路径跳过 → 校验 EVM 地址格式 → 时间窗口 → deadline → nonce 是否已用 → 从 body 重建 EIP-712 value → `verify_eip712_signature()` 恢复签名者 → 与 X-User-ID 比对 → 标记 nonce 已用
+- **关键约束**：签名时 `paramsHash` 由 `keccak(json.dumps(params, sort_keys=True))` 计算，测试必须确保签名时使用的 `params` 与请求 body 中的 `params` 完全一致，否则 middleware 重建的 hash 不匹配导致 403
+- **eth_account 0.13.x API 注意事项**：
+  - `sign_typed_data()` 三参数形式的 `message_types` 必须排除 `EIP712Domain` key（使用 `_strip_domain()` 辅助函数）
+  - `recover_typed_data()` 在 0.13.x 已移除，改用 `encode_typed_data()` + `Account.recover_message()`
+  - `sign_hash` 是私有方法，改用 `Account.unsafe_sign_hash()`
+  - `HexBytes.hex()` 返回的 hex 无 `0x` 前缀（130 chars for 65 bytes），不是 132 chars
 
 ### AIMS 链上架构模式
 - **链上仅做两件事**：结算（扣分/加分）+ 计数器（+1 状态证明）
@@ -16,6 +28,10 @@
 - **意图驱动路由**：万能入口 Skill 将用户需求拆解为 DAG 工作流，自动编排多个原子 Skill
 - **Domain Detection**：通过关键词匹配将用户 Prompt 分类到 7 个领域（security/git/code/data/devops/writing/general）
 - **Top-3 注入**：`get_top_for_domain()` 按 `Priority_Score = Frequency + (Staked × 10)` 排序，只注入匹配领域的前 3 个 Skill
+- **EIP-712 Typed Data 认证**：用户钱包签署 `AIMSRunRequest`（skillId + paramsHash + nonce + deadline），网关 middleware 恢复签名者比对 X-User-ID，替换旧 HMAC-SHA256
+- **Proof-of-Task (PoT)**：任务完成后网关 ECDSA 签署 `keccak256(taskId ++ workerAddress)`，Worker 持 PoT 调用合约 `claimReward()` 领取 80% 报酬
+- **Nonce 防重放**：每地址单调递增 nonce，`keccak256(abi.encode(nonce, taskId))` 双重 guard
+- **合约部署底链**：Base（EVM 兼容，L2，低 Gas），USDC 6 位小数，默认 chainId=8453（环境变量 `AIMS_CHAIN_ID`）
 
 ### Document-Driven 架构
 - **子目录结构**：`skills/manifests/<skill_name>/manifest.json`（元数据）+ `rules.md`（Markdown 规则文件）

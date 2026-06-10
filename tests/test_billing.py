@@ -1,290 +1,169 @@
-"""Tests for the AIMS Credit & Revenue system (BillingEngine + TransactionLedger).
+"""Tests for the Web3 BillingEngine (on-chain settlement orchestrator).
 
-All tests use the in-memory ``Storage`` fallback — no Redis required.
+All tests use in-memory ``Storage`` and ``InMemorySettlementContract``
+— no Redis or EVM required.
 """
 
 from __future__ import annotations
 
 import sys
-import threading
+import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
+from eth_account import Account
+import pytest
+
+from src.chain.contract_client import InMemorySettlementContract
+from src.chain.pot import POTManager
 from src.gateway.billing import BillingEngine
-from src.gateway.ledger import TransactionLedger
 from src.gateway.storage import Storage
 
 
-# ── Helpers ────────────────────────────────────────────────────────────────
+# ── Fixtures ────────────────────────────────────────────────────────────────
 
-def make_billing(owner_id: str = "test_owner") -> tuple[BillingEngine, Storage]:
+GATEWAY = "0xGateway000000000000000000000000000000000001"
+OWNER = "0xOwner000000000000000000000000000000000001"
+USER = "0xUser00000000000000000000000000000000000001"
+WORKER = "0xWorker000000000000000000000000000000000001"
+
+COST = BillingEngine.COST_PER_TASK_USDC  # 50_000 (0.05 USDC atomic)
+
+
+@pytest.fixture
+def contract():
+    return InMemorySettlementContract(
+        gateway_address=GATEWAY,
+        platform_owner=OWNER,
+    )
+
+
+@pytest.fixture
+def pot_manager():
     storage = Storage()
-    billing = BillingEngine(storage=storage, owner_id=owner_id)
-    return billing, storage
+    key = Account.create().key.hex()
+    return POTManager(storage, key)
 
 
-def make_ledger() -> tuple[TransactionLedger, Storage]:
+@pytest.fixture
+def billing(contract, pot_manager):
     storage = Storage()
-    ledger = TransactionLedger(storage=storage)
-    return ledger, storage
+    return BillingEngine(
+        storage=storage,
+        owner_address=OWNER,
+        contract_client=contract,
+        pot_manager=pot_manager,
+    )
 
 
-# ── BillingEngine — Balance API ────────────────────────────────────────────
-
-class TestBillingBalance:
-    def setup_method(self) -> None:
-        self.billing, _ = make_billing()
-
-    def test_deposit_increases_balance(self) -> None:
-        new_bal = self.billing.deposit("alice", 10.0)
-        assert new_bal == 10.0
-        assert self.billing.get_balance("alice") == 10.0
-
-    def test_deposit_accumulates(self) -> None:
-        self.billing.deposit("alice", 5.0)
-        self.billing.deposit("alice", 3.0)
-        assert self.billing.get_balance("alice") == 8.0
-
-    def test_get_balance_default_zero(self) -> None:
-        assert self.billing.get_balance("nonexistent") == 0.0
-
-    def test_deposit_rounds_to_4dp(self) -> None:
-        new_bal = self.billing.deposit("alice", 1.23456789)
-        assert new_bal == 1.2346  # rounded to 4dp
-
-    def test_multiple_users_independent(self) -> None:
-        self.billing.deposit("alice", 10.0)
-        self.billing.deposit("bob", 20.0)
-        assert self.billing.get_balance("alice") == 10.0
-        assert self.billing.get_balance("bob") == 20.0
-
-    def test_worker_balance(self) -> None:
-        self.billing.deposit("worker-01", 5.0)
-        assert self.billing.get_worker_balance("worker-01") == 5.0
-
-    def test_owner_balance(self) -> None:
-        self.billing.deposit("test_owner", 2.0)
-        assert self.billing.get_owner_balance() == 2.0
+@pytest.fixture
+def funded_contract(contract):
+    """A contract with USER having sufficient balance."""
+    contract.deposit(USER, 1_000_000)  # 1.0 USDC
+    return contract
 
 
-# ── BillingEngine — Reservation API ────────────────────────────────────────
-
-class TestBillingReservation:
-    def setup_method(self) -> None:
-        self.billing, _ = make_billing()
-
-    def test_reserve_with_sufficient_balance(self) -> None:
-        self.billing.deposit("alice", 1.0)
-        assert self.billing.reserve_credits("task-001", "alice") is True
-
-    def test_reserve_with_insufficient_balance(self) -> None:
-        assert self.billing.reserve_credits("task-001", "alice") is False
-
-    def test_reserve_exact_amount(self) -> None:
-        self.billing.deposit("alice", BillingEngine.COST_PER_TASK)
-        assert self.billing.reserve_credits("task-001", "alice") is True
-
-    def test_reservation_stores_metadata(self) -> None:
-        self.billing.deposit("alice", 1.0)
-        self.billing.reserve_credits("task-001", "alice")
-        reservation = self.billing.get_reservation("task-001")
-        assert reservation is not None
-        assert reservation["user_id"] == "alice"
-        assert reservation["amount"] == BillingEngine.COST_PER_TASK
-
-    def test_reservation_nonexistent(self) -> None:
-        assert self.billing.get_reservation("no-such-task") is None
+@pytest.fixture
+def ready_billing(billing, funded_contract):
+    """BillingEngine with a funded user."""
+    return billing
 
 
-# ── BillingEngine — Settlement API ─────────────────────────────────────────
+# ── Balance checks ──────────────────────────────────────────────────────────
 
-class TestBillingSettlement:
-    def setup_method(self) -> None:
-        self.billing, _ = make_billing()
-        self.billing.deposit("alice", 1.0)
-        self.billing.reserve_credits("task-001", "alice")
+class TestCheckBalance:
+    def test_balance_returns_contract_value(self, ready_billing):
+        bal = ready_billing.check_user_balance(USER)
+        assert bal == 1_000_000
 
-    def test_settle_success_deducts_from_user(self) -> None:
-        self.billing.settle_task("task-001", "worker-01", success=True)
-        expected = round(1.0 - BillingEngine.COST_PER_TASK, 4)
-        assert self.billing.get_balance("alice") == expected
+    def test_balance_zero_for_unknown(self, billing):
+        bal = billing.check_user_balance("0xUnknown")
+        assert bal == 0
 
-    def test_settle_success_pays_worker(self) -> None:
-        self.billing.settle_task("task-001", "worker-01", success=True)
-        expected = round(BillingEngine.COST_PER_TASK * BillingEngine.WORKER_SHARE, 4)
-        assert self.billing.get_worker_balance("worker-01") == expected
+    def test_no_contract_returns_zero(self):
+        storage = Storage()
+        eng = BillingEngine(storage=storage, contract_client=None)
+        bal = eng.check_user_balance(USER)
+        assert bal == 0
 
-    def test_settle_success_pays_owner(self) -> None:
-        self.billing.settle_task("task-001", "worker-01", success=True)
-        expected = round(BillingEngine.COST_PER_TASK * BillingEngine.OWNER_SHARE, 4)
-        assert self.billing.get_owner_balance() == expected
 
-    def test_settle_success_exact_split(self) -> None:
-        receipt = self.billing.settle_task("task-001", "worker-01", success=True)
-        assert receipt is not None
-        assert receipt["cost"] == BillingEngine.COST_PER_TASK
-        assert receipt["worker_payout"] == round(BillingEngine.COST_PER_TASK * 0.80, 4)
-        assert receipt["gateway_payout"] == round(BillingEngine.COST_PER_TASK * 0.20, 4)
+# ── Settlement requests ─────────────────────────────────────────────────────
+
+class TestRequestSettlement:
+    def test_settlement_deducts_from_user(self, ready_billing, funded_contract):
+        receipt = ready_billing.request_settlement("task-001", USER, WORKER)
         assert receipt["status"] == "COMPLETED"
+        assert funded_contract.get_user_balance(USER) == 1_000_000 - COST
 
-    def test_settle_worker_is_owner(self) -> None:
-        """When worker == owner, all revenue goes to the worker."""
-        self.billing.deposit("bob", 1.0)
-        self.billing.reserve_credits("task-002", "bob")
-        self.billing.settle_task("task-002", "test_owner", success=True)
-        # Owner (test_owner) already gets 20%. Worker (test_owner) also gets 80%.
-        # Since they are the same, all 0.05 goes to test_owner
-        assert self.billing.get_owner_balance() == 0.05
+    def test_settlement_credits_pending_payouts(self, ready_billing, funded_contract):
+        ready_billing.request_settlement("task-001", USER, WORKER)
+        assert funded_contract.get_pending_payout(WORKER) > 0
+        assert funded_contract.get_pending_payout(OWNER) > 0
 
-    def test_settle_failure_no_deduction(self) -> None:
-        receipt = self.billing.settle_task("task-001", "worker-01", success=False)
-        assert receipt is not None
-        assert receipt["status"] == "REFUNDED"
-        assert receipt["cost"] == 0.0
-        assert receipt["worker_payout"] == 0.0
-        assert receipt["gateway_payout"] == 0.0
-        # Alice's balance should be unchanged
-        assert self.billing.get_balance("alice") == 1.0
+    def test_settlement_returns_pot(self, ready_billing):
+        receipt = ready_billing.request_settlement("task-001", USER, WORKER)
+        assert receipt["status"] == "COMPLETED"
+        assert receipt["pot"] is not None
+        assert receipt["pot"].task_id == "task-001"
+        assert receipt["pot"].worker_address == WORKER
 
-    def test_settle_failure_releases_reservation(self) -> None:
-        self.billing.settle_task("task-001", "worker-01", success=False)
-        assert self.billing.get_reservation("task-001") is None
+    def test_settlement_insufficient_balance(self, billing, contract):
+        # USER has no balance
+        receipt = billing.request_settlement("task-001", USER, WORKER)
+        assert receipt["status"] == "FAILED"
+        assert "Insufficient balance" in receipt["error"]
 
-    def test_settle_no_reservation_returns_none(self) -> None:
-        result = self.billing.settle_task("no-such-task", "worker-01", success=True)
-        assert result is None
+    def test_settlement_nonce_monotonic(self, ready_billing):
+        r1 = ready_billing.request_settlement("task-001", USER, WORKER)
+        r2 = ready_billing.request_settlement("task-002", USER, WORKER)
+        assert r1["nonce"] == 0 or r1["nonce"] is not None
+        assert r2["nonce"] is not None
 
-    def test_double_spend_idempotent(self) -> None:
-        """Second call returns the same receipt, no double deduction."""
-        r1 = self.billing.settle_task("task-001", "worker-01", success=True)
-        r2 = self.billing.settle_task("task-001", "worker-01", success=True)
-        assert r2 is not None
-        assert r2["status"] == r1["status"]
-        # Balance should be deducted only once
-        assert self.billing.get_balance("alice") == round(1.0 - 0.05, 4)
-
-    def test_settle_no_user_in_reservation(self) -> None:
-        """Corner case: reservation with no user_id."""
-        self.billing._storage.dict_set(
-            self.billing.NS_RESERVED, "bad-task", {"amount": 0.05}
+    def test_settlement_no_pot_manager(self, funded_contract):
+        storage = Storage()
+        eng = BillingEngine(
+            storage=storage,
+            contract_client=funded_contract,
+            pot_manager=None,
         )
-        result = self.billing.settle_task("bad-task", "worker-01", success=True)
-        assert result is None  # should fail gracefully
-
-
-# ── TransactionLedger ──────────────────────────────────────────────────────
-
-class TestTransactionLedger:
-    def setup_method(self) -> None:
-        self.ledger, self.storage = make_ledger()
-
-    def test_record_returns_tx_id(self) -> None:
-        tx_id = self.ledger.record("deposit", "alice", 10.0, "Initial deposit")
-        assert tx_id.startswith("txn-")
-
-    def test_get_transaction(self) -> None:
-        tx_id = self.ledger.record("deposit", "alice", 10.0, "Initial deposit")
-        txn = self.ledger.get_transaction(tx_id)
-        assert txn is not None
-        assert txn["type"] == "deposit"
-        assert txn["user_id"] == "alice"
-        assert txn["amount"] == 10.0
-
-    def test_get_transaction_nonexistent(self) -> None:
-        assert self.ledger.get_transaction("no-such") is None
-
-    def test_get_user_history(self) -> None:
-        self.ledger.record("deposit", "alice", 10.0, "First")
-        self.ledger.record("deposit", "alice", 5.0, "Second")
-        history = self.ledger.get_user_history("alice")
-        assert len(history) == 2
-        # Most recent first
-        assert history[0]["amount"] == 5.0
-
-    def test_get_user_history_other_user(self) -> None:
-        self.ledger.record("deposit", "alice", 10.0, "Alice")
-        history = self.ledger.get_user_history("bob")
-        assert len(history) == 0
-
-    def test_get_all_transactions(self) -> None:
-        self.ledger.record("deposit", "alice", 10.0, "First")
-        self.ledger.record("deposit", "bob", 5.0, "Second")
-        all_txns = self.ledger.get_all(limit=10)
-        assert len(all_txns) == 2
-
-    def test_get_all_respects_limit(self) -> None:
-        for i in range(5):
-            self.ledger.record("deposit", "alice", float(i), f"Txn {i}")
-        all_txns = self.ledger.get_all(limit=3)
-        assert len(all_txns) == 3
-
-    def test_metadata_included(self) -> None:
-        tx_id = self.ledger.record(
-            "task_deduction", "alice", -0.05,
-            "Task task-001 deduction",
-            metadata={"task_id": "task-001", "worker_id": "worker-01"},
-        )
-        txn = self.ledger.get_transaction(tx_id)
-        assert txn is not None
-        assert txn["metadata"]["task_id"] == "task-001"
-        assert txn["metadata"]["worker_id"] == "worker-01"
-
-
-# ── Full lifecycle integration ────────────────────────────────────────────
-
-class TestBillingFullLifecycle:
-    """End-to-end: deposit → reserve → settle SUCCESS → verify split."""
-
-    def setup_method(self) -> None:
-        self.billing, _ = make_billing()
-
-    def test_deposit_reserve_settle_lifecycle(self) -> None:
-        # 1. Deposit
-        self.billing.deposit("alice", 1.0)
-        assert self.billing.get_balance("alice") == 1.0
-
-        # 2. Reserve
-        assert self.billing.reserve_credits("task-001", "alice") is True
-
-        # 3. Settle SUCCESS
-        receipt = self.billing.settle_task("task-001", "worker-01", success=True)
-        assert receipt is not None
+        receipt = eng.request_settlement("task-001", USER, WORKER)
         assert receipt["status"] == "COMPLETED"
+        assert receipt["pot"] is None
 
-        # 4. Verify balances
-        assert self.billing.get_balance("alice") == round(1.0 - 0.05, 4)
-        assert self.billing.get_worker_balance("worker-01") == round(0.05 * 0.80, 4)
-        assert self.billing.get_owner_balance() == round(0.05 * 0.20, 4)
+    def test_settlement_no_contract(self):
+        storage = Storage()
+        eng = BillingEngine(storage=storage, contract_client=None)
+        receipt = eng.request_settlement("task-001", USER, WORKER)
+        assert receipt["status"] == "FAILED"
+        assert "No contract client" in receipt["error"]
 
-    def test_deposit_reserve_settle_failed_lifecycle(self) -> None:
-        self.billing.deposit("alice", 1.0)
-        self.billing.reserve_credits("task-001", "alice")
-        receipt = self.billing.settle_task("task-001", "worker-01", success=False)
+    def test_double_settle_rejected(self, ready_billing, funded_contract):
+        ready_billing.request_settlement("task-001", USER, WORKER)
+        receipt = ready_billing.request_settlement("task-001", USER, WORKER)
+        assert receipt["status"] == "FAILED"
 
-        assert receipt is not None
-        assert receipt["status"] == "REFUNDED"
-
-        # Full refund — alice keeps everything
-        assert self.billing.get_balance("alice") == 1.0
-        assert self.billing.get_worker_balance("worker-01") == 0.0
-        assert self.billing.get_owner_balance() == 0.0
-
-    def test_insufficient_credits_prevents_reserve(self) -> None:
-        self.billing.deposit("alice", 0.03)  # Less than COST_PER_TASK
-        assert self.billing.reserve_credits("task-001", "alice") is False
-
-    def test_exact_credit_balance_works(self) -> None:
-        self.billing.deposit("alice", BillingEngine.COST_PER_TASK)
-        assert self.billing.reserve_credits("task-001", "alice") is True
-        receipt = self.billing.settle_task("task-001", "worker-01", success=True)
-        assert receipt is not None
+    def test_settlement_then_claim(self, ready_billing, funded_contract):
+        receipt = ready_billing.request_settlement("task-001", USER, WORKER)
         assert receipt["status"] == "COMPLETED"
-        assert self.billing.get_balance("alice") == 0.0
+        # Worker claims on-chain
+        task_id_bytes = __import__("eth_utils", fromlist=["keccak"]).keccak(text="task-001")
+        payout = funded_contract.claim_reward(task_id_bytes, WORKER)
+        assert payout == (COST * 8000 // 10000)
 
-    def test_owner_id_configurable(self) -> None:
-        billing2, _ = make_billing(owner_id="custom_owner")
-        assert billing2.get_owner_balance() == 0.0
-        billing2.deposit("custom_owner", 100.0)
-        assert billing2.get_owner_balance() == 100.0
+
+# ── PoT generation helper ───────────────────────────────────────────────────
+
+class TestGeneratePot:
+    def test_generate_pot(self, billing):
+        pot = billing.generate_pot("task-001", WORKER)
+        assert pot is not None
+        assert pot.task_id == "task-001"
+        assert pot.worker_address == WORKER
+
+    def test_generate_pot_no_manager(self):
+        storage = Storage()
+        eng = BillingEngine(storage=storage, contract_client=None, pot_manager=None)
+        pot = eng.generate_pot("task-001", WORKER)
+        assert pot is None

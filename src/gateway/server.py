@@ -2,14 +2,12 @@
 
 Provides HTTP endpoints for DePIN workers to claim and submit tasks,
 with JSON Schema validation, tier-based gas billing, slashing, and
-HMAC-SHA256 signature authentication.
+EIP-712 typed-data signature authentication.
 """
 
 from __future__ import annotations
 
 import asyncio
-import hashlib
-import hmac
 import json
 import logging
 import os
@@ -17,43 +15,41 @@ import time
 from threading import Lock
 from typing import Any
 
+from eth_account import Account
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
+from src.chain.eip712 import (
+    AIMS_DOMAIN,
+    RUN_REQUEST_TYPES,
+    SUBMIT_REQUEST_TYPES,
+    make_run_request_value,
+    make_submit_request_value,
+    verify_eip712_signature,
+)
+from src.chain.nonce_manager import NonceManager
+from src.chain.pot import POTManager
 from src.gateway.broker import TaskBroker
 from src.gateway.skill_store import SkillStore, SkillStoreError
 from src.gateway.storage import Storage
 from src.ledger.mock_counter import MockLedger
 from src.skills.registry import SkillRegistry
 from src.gateway.billing import BillingEngine
-from src.gateway.ledger import TransactionLedger
 
 logger = logging.getLogger(__name__)
 
 # ── Auth config ─────────────────────────────────────────────────────────────
 
-AIMS_SIGNING_SECRET: bytes = os.getenv("AIMS_SIGNING_SECRET", "AIMS_MOCK_SECRET_2026").encode()
-"""Shared secret for HMAC-SHA256 request signing.
-
-Reads from the ``AIMS_SIGNING_SECRET`` environment variable in production
-(Fly.io secrets).  Falls back to ``AIMS_MOCK_SECRET_2026`` for local dev/testing.
-"""
-
 SIGNATURE_TIMEOUT: float = 300.0
 """Maximum age (seconds) for a signed request — replay protection."""
 
+AIMS_GATEWAY_PRIVATE_KEY: str = os.getenv("AIMS_GATEWAY_PRIVATE_KEY", "")
+"""Gateway ECDSA private key for signing Proof-of-Task receipts."""
 
-def compute_signature(body: bytes, timestamp: str, user_id: str) -> str:
-    """HMAC-SHA256 of ``body + b'|' + timestamp + b'|' + user_id``."""
-    msg = body + b"|" + timestamp.encode() + b"|" + user_id.encode()
-    return hmac.new(AIMS_SIGNING_SECRET, msg, hashlib.sha256).hexdigest()
-
-
-def verify_signature(body: bytes, timestamp: str, user_id: str, sig: str) -> bool:
-    """Constant-time comparison of the provided signature against the computed one."""
-    expected = compute_signature(body, timestamp, user_id)
-    return hmac.compare_digest(expected, sig)
-
+AIMS_CONTRACT_ADDRESS: str = os.getenv(
+    "AIMS_CONTRACT_ADDRESS",
+    "0x0000000000000000000000000000000000000001",
+)
 
 # ── Global instances (singleton per process) ──────────────────────────────
 
@@ -66,9 +62,14 @@ skill_store = SkillStore(storage=storage)
 # Load any previously uploaded skills into the registry
 skill_store.load_into_registry(registry)
 
-# Credit & Revenue system singletons
-billing = BillingEngine(storage=storage)
-txn_ledger = TransactionLedger(storage=storage)
+# Web3 billing singletons
+nonce_manager = NonceManager(storage)
+pot_manager = POTManager(storage, AIMS_GATEWAY_PRIVATE_KEY) if AIMS_GATEWAY_PRIVATE_KEY else None
+billing = BillingEngine(
+    storage=storage,
+    contract_client=None,  # lazy-init via settlement.contract
+    pot_manager=pot_manager,
+)
 
 # Worker heartbeat tracking: worker_id → last_seen_unix_ts
 worker_heartbeats: dict[str, float] = {}
@@ -80,73 +81,147 @@ app = FastAPI(
     description="AIMS DePIN Network — Task Dispatch & Settlement Gateway",
 )
 
+# ── EIP-712 signature verification middleware ───────────────────────────────
 
-# ── Signature verification middleware (applied to /api/tasks/*) ────────────
+EXEMPT_PATHS = {
+    "/api/health",
+    "/api/discovery",
+    "/api/skills/upload",
+}
 
 
 @app.middleware("http")
-async def verify_signature_middleware(request: Request, call_next):
-    """Verify HMAC-SHA256 signature on all ``/api/*`` requests (except health & admin).
+async def verify_eip712_middleware(request: Request, call_next):
+    """Verify EIP-712 typed-data signature on all ``/api/*`` requests.
 
-    Required headers:
-      - ``X-Signature``  — hex-encoded HMAC-SHA256
-      - ``X-Timestamp``  — UNIX epoch seconds as string
-      - ``X-User-ID``    — worker/user identifier
+    Required headers (replacing the old HMAC-SHA256 scheme):
+      - ``X-User-ID``  — EVM wallet address (0x-prefixed, 42 chars)
+      - ``X-Signature`` — EIP-712 typed-data hex signature
+      - ``X-Timestamp`` — UNIX epoch seconds as string (300 s window)
+      - ``X-Nonce``     — monotonic per-address nonce (uint256)
+      - ``X-Deadline``  — signature expiry as UNIX seconds (uint256)
 
-    The signature is computed over::
+    The middleware:
+    1. Validates ``X-User-ID`` is a valid EVM address.
+    2. Checks the timestamp is within the 300 s window.
+    3. Recovers the signer from the EIP-712 signature.
+    4. Verifies the signer matches ``X-User-ID``.
+    5. Checks the nonce hasn't been used.
 
-        HMAC-SHA256(secret, body_bytes + "|" + timestamp + "|" + user_id)
-
-    Requests with a timestamp older than ``SIGNATURE_TIMEOUT`` (300 s)
-    are rejected as replay attempts.
+    Exempt paths (same as before): ``/api/health``, ``/api/discovery``,
+    ``/api/skills/upload``.
     """
     path = request.url.path
 
-    # Skip health, discovery, and admin endpoints
-    if path in ("/api/health", "/api/discovery") or path.startswith("/api/admin/"):
+    if path in EXEMPT_PATHS or path.startswith("/api/admin/"):
         return await call_next(request)
 
-    # Skip HMAC auth for multipart uploads (body can't be pre-signed trivially)
-    if path == "/api/skills/upload":
-        return await call_next(request)
+    if not path.startswith("/api/"):
+        response = await call_next(request)
+        return response
 
-    # Require auth on all other /api/ endpoints
-    if path.startswith("/api/"):
-        sig = request.headers.get("x-signature", "")
-        ts = request.headers.get("x-timestamp", "")
-        uid = request.headers.get("x-user-id", "")
+    # ── Read headers ─────────────────────────────────────────────────
+    user_id = request.headers.get("x-user-id", "")
+    signature = request.headers.get("x-signature", "")
+    ts = request.headers.get("x-timestamp", "")
+    nonce_str = request.headers.get("x-nonce", "")
+    deadline_str = request.headers.get("x-deadline", "")
 
-        if not sig or not ts or not uid:
-            return Response(
-                status_code=403,
-                content=json.dumps({"detail": "Missing signature headers"}),
-                media_type="application/json",
-            )
+    if not all([user_id, signature, ts, nonce_str, deadline_str]):
+        return Response(
+            status_code=403,
+            content=json.dumps({
+                "detail": "Missing EIP-712 headers: X-User-ID, X-Signature, X-Timestamp, X-Nonce, X-Deadline",
+            }),
+            media_type="application/json",
+        )
 
-        # Replay protection — reject requests older than SIGNATURE_TIMEOUT
-        try:
-            ts_float = float(ts)
-        except ValueError:
-            return Response(
-                status_code=403,
-                content=json.dumps({"detail": "Invalid X-Timestamp"}),
-                media_type="application/json",
-            )
+    # ── 1. Validate EVM address ──────────────────────────────────────
+    if not user_id.startswith("0x") or len(user_id) != 42:
+        return Response(
+            status_code=403,
+            content=json.dumps({"detail": "X-User-ID must be a valid EVM address (0x-prefixed, 42 chars)"}),
+            media_type="application/json",
+        )
 
-        if abs(time.time() - ts_float) > SIGNATURE_TIMEOUT:
-            return Response(
-                status_code=403,
-                content=json.dumps({"detail": "Timestamp outside allowed window — possible replay"}),
-                media_type="application/json",
-            )
+    # ── 2. Timestamp window ──────────────────────────────────────────
+    try:
+        ts_float = float(ts)
+    except ValueError:
+        return Response(
+            status_code=403,
+            content=json.dumps({"detail": "Invalid X-Timestamp"}),
+            media_type="application/json",
+        )
 
-        body = await request.body()
-        if not verify_signature(body, ts, uid, sig):
-            return Response(
-                status_code=403,
-                content=json.dumps({"detail": "Invalid signature"}),
-                media_type="application/json",
-            )
+    if abs(time.time() - ts_float) > SIGNATURE_TIMEOUT:
+        return Response(
+            status_code=403,
+            content=json.dumps({"detail": "Timestamp outside allowed window — possible replay"}),
+            media_type="application/json",
+        )
+
+    # ── 3. Parse nonce & deadline ────────────────────────────────────
+    try:
+        nonce = int(nonce_str)
+        deadline = int(deadline_str)
+    except ValueError:
+        return Response(
+            status_code=403,
+            content=json.dumps({"detail": "Invalid X-Nonce or X-Deadline — must be uint256"}),
+            media_type="application/json",
+        )
+
+    # ── 4. Check deadline ────────────────────────────────────────────
+    if time.time() > deadline:
+        return Response(
+            status_code=403,
+            content=json.dumps({"detail": "Signature deadline has passed"}),
+            media_type="application/json",
+        )
+
+    # ── 5. Check nonce ───────────────────────────────────────────────
+    if nonce_manager.has_nonce_been_used(user_id, nonce):
+        return Response(
+            status_code=403,
+            content=json.dumps({"detail": "Nonce already used — replay detected"}),
+            media_type="application/json",
+        )
+
+    # ── 6. Determine EIP-712 type based on path ──────────────────────
+    body = await request.body()
+    try:
+        body_json = json.loads(body) if body else {}
+    except json.JSONDecodeError:
+        body_json = {}
+
+    if path == "/api/run":
+        types = RUN_REQUEST_TYPES
+        skill_id = body_json.get("skill_id", "")
+        params = body_json.get("params", {})
+        value = make_run_request_value(skill_id, params, nonce, deadline)
+    elif path in ("/api/tasks/submit", "/api/tasks/submit_result"):
+        types = SUBMIT_REQUEST_TYPES
+        task_id = body_json.get("task_id", "")
+        result_data = body_json.get("result_data", {})
+        value = make_submit_request_value(task_id, result_data, nonce, deadline)
+    else:
+        # For other endpoints use SUBMIT_REQUEST_TYPES as a generic fallback
+        types = SUBMIT_REQUEST_TYPES
+        task_id = body_json.get("task_id", body_json.get("worker_id", ""))
+        result_data = {k: v for k, v in body_json.items() if k != "task_id"}
+        value = make_submit_request_value(task_id, result_data, nonce, deadline)
+
+    # ── 7. Verify signature ──────────────────────────────────────────
+    if not verify_eip712_signature(types, AIMS_DOMAIN, value, signature, user_id):
+        return Response(
+            status_code=403,
+            content=json.dumps({"detail": "Invalid EIP-712 signature — recovered signer does not match X-User-ID"}),
+            media_type="application/json",
+        )
+
+    # ── 8. Consume nonce ─────────────────────────────────────────────
+    nonce_manager.mark_used(user_id, nonce)
 
     response = await call_next(request)
     return response
@@ -182,12 +257,14 @@ class SubmitRequest(BaseModel):
 class SubmitResponse(BaseModel):
     task_id: str
     worker_id: str
-    outcome: str  # "COMPLETED" | "REFUNDED" | "REJECTED"
+    outcome: str  # "COMPLETED" | "REFUNDED" | "REJECTED" | "PIPELINE_CONTINUED"
     gas_cost: float = 0.0
     total_cost: float = 0.0
     platform_tax: float = 0.0
     developer_payout: float = 0.0
     unused_refund: float = 0.0
+    pot: str | None = None
+    """Proof-of-Task signature — worker presents this to claimReward() on-chain."""
     error: str = ""
 
 
@@ -228,9 +305,10 @@ class RunRequest(BaseModel):
 
 class RunResponse(BaseModel):
     task_id: str
+    status: str = "PENDING"
 
 
-# ── Wallet & Credit models ─────────────────────────────────────────────────
+# ── Wallet & Balance models ────────────────────────────────────────────────
 
 class DepositRequest(BaseModel):
     user_id: str = Field(..., min_length=1, max_length=128, description="User or agent identifier")
@@ -255,6 +333,12 @@ class TaskStatusResponse(BaseModel):
     worker_id: str | None = None
     result: dict[str, Any] | None = None
     outcome: str | None = None
+
+
+class PotResponse(BaseModel):
+    task_id: str
+    worker_address: str
+    signature: str
 
 
 # ── Static capability definitions (for discovery endpoint) ───────────────
@@ -328,6 +412,134 @@ async def admin_setup():
 # ── Routes ─────────────────────────────────────────────────────────────────
 
 
+@app.get("/api/discovery")
+async def discovery():
+    """Auto-discovery endpoint — returns the full API surface as self-documenting JSON."""
+    base_url = "https://aims-gateway.fly.dev"
+    skills_list = []
+    all_manifests = await _run_in_thread(registry.get_all_manifests)
+    for m in all_manifests:
+        skills_list.append({
+            "id": m.name,
+            "description": m.description,
+            "execution": {"endpoint": "/api/run", "method": "POST"},
+            "resources": {
+                "logic_script_url": f"{base_url}/api/skills/{m.name}/logic",
+                "manifest_url": f"{base_url}/api/discovery",
+            },
+            "capabilities": SKILL_CAPABILITIES.get(m.name, []),
+            "manifest": {
+                "name": m.name,
+                "description": m.description,
+                "version": m.version,
+                "author": m.author,
+                "tags": m.tags,
+                "input_schema": m.input_schema,
+                "output_schema": m.output_schema,
+                "price_points": m.price_points,
+                "staked_points": m.staked_points,
+            },
+        })
+
+    return {
+        "discovery_version": "1.0.0",
+        "documentation_root": "https://raw.githubusercontent.com/michaelxmchn/aims-gateway/main/docs/MASTER_INDEX.md",
+        "api": {
+            "name": "AIMS Gateway",
+            "version": "1.0.0",
+            "description": "AI-Mediated Skill Network — Task Dispatch & Settlement Gateway",
+            "protocol": "REST over HTTP",
+            "content_type": "application/json",
+        },
+        "server": {"current_time": time.time(), "timezone": "UTC"},
+        "authentication": {
+            "scheme": "EIP-712",
+            "description": (
+                "Every request to /api/* endpoints must include five signed headers. "
+                "GET /api/discovery, GET /api/health, and POST /api/skills/upload are exempt."
+            ),
+            "headers": {
+                "X-User-ID": {"type": "string", "description": "EVM wallet address (0x-prefixed, 42 chars)"},
+                "X-Signature": {"type": "string", "description": "EIP-712 typed-data signature"},
+                "X-Timestamp": {"type": "string", "description": "UNIX epoch seconds (float). Must be within 300s."},
+                "X-Nonce": {"type": "string", "description": "Monotonic per-address nonce (uint256)"},
+                "X-Deadline": {"type": "string", "description": "Signature expiry as UNIX seconds (uint256)"},
+            },
+            "example_curl": (
+                '# EIP-712 signing requires eth_account\n'
+                '# See src/chain/eip712.py for the full flow\n'
+                'PRIVATE_KEY="0x..."; ADDR="0x..."; TS=$(date +%s); NONCE=0; DL=$((TS + 3600))\n'
+                'BODY=\'{"skill_id":"amazon_scraper","params":{},"user_id":"$ADDR"}\'\n'
+                '# Sign via Python (see sign_eip712_message)\n'
+                'curl -X POST "$BASE_URL/api/run" \\\n'
+                '  -H "X-User-ID: $ADDR" -H "X-Signature: $SIG" \\\n'
+                '  -H "X-Timestamp: $TS" -H "X-Nonce: $NONCE" -H "X-Deadline: $DL" \\\n'
+                '  -H "Content-Type: application/json" -d "$BODY"'
+            ),
+        },
+        "skills": skills_list,
+        "endpoints": [
+            {
+                "category": "Task Management",
+                "description": "Claim, submit, and monitor tasks.",
+                "operations": [
+                    {"method": "POST", "path": "/api/tasks/claim", "summary": "Claim a PENDING task.", "auth_required": True},
+                    {"method": "POST", "path": "/api/tasks/submit", "summary": "Submit completed task result.", "auth_required": True},
+                    {"method": "GET", "path": "/api/tasks/{task_id}/status", "summary": "Poll task status.", "auth_required": False},
+                    {"method": "GET", "path": "/api/tasks/{task_id}/pot", "summary": "Fetch Proof-of-Task.", "auth_required": False},
+                ],
+            },
+            {
+                "category": "Skill Management",
+                "description": "Upload, inspect, and execute skills.",
+                "operations": [
+                    {"method": "POST", "path": "/api/skills/upload", "summary": "Upload skill zip.", "auth_required": False},
+                    {"method": "GET", "path": "/api/skills/{skill_id}/logic", "summary": "Fetch skill logic.py.", "auth_required": False},
+                    {"method": "POST", "path": "/api/run", "summary": "Execute a skill.", "auth_required": True},
+                ],
+            },
+            {
+                "category": "Worker",
+                "description": "Worker registration and liveness.",
+                "operations": [
+                    {"method": "POST", "path": "/api/workers/heartbeat", "summary": "Send keep-alive.", "auth_required": True},
+                ],
+            },
+            {
+                "category": "System",
+                "description": "Health check, discovery, admin.",
+                "operations": [
+                    {"method": "GET", "path": "/api/health", "summary": "Return system health.", "auth_required": False},
+                    {"method": "GET", "path": "/api/discovery", "summary": "This document.", "auth_required": False},
+                ],
+            },
+            {
+                "category": "Wallet & Credits",
+                "description": "On-chain wallet operations.",
+                "operations": [
+                    {"method": "POST", "path": "/api/wallet/deposit", "summary": "Deposit USDC (proxy).", "auth_required": True},
+                    {"method": "GET", "path": "/api/wallet/balance", "summary": "Check USDC balance.", "auth_required": True},
+                ],
+            },
+        ],
+        "links": {
+            "openclaw_manifest": {
+                "url": f"{base_url}/manifests/openclaw_skill.json",
+                "description": "OpenClaw-compatible manifest for agent orchestration",
+            },
+            "health": {"url": f"{base_url}/api/health", "description": "Quick health check."},
+        },
+        "notes": [
+            "Auth uses EIP-712 typed data signatures (not HMAC-SHA256).",
+            "X-User-ID must be an EVM address (0x + 40 hex chars).",
+            "X-Timestamp must be within 300s of server time (replay protection).",
+            "X-Nonce must be monotonic per address (replay protection).",
+            "X-Deadline prevents signature reuse beyond the specified time.",
+            "Contract: AIMSSettlement on Base (USDC 6-decimals, 80/20 split).",
+        ],
+    }
+
+
 @app.post("/api/tasks/claim")
 async def claim_task(req: ClaimRequest, request: Request):
     """Claim a PENDING task from the broker.
@@ -362,20 +574,17 @@ async def submit_task(req: SubmitRequest):
     """Submit a completed task result for validation and settlement.
 
     **Validation** — The result is checked against the skill's
-    ``output_schema`` (JSON Schema).  If the schema is missing, a basic
-    ``isinstance(result_data, dict)`` guard is applied.
+    ``output_schema`` (JSON Schema).
 
-    **On valid result:**
-      1. ``execution_time = now − claimed_at`` (wall-clock)
-      2. ``release_escrow_dynamic(success=True)`` with tier-based gas billing
-      3. Task marked ``SUCCESS``
+    **On SUCCESS:**
+      1. Release escrow with tier-based gas billing
+      2. Request on-chain settlement via ``BillingEngine.request_settlement``
+      3. Generate Proof-of-Task (PoT) for the worker
+      4. Return PoT in the response
 
-    **On invalid result:**
-      1. ``apply_penalty()`` — strike the worker (3 strikes → $1 slash)
-      2. Task marked ``FAILED``
-
-    Returns an itemised billing receipt on success, or an error response
-    on validation failure.
+    **On FAILURE:**
+      1. Apply penalty (strike)
+      2. Release reservation (no on-chain settlement)
     """
     # ── 1. Lookup task & verify ownership ─────────────────────────────
     status = await _run_in_thread(broker.get_task_status, req.task_id)
@@ -415,10 +624,7 @@ async def submit_task(req: SubmitRequest):
         valid = isinstance(req.result_data, dict)
 
     if not valid:
-        # Penalty already applied inside validate_result_generic
         await _run_in_thread(broker.complete_task, req.task_id, "FAILED")
-        # Release credit reservation (no deduction on failure)
-        await _run_in_thread(billing.settle_task, req.task_id, req.worker_id, False)
         return SubmitResponse(
             task_id=req.task_id,
             worker_id=req.worker_id,
@@ -462,36 +668,18 @@ async def submit_task(req: SubmitRequest):
 
     await _run_in_thread(broker.complete_task, req.task_id, "SUCCESS", detail)
 
-    # ── 6. Settle credits (parallel to USDT settlement) ─────────────────
-    credit_receipt = await _run_in_thread(
-        billing.settle_task, req.task_id, req.worker_id, True,
+    # ── 6. On-chain settlement & PoT generation ───────────────────────
+    pot_sig: str | None = None
+    settlement = await _run_in_thread(
+        billing.request_settlement,
+        req.task_id,
+        task_meta.user_id,
+        req.worker_id,
     )
-    if credit_receipt and credit_receipt.get("status") == "COMPLETED":
-        cost = credit_receipt.get("cost", 0.0)
-        txn_ledger.record(
-            "task_deduction", task_meta.user_id, -cost,
-            f"Task {req.task_id} — credit deduction",
-            metadata={
-                "task_id": req.task_id,
-                "worker_id": req.worker_id,
-                "worker_payout": credit_receipt.get("worker_payout", 0.0),
-                "gateway_payout": credit_receipt.get("gateway_payout", 0.0),
-            },
-        )
-        wp = credit_receipt.get("worker_payout", 0.0)
-        if wp > 0:
-            txn_ledger.record(
-                "worker_payout", req.worker_id, wp,
-                f"Task {req.task_id} — worker payout (80%)",
-                metadata={"task_id": req.task_id},
-            )
-        gp = credit_receipt.get("gateway_payout", 0.0)
-        if gp > 0:
-            txn_ledger.record(
-                "owner_revenue", billing._owner_id, gp,
-                f"Task {req.task_id} — platform fee (20%)",
-                metadata={"task_id": req.task_id},
-            )
+    if settlement.get("status") == "COMPLETED":
+        pot = settlement.get("pot")
+        if pot is not None:
+            pot_sig = pot.signature
 
     return SubmitResponse(
         task_id=req.task_id,
@@ -502,40 +690,56 @@ async def submit_task(req: SubmitRequest):
         platform_tax=detail.platform_tax if detail else 0.0,
         developer_payout=detail.developer_payout if detail else 0.0,
         unused_refund=detail.unused_refund if detail else 0.0,
+        pot=pot_sig,
     )
 
 
-# ── Wallet endpoints ──────────────────────────────────────────────────────
+# ── Wallet endpoints (proxy to on-chain contract) ─────────────────────────
 
 
 @app.post("/api/wallet/deposit", response_model=DepositResponse)
 async def wallet_deposit(req: DepositRequest):
-    """Deposit credits into a user/agent wallet.
+    """Deposit credits into a user's on-chain wallet.
 
-    Requires HMAC-SHA256 signature (enforced by middleware on all POST /api/*).
+    In production: the user deposits directly into the contract.
+    This endpoint proxies the deposit for convenience and testing.
     """
-    new_balance = await _run_in_thread(billing.deposit, req.user_id, req.amount)
-    txn_ledger.record(
-        "deposit", req.user_id, req.amount,
-        f"Deposit {req.amount} credits",
-        metadata={"new_balance": new_balance},
-    )
+    # Convert float USDC to atomic units (6 decimals)
+    amount_atomic = int(round(req.amount * 10**6))
+
+    from src.chain.settlement import ChainSettlement
+    chain = ChainSettlement(os.getenv("AIMS_RPC_URL", ""))
+    contract = chain.contract
+
+    # For InMemorySettlementContract, deposit directly
+    contract.deposit(req.user_id, amount_atomic)
+
+    new_balance = contract.get_user_balance(req.user_id)
+
     return DepositResponse(
         user_id=req.user_id,
         amount=req.amount,
-        new_balance=new_balance,
+        new_balance=float(new_balance) / 10**6,
     )
 
 
 @app.get("/api/wallet/balance")
 async def wallet_balance(user_id: str):
-    """Get credit balance for a user/agent.
+    """Get on-chain USDC balance for a user.
 
-    Query parameter: ``?user_id=<id>``. Requires HMAC-SHA256 signature
-    (enforced by middleware on all GET /api/* paths).
+    Query parameter: ``?user_id=<evm_address>``.
+    Reads from the settlement contract view function (no gas).
     """
-    credits = await _run_in_thread(billing.get_balance, user_id)
+    from src.chain.settlement import ChainSettlement
+    chain = ChainSettlement(os.getenv("AIMS_RPC_URL", ""))
+    contract = chain.contract
+    balance_atomic = contract.get_user_balance(user_id)
+    credits = float(balance_atomic) / 10**6
+
     return BalanceResponse(user_id=user_id, credits=credits)
+
+
+@app.post("/api/workers/heartbeat")
 async def worker_heartbeat(req: HeartbeatRequest):
     """Receive a keep-alive heartbeat from a worker.
 
@@ -582,433 +786,22 @@ async def health():
     )
 
 
-@app.get("/api/discovery")
-async def discovery():
-    """Auto-discovery endpoint — returns the full API surface as self-documenting JSON.
+@app.get("/api/tasks/{task_id}/pot")
+async def task_pot(task_id: str):
+    """Retrieve the Proof-of-Task for a completed task.
 
-    An AI agent (Claude, GPT, etc.) can read this response to understand
-    every endpoint, its authentication requirements, request/response
-    schemas, and how to interact with the gateway programmatically.
+    The worker fetches this after task completion and presents the
+    signature to ``claimReward()`` on the settlement contract.
     """
-    base_url = "https://aims-gateway.fly.dev"
+    pot = pot_manager.get_pot(task_id) if pot_manager else None
+    if pot is None:
+        raise HTTPException(status_code=404, detail=f"No PoT found for task {task_id}")
 
-    # ── Build dynamic skills list from registry + skill_store ──────────
-    # Registry may not be loaded yet; force a load so we see everything
-    all_manifests = await _run_in_thread(registry.get_all_manifests)
-    uploaded_ids = await _run_in_thread(skill_store.list_skills)
-
-    skills_list = []
-    seen_ids: set[str] = set()
-
-    for m in all_manifests:
-        sid = m.name
-        seen_ids.add(sid)
-        skills_list.append({
-            "id": sid,
-            "description": m.description,
-            "execution": {
-                "endpoint": "/api/run",
-                "method": "POST",
-            },
-            "resources": {
-                "logic_script_url": f"{base_url}/api/skills/{sid}/logic",
-                "manifest_url": f"{base_url}/api/discovery",
-            },
-            "capabilities": SKILL_CAPABILITIES.get(sid, []),
-            "manifest": {
-                "name": m.name,
-                "description": m.description,
-                "version": m.version,
-                "author": m.author,
-                "tags": m.tags,
-                "input_schema": m.input_schema,
-                "output_schema": m.output_schema,
-                "price_points": m.price_points,
-                "staked_points": m.staked_points,
-            },
-        })
-
-    for sid in uploaded_ids:
-        if sid in seen_ids:
-            continue
-        raw = await _run_in_thread(skill_store.get_manifest, sid)
-        if raw is None:
-            continue
-        seen_ids.add(sid)
-        raw_desc = raw.get("description", "")
-        skills_list.append({
-            "id": sid,
-            "description": raw_desc,
-            "execution": {
-                "endpoint": "/api/run",
-                "method": "POST",
-            },
-            "resources": {
-                "logic_script_url": f"{base_url}/api/skills/{sid}/logic",
-                "manifest_url": f"{base_url}/api/discovery",
-            },
-            "capabilities": SKILL_CAPABILITIES.get(sid, ["custom"]),
-            "manifest": {
-                "name": raw.get("name", sid),
-                "description": raw_desc,
-                "version": raw.get("version", "1.0.0"),
-                "author": raw.get("author", "unknown"),
-                "tags": raw.get("tags", []),
-                "input_schema": raw.get("input_schema", {"type": "object", "properties": {}}),
-                "output_schema": raw.get("output_schema"),
-                "price_points": raw.get("price_points", 0),
-                "staked_points": raw.get("staked_points", 0.0),
-            },
-        })
-
-    skills_list.sort(key=lambda s: s["id"])
-
-    return {
-        "discovery_version": "1.0.0",
-        "documentation_root": "https://raw.githubusercontent.com/michaelxmchn/aims-gateway/main/docs/MASTER_INDEX.md",
-        "api": {
-            "name": "AIMS Gateway",
-            "version": "1.0.0",
-            "description": "AI-Mediated Skill Network — Task Dispatch & Settlement Gateway",
-            "protocol": "REST over HTTP",
-            "content_type": "application/json",
-        },
-        "server": {
-            "current_time": time.time(),
-            "timezone": "UTC",
-        },
-        "authentication": {
-            "scheme": "HMAC-SHA256",
-            "description": (
-                "Every request to /api/* POST endpoints must include three headers. "
-                "GET /api/discovery, GET /api/health, GET /api/skills/{id}/logic, "
-                "GET /api/tasks/{id}/status, and POST /api/skills/upload are exempt."
-            ),
-            "headers": {
-                "X-Signature": {
-                    "type": "string",
-                    "description": "Hex-encoded HMAC-SHA256 of the request body",
-                    "algorithm": "HMAC-SHA256(secret, body_bytes + '|' + timestamp + '|' + user_id)",
-                },
-                "X-Timestamp": {
-                    "type": "string",
-                    "description": "UNIX epoch seconds (float). Must be within 300s of server time.",
-                },
-                "X-User-ID": {
-                    "type": "string",
-                    "description": "Worker or user identifier matching the signing key.",
-                },
-            },
-            "example_curl": (
-                'SECRET="AIMS_MOCK_SECRET_2026"; '
-                'BODY=\'{"worker_id":"worker-01"}\'; '
-                'TS=$(date +%s); UID="worker-01"; '
-                'SIG=$(echo -n "$BODY|$TS|$UID" | openssl dgst -sha256 -hmac "$SECRET" | cut -d" " -f2); '
-                'curl -s -X POST "$BASE_URL/api/tasks/claim" '
-                '-H "X-Signature: $SIG" -H "X-Timestamp: $TS" -H "X-User-ID: $UID" '
-                '-H "Content-Type: application/json" -d "$BODY"'
-            ),
-        },
-        "skills": skills_list,
-        "endpoints": [
-            {
-                "category": "Task Management",
-                "description": "Claim, submit, and monitor tasks in the broker queue.",
-                "operations": [
-                    {
-                        "method": "POST",
-                        "path": "/api/tasks/claim",
-                        "summary": "Claim a PENDING task from the broker queue.",
-                        "auth_required": True,
-                        "request_schema": {
-                            "type": "object",
-                            "required": ["worker_id"],
-                            "properties": {
-                                "worker_id": {"type": "string", "min_length": 1, "max_length": 128, "example": "worker-01"},
-                            },
-                        },
-                        "response_schema": {
-                            "type": "object",
-                            "properties": {
-                                "task_id": {"type": "string", "description": "Unique task identifier"},
-                                "skill_id": {"type": "string", "description": "Skill this task executes"},
-                                "compute_tier": {"type": "integer", "description": "1=standard, 2=premium, 3=enterprise"},
-                                "developer_premium": {"type": "number", "description": "Developer tip multiplier"},
-                                "max_budget": {"type": "number", "description": "Maximum budget for this task"},
-                                "escrow_id": {"type": "string", "description": "Escrow hold ID for settlement"},
-                                "user_id": {"type": "string", "description": "User who published the task"},
-                                "asin": {"type": "string", "description": "Product ASIN or resource identifier"},
-                                "payload": {"type": "object", "description": "Dynamic skill parameters (null for built-in skills)"},
-                                "skill_logic_url": {"type": "string", "description": "URL to fetch logic.py for dynamic skills"},
-                            },
-                        },
-                        "response_codes": {
-                            "200": "Task claimed successfully",
-                            "204": "No pending tasks available",
-                        },
-                    },
-                    {
-                        "method": "POST",
-                        "path": "/api/tasks/submit",
-                        "summary": "Submit a completed task result for validation and settlement.",
-                        "auth_required": True,
-                        "request_schema": {
-                            "type": "object",
-                            "required": ["task_id", "worker_id", "result_data"],
-                            "properties": {
-                                "task_id": {"type": "string", "example": "task-0001"},
-                                "worker_id": {"type": "string", "example": "worker-01"},
-                                "result_data": {"type": "object", "description": "Task output — validated against the skill's output_schema"},
-                            },
-                        },
-                        "response_schema": {
-                            "type": "object",
-                            "properties": {
-                                "task_id": {"type": "string"},
-                                "worker_id": {"type": "string"},
-                                "outcome": {"type": "string", "enum": ["COMPLETED", "REFUNDED", "REJECTED"]},
-                                "gas_cost": {"type": "number"},
-                                "total_cost": {"type": "number"},
-                                "platform_tax": {"type": "number"},
-                                "developer_payout": {"type": "number"},
-                                "unused_refund": {"type": "number"},
-                                "error": {"type": "string"},
-                            },
-                        },
-                    },
-                    {
-                        "method": "GET",
-                        "path": "/api/tasks/{task_id}/status",
-                        "summary": "Poll the current status and result of a task.",
-                        "auth_required": False,
-                        "response_schema": {
-                            "type": "object",
-                            "properties": {
-                                "task_id": {"type": "string"},
-                                "status": {"type": "string", "enum": ["PENDING", "CLAIMED", "SUCCESS", "FAILED"]},
-                                "worker_id": {"type": "string", "nullable": True},
-                                "result": {"type": "object", "nullable": True, "description": "Task output (only on SUCCESS)"},
-                                "outcome": {"type": "string", "nullable": True},
-                            },
-                        },
-                    },
-                ],
-            },
-            {
-                "category": "Skill Management",
-                "description": "Upload, inspect, and execute dynamic skills.",
-                "operations": [
-                    {
-                        "method": "POST",
-                        "path": "/api/skills/upload",
-                        "summary": "Upload a zip containing manifest.json + logic.py to register a new skill dynamically.",
-                        "auth_required": False,
-                        "body_type": "multipart/form-data",
-                        "request_schema": {
-                            "type": "object",
-                            "required": ["zip_file"],
-                            "properties": {
-                                "zip_file": {"type": "file", "description": "ZIP archive containing: manifest.json (Pydantic-validated metadata) + logic.py (Python module with execute(payload) function)"},
-                            },
-                        },
-                        "response_schema": {
-                            "type": "object",
-                            "properties": {
-                                "skill_id": {"type": "string", "description": "Auto-generated skill ID"},
-                                "name": {"type": "string", "description": "Human-readable skill name from manifest"},
-                                "version": {"type": "string", "description": "Semantic version from manifest"},
-                            },
-                        },
-                        "constraints": {
-                            "max_zip_size": "10 MB",
-                            "zip_slip_protection": True,
-                            "supported_files": ["manifest.json", "logic.py"],
-                        },
-                    },
-                    {
-                        "method": "GET",
-                        "path": "/api/skills/{skill_id}/logic",
-                        "summary": "Fetch the logic.py source for a dynamic skill (workers use this for importlib bootstrap).",
-                        "auth_required": False,
-                        "response": {
-                            "content_type": "text/plain",
-                            "description": "Python source code of the skill's execute() function",
-                        },
-                        "response_codes": {
-                            "200": "Source code returned as text/plain",
-                            "404": "Skill not found",
-                        },
-                    },
-                    {
-                        "method": "POST",
-                        "path": "/api/run",
-                        "summary": "Universal execution endpoint — validate params against the skill's input_schema, create escrow, enqueue a task.",
-                        "auth_required": True,
-                        "request_schema": {
-                            "type": "object",
-                            "required": ["skill_id", "params", "user_id"],
-                            "properties": {
-                                "skill_id": {"type": "string", "example": "hello_world"},
-                                "params": {"type": "object", "description": "Parameters validated against the skill's input_schema.required"},
-                                "user_id": {"type": "string", "example": "alice"},
-                                "developer_premium": {"type": "number", "default": 0.0, "ge": 0.0},
-                                "max_budget": {"type": "number", "default": 2.0, "ge": 0.0},
-                                "compute_tier": {"type": "integer", "default": 1, "minimum": 1, "maximum": 3},
-                            },
-                        },
-                        "response_schema": {
-                            "type": "object",
-                            "properties": {
-                                "task_id": {"type": "string"},
-                                "status": {"type": "string", "default": "PENDING"},
-                            },
-                        },
-                        "workflow": [
-                            "1. Look up manifest by skill_id",
-                            "2. Validate params against input_schema (required fields + type checks)",
-                            "3. Create escrow hold in MockLedger",
-                            "4. Publish broker task with payload",
-                            "5. Return task_id — caller polls GET /api/tasks/{task_id}/status",
-                        ],
-                    },
-                ],
-            },
-            {
-                "category": "Worker",
-                "description": "Worker registration and liveness.",
-                "operations": [
-                    {
-                        "method": "POST",
-                        "path": "/api/workers/heartbeat",
-                        "summary": "Send a keep-alive heartbeat. Workers call this every ~30s. 60s silence = worker considered inactive.",
-                        "auth_required": True,
-                        "request_schema": {
-                            "type": "object",
-                            "required": ["worker_id"],
-                            "properties": {
-                                "worker_id": {"type": "string", "example": "worker-01"},
-                            },
-                        },
-                        "response_schema": {
-                            "type": "object",
-                            "properties": {
-                                "status": {"type": "string", "example": "ack"},
-                                "worker_id": {"type": "string"},
-                            },
-                        },
-                    },
-                ],
-            },
-            {
-                "category": "System",
-                "description": "Health check, discovery, and admin operations.",
-                "operations": [
-                    {
-                        "method": "GET",
-                        "path": "/api/health",
-                        "summary": "Return broker queue depth, ledger treasury, and active worker count.",
-                        "auth_required": False,
-                        "response_schema": {
-                            "type": "object",
-                            "properties": {
-                                "status": {"type": "string", "example": "healthy"},
-                                "tasks_pending": {"type": "integer"},
-                                "tasks_completed": {"type": "integer"},
-                                "tasks_succeeded": {"type": "integer"},
-                                "workers_registered": {"type": "integer", "description": "Workers with staked collateral"},
-                                "workers_active": {"type": "integer", "description": "Workers with heartbeat < 60s ago"},
-                                "treasury_usdt": {"type": "number", "description": "Founder treasury balance in USDT"},
-                            },
-                        },
-                    },
-                    {
-                        "method": "GET",
-                        "path": "/api/discovery",
-                        "summary": "This document — auto-discover the full API surface.",
-                        "auth_required": False,
-                    },
-                    {
-                        "method": "POST",
-                        "path": "/api/admin/setup",
-                        "summary": "Seed test data (ledger balances + 100 sample tasks). Intended for load-testing only.",
-                        "auth_required": False,
-                        "notes": "Not available in production. Seeded user: loadtest_user, dev: loadtest_dev.",
-                    },
-                ],
-            },
-            {
-                "category": "Wallet & Credits",
-                "description": "Manage user/agent credit balances — deposit and check balance.",
-                "operations": [
-                    {
-                        "method": "POST",
-                        "path": "/api/wallet/deposit",
-                        "summary": "Deposit credits into a user/agent wallet.",
-                        "auth_required": True,
-                        "request_schema": {
-                            "type": "object",
-                            "required": ["user_id", "amount"],
-                            "properties": {
-                                "user_id": {"type": "string", "example": "alice"},
-                                "amount": {"type": "number", "example": 10.0, "gt": 0},
-                            },
-                        },
-                        "response_schema": {
-                            "type": "object",
-                            "properties": {
-                                "user_id": {"type": "string"},
-                                "amount": {"type": "number"},
-                                "new_balance": {"type": "number"},
-                            },
-                        },
-                    },
-                    {
-                        "method": "GET",
-                        "path": "/api/wallet/balance",
-                        "summary": "Get credit balance for a user/agent.",
-                        "auth_required": True,
-                        "request_schema": {
-                            "type": "object",
-                            "properties": {
-                                "user_id": {"type": "string", "description": "Query parameter"},
-                            },
-                        },
-                        "response_schema": {
-                            "type": "object",
-                            "properties": {
-                                "user_id": {"type": "string"},
-                                "credits": {"type": "number"},
-                            },
-                        },
-                    },
-                ],
-            },
-        ],
-        "links": {
-            "openclaw_manifest": {
-                "url": f"{base_url}/manifests/openclaw_skill.json",
-                "description": "OpenClaw-compatible manifest for autonomous agent orchestration",
-                "format": "OpenClaw Discovery Format",
-            },
-            "skill_logic_template": {
-                "url_pattern": f"{base_url}/api/skills/{{skill_id}}/logic",
-                "description": "Fetch logic.py source for any uploaded skill. Workers use this for dynamic importlib bootstrap.",
-            },
-            "health": {
-                "url": f"{base_url}/api/health",
-                "description": "Quick health check — returns 200 when the gateway is operational.",
-            },
-        },
-        "notes": [
-            "The HMAC secret is configured via the AIMS_SIGNING_SECRET environment variable.",
-            "Signature uses SHA256, not SHA1 or MD5.",
-            "X-Timestamp must be a Unix timestamp (seconds since epoch) within 300s of server time.",
-            "Multipart uploads (/api/skills/upload) are exempt from signature verification.",
-            "The gateway uses FastAPI; all request/response bodies are JSON (except logic.py which is text/plain).",
-            "Tasks progress through: PENDING -> CLAIMED -> SUCCESS | FAILED.",
-            "Workers must heartbeat every ~30s or they'll be marked inactive after 60s.",
-        ],
-    }
+    return PotResponse(
+        task_id=pot.task_id,
+        worker_address=pot.worker_address,
+        signature=pot.signature,
+    )
 
 
 # ── Dynamic Skill Upload & Execution ─────────────────────────────────────
@@ -1062,8 +855,6 @@ async def run_skill(req: RunRequest):
     2. Validates ``params`` against the required fields from the schema.
     3. Creates an escrow hold and publishes a PENDING broker task.
     4. The task is picked up by an idle worker via the normal claim cycle.
-
-    The caller polls ``GET /api/tasks/{task_id}/status`` to learn the outcome.
     """
     # ── 1. Look up manifest ─────────────────────────────────────────────
     manifest = registry.get(req.skill_id)
@@ -1093,14 +884,16 @@ async def run_skill(req: RunRequest):
         elif expected_type == "boolean" and not isinstance(val, bool):
             raise HTTPException(status_code=400, detail=f"{prop_name}: expected boolean, got {type(val).__name__}")
 
-    # ── 3. Check credit balance (early exit) ────────────────────────────
-    credit_balance = await _run_in_thread(billing.get_balance, req.user_id)
-    if credit_balance < BillingEngine.COST_PER_TASK:
+    # ── 3. Check on-chain balance (early exit) ──────────────────────────
+    credit_balance = await _run_in_thread(billing.check_user_balance, req.user_id)
+    if credit_balance < BillingEngine.COST_PER_TASK_USDC:
+        required_str = f"{BillingEngine.COST_PER_TASK_USDC / 10**6:.6f}"
+        balance_str = f"{credit_balance / 10**6:.6f}"
         raise HTTPException(
             status_code=402,
             detail=(
-                f"Insufficient credits. Required: {BillingEngine.COST_PER_TASK}, "
-                f"balance: {credit_balance}"
+                f"Insufficient USDC balance. Required: {required_str}, "
+                f"balance: {balance_str}"
             ),
         )
 
@@ -1119,15 +912,7 @@ async def run_skill(req: RunRequest):
     if task_id is None:
         raise HTTPException(status_code=402, detail="Insufficient balance for escrow hold")
 
-    # ── 5. Reserve credits for this task ────────────────────────────────
-    reserved = await _run_in_thread(billing.reserve_credits, task_id, req.user_id)
-    if not reserved:
-        logger.warning("Credit reservation failed after pre-check for task %s (user %s)", task_id, req.user_id)
-        # Task is published but credit reservation failed (race condition).
-        # The task will still be claimable but settle_task will find no reservation.
-        # This is logged for audit; we don't fail the request.
-
-    return RunResponse(task_id=task_id, status="PENDING")
+    return RunResponse(task_id=task_id)
 
 
 @app.get("/api/tasks/{task_id}/status", response_model=TaskStatusResponse)

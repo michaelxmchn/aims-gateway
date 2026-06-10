@@ -1,24 +1,28 @@
 """Chain Settlement — Layer 0.
 
-Interface to the Base smart contract for batch settlement.
-Maps to the two on-chain operations:
-  ① submit_batch — counter +1, transfer points
-  ② query_balance — read current balance
+Interface to the AIMS settlement contract on Base.
+Provides the ``contract`` property that lazily initialises either an
+``InMemorySettlementContract`` (local dev / testing) or a
+``Web3SettlementContract`` (production) based on environment variables.
 
-Also manages the user_identity_map (email → wallet address mapping)
+Also manages the ``user_identity_map`` (email → wallet address mapping)
 and the Stripe fiat on-ramp webhook stub.
-
-For MVP this is a stub that logs the intended transaction.
-Real implementation requires web3.py + deployed contract on Base.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
+
+from src.chain.contract_client import (
+    InMemorySettlementContract,
+    SettlementContractClient,
+    Web3SettlementContract,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +60,55 @@ class ChainSettlement:
         self._rpc_url = rpc_url
         self._contract_addr = contract_addr
         self._user_identity_map: Dict[str, UserIdentity] = {}
+        self._contract: Optional[SettlementContractClient] = None
+
+    # ── Contract Client (lazy-init) ──────────────────────────────────────
+
+    @property
+    def contract(self) -> SettlementContractClient:
+        """Lazily-initialised settlement contract client.
+
+        Uses ``InMemorySettlementContract`` when ``AIMS_CONTRACT_ADDRESS``
+        is the sentinel value (``0x0...01``), otherwise uses
+        ``Web3SettlementContract`` with the configured RPC and gateway key.
+        """
+        if self._contract is not None:
+            return self._contract
+
+        contract_addr = self._contract_addr or os.getenv(
+            "AIMS_CONTRACT_ADDRESS",
+            "0x0000000000000000000000000000000000000001",
+        )
+        gateway_key = os.getenv("AIMS_GATEWAY_PRIVATE_KEY", "")
+        platform_owner = os.getenv("AIMS_PLATFORM_OWNER", "")
+
+        # Sentinel address → in-memory mock
+        if contract_addr == "0x0000000000000000000000000000000000000001":
+            gateway_address = "0xGateway000000000000000000000000000000000001"
+            if gateway_key:
+                from eth_account import Account
+                gateway_address = Account.from_key(gateway_key).address
+
+            self._contract = InMemorySettlementContract(
+                gateway_address=gateway_address,
+                platform_owner=platform_owner or "0xOwner000000000000000000000000000000000001",
+            )
+            logger.info(
+                "Using InMemorySettlementContract (gateway=%s owner=%s)",
+                gateway_address, platform_owner,
+            )
+        else:
+            self._contract = Web3SettlementContract(
+                rpc_url=self._rpc_url,
+                contract_address=contract_addr,
+                gateway_private_key=gateway_key,
+                platform_owner=platform_owner,
+            )
+            logger.info(
+                "Using Web3SettlementContract (contract=%s)", contract_addr,
+            )
+
+        return self._contract
 
     # ── Identity Map ────────────────────────────────────────────────────
 
