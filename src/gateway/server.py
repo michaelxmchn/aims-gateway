@@ -925,7 +925,13 @@ async def run_skill(req: RunRequest):
             ),
         )
 
-    # ── 4. Create escrow & publish task ─────────────────────────────────
+    # ── 4. Auto-seed MockLedger if new wallet (dev/test mode) ────────────────
+    usdt_balance = await _run_in_thread(ledger.get_user_usdt, req.user_id)
+    if usdt_balance < 1.0:
+        await _run_in_thread(ledger.seed_usdt, req.user_id, 50.0)
+        logger.info("Auto-seeded MockLedger %s with 50.0 USDT (dev mode)", req.user_id)
+
+    # ── 5. Create escrow & publish task ──────────────────────────────────────
     task_id = await _run_in_thread(
         broker.publish_task,
         user_id=req.user_id,
