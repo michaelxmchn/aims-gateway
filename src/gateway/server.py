@@ -70,9 +70,15 @@ skill_store.load_into_registry(registry)
 # Web3 billing singletons
 nonce_manager = NonceManager(storage)
 pot_manager = POTManager(storage, AIMS_GATEWAY_PRIVATE_KEY) if AIMS_GATEWAY_PRIVATE_KEY else None
+
+# Lazy-init contract via ChainSettlement (InMemory or Web3 based on env)
+from src.chain.settlement import ChainSettlement
+_chain_settlement = ChainSettlement(os.getenv("AIMS_RPC_URL", ""))
+_contract = _chain_settlement.contract  # InMemorySettlementContract or Web3SettlementContract
+
 billing = BillingEngine(
     storage=storage,
-    contract_client=None,  # lazy-init via settlement.contract
+    contract_client=_contract,
     pot_manager=pot_manager,
     gateway_signing_key=AIMS_GATEWAY_PRIVATE_KEY,
 )
