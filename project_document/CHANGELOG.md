@@ -209,6 +209,7 @@
 
 ### 新增
 - feat(web3): 创建 src/gateway/web3_utils.py — 网关 EIP-191/EIP-712 验签 + 结算证明生成/验证（_compute_settlement_message_hash / generate_settlement_proof / verify_settlement_proof）
+- chore(deploy): .dockerignore 补充 node_modules/、artifacts/、cache/ 等排除规则，构建上下文 350MB → ~30MB
 - feat(contract): 创建 contracts/test/MockERC20.sol — 可配置小数位数的 ERC20 测试桩
 - feat(hardhat): 创建 tests/hardhat/aims_settlement_test.cjs — 18 个 Hardhat 合约测试（Deposits/Withdrawals/Settlement/Claim+PoT/OwnerFees/KeyRotation），使用 raw ECDSA 签名验证 all Solidity 逻辑
 - feat(hardhat): 创建 hardhat.config.js — Hardhat v2 配置（Solidity 0.8.20、优化器 200 runs、contracts + tests 路径映射）

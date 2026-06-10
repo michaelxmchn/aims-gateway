@@ -170,9 +170,13 @@
 
 ### 部署
 - **Fly.io 部署配置**
-  - 状态: 待部署
+  - 状态: 已完成 (2026-06-10)
   - 文件: Dockerfile / fly.toml / .dockerignore / requirements.txt
   - 描述: python:3.11-slim 容器，sin 区域，256MB，min_machines_running=1
+- **Dockerignore 优化**
+  - 状态: 已完成 (2026-06-10)
+  - 文件: .dockerignore
+  - 描述: 排除 node_modules/、artifacts/、cache/、contracts/、scripts/ 等构建上下文，部署体积从 350MB → ~30MB
 - **Base 网络部署配置**
   - 状态: 已完成 (2026-06-10)
   - 文件: hardhat.config.js / .env.example / scripts/deploy_settlement.js

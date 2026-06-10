@@ -11,3 +11,17 @@ tests/
 logs/
 project_document/
 .DS_Store
+node_modules/
+artifacts/
+cache/
+skills/uploaded/
+manifests/
+scripts/
+contracts/
+hardhat.config.js
+package.json
+package-lock.json
+*.md
+AIMS_AGENT_BOOTSTRAP.md
+bootstrap_helper.py
+aims
