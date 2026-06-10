@@ -11,8 +11,9 @@
   - `X-Wallet-Address`（首选，推荐）或 `X-User-ID`（回退）：EVM 地址（0x + 40 hex）
   - `X-Signature`：EIP-191 personal_sign 签名（130 hex chars，无 0x 前缀）
   - `X-Timestamp`：UNIX 秒（300s 窗口防 replay）
-- **Middleware 验证流程**：免认证路径跳过 → 校验 EVM 地址格式 → 时间窗口（±300s）→ `encode_defunct(primitive=body)` → `Account.recover_message()` 恢复签名者 → 与 X-Wallet-Address 比对
-- **不需要 nonce/deadline**：300s 时间窗口 + 每次请求唯一 body 内容足以防 replay（无需额外 nonce 管理）
+- **Middleware 验证流程**：免认证路径跳过 → 调试日志打印 `Incoming headers` → 校验 EVM 地址格式 → 时间窗口（±300s）→ `encode_defunct(primitive=body)` → `Account.recover_message()` 恢复签名者 → 与 X-Wallet-Address 比对
+- **大小写不敏感头部提取**：`_get_header()` 辅助函数依次尝试原始大小写 → `lower()` → `upper()` → 全量扫描匹配，应对 Fly.io/Nginx 等反向代理的头部大小写变换
+- **调试友好 403**：缺失头部时，响应 body 包含 `detail`（列出具体缺失字段）和 `received_headers`（列出已接收到的所有 header key）
 - **签名流程（客户端）**：`encode_defunct(primitive=body_bytes)` → `wallet.sign_message(signable_message)` → `signed.signature.hex()`（130 hex chars）
 - **验签流程（服务端）**：`encode_defunct(primitive=body)` → `Account.recover_message(signable_message, signature=signature)` → 比对 recovered address 与 header
 - **滑动窗口限流器**：`rate:limiter:{wallet_address}:{time // 60}` 键，`Storage.incr()` 原子递增，100 req/60s 阈值，120s TTL

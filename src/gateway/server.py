@@ -121,18 +121,46 @@ async def verify_wallet_middleware(request: Request, call_next):
     if not path.startswith("/api/"):
         return await call_next(request)
 
-    # ── Read headers (X-Wallet-Address primary, X-User-ID fallback) ──
-    wallet_address = request.headers.get("x-wallet-address", "")
-    if not wallet_address:
-        wallet_address = request.headers.get("x-user-id", "")
-    signature = request.headers.get("x-signature", "")
-    ts = request.headers.get("x-timestamp", "")
+    # ── Debug: log all incoming headers ──────────────────────────────
+    headers_dict = dict(request.headers)
+    logger.debug("Incoming headers: %s", headers_dict)
+    print(f"[AIMS] Incoming headers for {request.method} {path}: {headers_dict}")
 
-    if not all([wallet_address, signature, ts]):
+    # ── Read headers (case-insensitive fallback chain) ───────────────
+    # Fly.io/Nginx reverse proxies may forward headers with different
+    # casing.  Try the canonical form first, then lower-case fallback.
+    def _get_header(name: str) -> str:
+        """Fetch a header by name with case-insensitive fallback."""
+        raw = request.headers.get(name) or request.headers.get(name.lower()) or request.headers.get(name.upper())
+        if raw is None:
+            # Last resort: scan all header keys case-insensitively
+            lower = name.lower()
+            for key, value in request.headers.items():
+                if key.lower() == lower:
+                    return value
+        return raw or ""
+
+    wallet_address = _get_header("X-Wallet-Address")
+    if not wallet_address:
+        wallet_address = _get_header("X-User-ID")
+    signature = _get_header("X-Signature")
+    ts = _get_header("X-Timestamp")
+
+    # ── Report exactly which headers are missing ─────────────────────
+    missing = []
+    if not wallet_address:
+        missing.append("X-Wallet-Address (or X-User-ID)")
+    if not signature:
+        missing.append("X-Signature")
+    if not ts:
+        missing.append("X-Timestamp")
+
+    if missing:
         return Response(
             status_code=403,
             content=json.dumps({
-                "detail": "Missing EIP-191 headers: X-Wallet-Address (or X-User-ID), X-Signature, X-Timestamp",
+                "detail": f"Missing EIP-191 headers: {', '.join(missing)}",
+                "received_headers": list(headers_dict.keys()),
             }),
             media_type="application/json",
         )

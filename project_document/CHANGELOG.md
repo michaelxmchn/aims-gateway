@@ -221,6 +221,9 @@
 
 ### 修改
 - refactor(middleware): server.py EIP-712 → EIP-191 personal_sign 简化为 3 头部（X-Wallet-Address / X-Signature / X-Timestamp），移除 nonce/deadline
+- refactor(middleware): 头部提取改为大小写不敏感 `_get_header()`（扫描全部 header key 做 lower 匹配），解决 Fly.io 等反向代理变换头部大小写问题
+- fix(middleware): 403 响应改为报告具体缺失字段和已接收头部列表，加速调试
+- feat(middleware): 中间件入口添加 `Incoming headers` 调试日志打印完整请求头
 - refactor(bootstrap): bootstrap_helper.py HMAC → ECDSA 钱包自动生成 + EIP-191 签名
 - refactor(test): test_server_auth.py EIP-712 → EIP-191（remove nonce/replay tests）
 - refactor(test): test_discovery.py auth scheme EIP-712 → EIP-191

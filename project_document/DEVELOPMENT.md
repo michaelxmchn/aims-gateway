@@ -52,7 +52,11 @@
 - **FastAPI Gateway Server**
   - 状态: 已完成 (2026-06-09)
   - 文件: src/gateway/server.py
-  - 描述: POST /api/tasks/claim、POST /api/tasks/submit、POST /api/workers/heartbeat、GET /api/health、HMAC-SHA256 签名认证中间件、replay 保护（300s 窗口）
+  - 描述: POST /api/tasks/claim、POST /api/tasks/submit、POST /api/workers/heartbeat、GET /api/health、EIP-191 签名认证中间件、replay 保护（300s 窗口）
+- **Middleware 头部提取鲁棒性增强**
+  - 状态: 已完成 (2026-06-10)
+  - 文件: src/gateway/server.py
+  - 描述: 引入 `_get_header()` 大小写不敏感头部提取（扫描所有 header key），调试日志打印完整请求头，403 响应返回具体缺失字段和已收到头部列表
 - **TaskBroker 状态查询**
   - 状态: 已完成 (2026-06-09)
   - 文件: src/gateway/broker.py
