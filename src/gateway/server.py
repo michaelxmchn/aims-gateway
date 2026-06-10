@@ -69,6 +69,7 @@ billing = BillingEngine(
     storage=storage,
     contract_client=None,  # lazy-init via settlement.contract
     pot_manager=pot_manager,
+    gateway_signing_key=AIMS_GATEWAY_PRIVATE_KEY,
 )
 
 # Worker heartbeat tracking: worker_id → last_seen_unix_ts
@@ -120,8 +121,10 @@ async def verify_eip712_middleware(request: Request, call_next):
         response = await call_next(request)
         return response
 
-    # ── Read headers ─────────────────────────────────────────────────
-    user_id = request.headers.get("x-user-id", "")
+    # ── Read headers (X-Wallet-Address primary, X-User-ID fallback) ──
+    user_id = request.headers.get("x-wallet-address", "")
+    if not user_id:
+        user_id = request.headers.get("x-user-id", "")
     signature = request.headers.get("x-signature", "")
     ts = request.headers.get("x-timestamp", "")
     nonce_str = request.headers.get("x-nonce", "")
@@ -131,7 +134,7 @@ async def verify_eip712_middleware(request: Request, call_next):
         return Response(
             status_code=403,
             content=json.dumps({
-                "detail": "Missing EIP-712 headers: X-User-ID, X-Signature, X-Timestamp, X-Nonce, X-Deadline",
+                "detail": "Missing EIP-712 headers: X-Wallet-Address (or X-User-ID), X-Signature, X-Timestamp, X-Nonce, X-Deadline",
             }),
             media_type="application/json",
         )
@@ -333,6 +336,8 @@ class TaskStatusResponse(BaseModel):
     worker_id: str | None = None
     result: dict[str, Any] | None = None
     outcome: str | None = None
+    pot: str | None = None
+    """Proof-of-Task signature — present this to claimReward() on-chain."""
 
 
 class PotResponse(BaseModel):
@@ -680,6 +685,7 @@ async def submit_task(req: SubmitRequest):
         pot = settlement.get("pot")
         if pot is not None:
             pot_sig = pot.signature
+            await _run_in_thread(broker.set_pot_signature, req.task_id, pot_sig)
 
     return SubmitResponse(
         task_id=req.task_id,
@@ -924,6 +930,7 @@ async def task_status(task_id: str):
 
     result = None
     outcome = None
+    pot_sig = broker.get_pot_signature(task_id)
     if status["status"] == "SUCCESS":
         detail = await _run_in_thread(lambda: broker._results.get(task_id))
         if detail:
@@ -938,4 +945,5 @@ async def task_status(task_id: str):
         worker_id=status.get("worker_id"),
         result=result,
         outcome=outcome,
+        pot=pot_sig,
     )

@@ -21,7 +21,7 @@ import logging
 import time
 from typing import Any, Optional
 
-from eth_utils import keccak
+from eth_utils import keccak, to_canonical_address
 
 from src.chain.contract_client import SettlementContractClient
 from src.chain.nonce_manager import NonceManager
@@ -51,12 +51,14 @@ class BillingEngine:
         storage: Storage,
         owner_address: str = "0xOwner000000000000000000000000000000000001",
         gateway_address: str = "0xGateway000000000000000000000000000000000001",
+        gateway_signing_key: str = "",
         contract_client: Optional[SettlementContractClient] = None,
         pot_manager: Optional[POTManager] = None,
     ) -> None:
         self._storage = storage
         self._owner_address = owner_address
         self._gateway_address = gateway_address
+        self._gateway_signing_key = gateway_signing_key
         self._contract = contract_client
         self._pot_manager = pot_manager
 
@@ -139,9 +141,17 @@ class BillingEngine:
         nonce = self._nonce_manager.consume(user_address)
         receipt["nonce"] = nonce
 
-        # ── 3. Call settleTask on contract ──────────────────────────
+        # ── 3. Compute gateway signature for settleTask ─────────────
+        # The gateway signs keccak256(abi.encodePacked(taskId, user, worker, amount, nonce))
+        # to authorize the settlement — anyone can submit it on-chain.
+        task_id_bytes = keccak(text=task_id)
+        gw_sig = self._sign_settlement(
+            task_id_bytes, user_address, worker_address,
+            self.COST_PER_TASK_USDC, nonce,
+        )
+
+        # ── 4. Call settleTask on contract ──────────────────────────
         try:
-            task_id_bytes = keccak(text=task_id)
             self._contract.settle_task(
                 task_id=task_id_bytes,
                 user=user_address,
@@ -149,21 +159,55 @@ class BillingEngine:
                 amount=self.COST_PER_TASK_USDC,
                 nonce=nonce,
                 gateway_address=self._gateway_address,
+                gateway_signature=gw_sig,
             )
         except (ValueError, PermissionError, RuntimeError) as exc:
             receipt["error"] = str(exc)
             logger.error("request_settlement %s: settleTask failed: %s", task_id, exc)
             return receipt
 
-        # ── 4. Generate PoT ──────────────────────────────────────────
+        # ── 5. Generate PoT (includes amount) ───────────────────────
         if self._pot_manager is not None:
             try:
-                pot = self._pot_manager.generate_pot(task_id, worker_address)
+                pot = self._pot_manager.generate_pot(
+                    task_id, worker_address, amount=self.COST_PER_TASK_USDC,
+                )
                 receipt["pot"] = pot
             except Exception as exc:
                 logger.warning(
                     "request_settlement %s: PoT generation failed: %s", task_id, exc
                 )
+
+        receipt["status"] = "COMPLETED"
+        logger.info(
+            "Settlement completed: task=%s user=%s worker=%s nonce=%d",
+            task_id, user_address, worker_address, nonce,
+        )
+        return receipt
+
+    def _sign_settlement(
+        self,
+        task_id_bytes: bytes,
+        user_address: str,
+        worker_address: str,
+        amount: int,
+        nonce: int,
+    ) -> str:
+        """Sign settlement data to produce a gateway authorization signature.
+
+        The message ``keccak256(abi.encodePacked(taskId, user, worker, amount, nonce))``
+        matches the Solidity contract's ``settleTask`` verification.
+        """
+        if not self._gateway_signing_key:
+            logger.warning("No gateway signing key configured — settlement won't verify on-chain")
+            return ""
+        user_bytes = to_canonical_address(user_address)
+        worker_bytes = to_canonical_address(worker_address)
+        amount_bytes = amount.to_bytes(32, 'big')
+        nonce_bytes = nonce.to_bytes(32, 'big')
+        message_hash = keccak(task_id_bytes + user_bytes + worker_bytes + amount_bytes + nonce_bytes)
+        signed = Account.unsafe_sign_hash(message_hash, self._gateway_signing_key)
+        return signed.signature.hex()
 
         receipt["status"] = "COMPLETED"
         logger.info(

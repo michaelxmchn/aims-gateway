@@ -360,3 +360,15 @@
   - 状态: 已完成 (2026-06-10)
   - 结果: 147/147 PASSED ✓（11 auth + 24 contract + 9 eip712 + 9 pot + 14 billing + 17 discovery + 14 agent bootstrap + 9 manifest + 16 registry + 12 log + 11 sandbox）
   - 描述: 全部测试通过，涵盖 EIP-712 认证、智能合约交互、Proof-of-Task、billing orchestrator 和所有现有模块
+- **X-Wallet-Address Header 兼容**
+  - 状态: 已完成 (2026-06-10)
+  - 文件: src/gateway/server.py
+  - 描述: 中间件同时接受 `X-Wallet-Address`（首选）和 `X-User-ID`（回退），Worker 可使用标准 EVM 钱包头
+- **Broker PoT 签名存储**
+  - 状态: 已完成 (2026-06-10)
+  - 文件: src/gateway/broker.py / server.py
+  - 描述: `set_pot_signature()` / `get_pot_signature()` 存储 PoT 签名到任务状态；`GET /api/tasks/{id}/status` 返回 `pot` 字段；`submit_task()` 结算后自动存储 PoT 签名
+- **测试适配：ECDSA 网关签名**
+  - 状态: 已完成 (2026-06-10)
+  - 文件: tests/test_contract_interactions.py / test_billing.py / test_pot.py
+  - 描述: 所有 `settle_task`/`claim_reward` 测试使用真实 ECDSA 网关签名；修复 EVM 地址为非 hex 字符问题；修复 `to_bytes(0, 32)` 兼容性问题

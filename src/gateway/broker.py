@@ -521,6 +521,28 @@ class TaskBroker:
         logger.info("VALIDATE GENERIC PASS — worker='%s'", worker_id)
         return True
 
+    # ── PoT signature storage ──────────────────────────────────────────────
+
+    def set_pot_signature(self, task_id: str, pot_sig: str) -> None:
+        """Store a Proof-of-Task signature in the task status.
+
+        Called from the gateway server after ``BillingEngine.request_settlement``
+        completes, so that ``/api/tasks/{task_id}/status`` can include it.
+        """
+        with self._lock:
+            state = self._status.get(task_id)
+            if state is not None:
+                state["pot_signature"] = pot_sig
+                self._persist_status(task_id, state)
+
+    def get_pot_signature(self, task_id: str) -> str | None:
+        """Return the stored PoT signature, or ``None``."""
+        with self._lock:
+            state = self._status.get(task_id)
+            if state is None:
+                return None
+            return state.get("pot_signature")
+
     # ── Task metadata lookup (for Gateway Server) ─────────────────────────
 
     def get_task_meta(self, task_id: str) -> Optional["BrokerTask"]:

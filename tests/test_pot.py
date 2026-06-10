@@ -15,6 +15,13 @@ from src.chain.pot import POTManager, ProofOfTask
 from src.gateway.storage import Storage
 
 
+# ── Valid EVM test addresses (0x + 40 hex chars) ──────────────────────────────
+
+WORKER_A = "0x1111111111111111111111111111111111111111"
+WORKER_B = "0x2222222222222222222222222222222222222222"
+EVIL = "0x3333333333333333333333333333333333333333"
+
+
 # ── Fixtures ────────────────────────────────────────────────────────────────
 
 def make_pot_manager() -> tuple[POTManager, Storage, str]:
@@ -31,20 +38,20 @@ class TestPotGeneration:
         self.pm, self.storage, self.key = make_pot_manager()
 
     def test_generate_returns_proof_of_task(self) -> None:
-        pot = self.pm.generate_pot("task-001", "0xWorkerAddress")
+        pot = self.pm.generate_pot("task-001", WORKER_A)
         assert isinstance(pot, ProofOfTask)
         assert pot.task_id == "task-001"
-        assert pot.worker_address == "0xWorkerAddress"
+        assert pot.worker_address == WORKER_A
         assert len(pot.signature) == 130  # 65 bytes * 2 hex chars, no 0x prefix
 
     def test_generate_different_tasks_different_signatures(self) -> None:
-        pot1 = self.pm.generate_pot("task-001", "0xWorker")
-        pot2 = self.pm.generate_pot("task-002", "0xWorker")
+        pot1 = self.pm.generate_pot("task-001", WORKER_A)
+        pot2 = self.pm.generate_pot("task-002", WORKER_A)
         assert pot1.signature != pot2.signature
 
     def test_generate_different_workers_different_signatures(self) -> None:
-        pot1 = self.pm.generate_pot("task-001", "0xWorkerA")
-        pot2 = self.pm.generate_pot("task-001", "0xWorkerB")
+        pot1 = self.pm.generate_pot("task-001", WORKER_A)
+        pot2 = self.pm.generate_pot("task-001", WORKER_B)
         assert pot1.signature != pot2.signature
 
 
@@ -58,7 +65,7 @@ class TestPotPersistence:
         assert self.pm.get_pot("no-such-task") is None
 
     def test_get_pot_after_generate(self) -> None:
-        generated = self.pm.generate_pot("task-001", "0xWorker")
+        generated = self.pm.generate_pot("task-001", WORKER_A)
         retrieved = self.pm.get_pot("task-001")
         assert retrieved is not None
         assert retrieved.task_id == generated.task_id
@@ -66,7 +73,7 @@ class TestPotPersistence:
         assert retrieved.signature == generated.signature
 
     def test_pot_survives_separate_instance(self) -> None:
-        self.pm.generate_pot("task-001", "0xWorker")
+        self.pm.generate_pot("task-001", WORKER_A)
         # New manager with same storage should find the PoT
         pm2 = POTManager(storage=self.storage, gateway_signing_key=self.key)
         retrieved = pm2.get_pot("task-001")
@@ -81,28 +88,30 @@ class TestPotVerification:
         self.gateway_acct = Account.from_key(self.key)
 
     def test_verify_valid_pot(self) -> None:
-        pot = self.pm.generate_pot("task-001", "0xWorker")
+        pot = self.pm.generate_pot("task-001", WORKER_A)
         assert self.pm.verify_pot(pot, self.gateway_acct.address)
 
     def test_verify_wrong_gateway_rejected(self) -> None:
-        pot = self.pm.generate_pot("task-001", "0xWorker")
+        pot = self.pm.generate_pot("task-001", WORKER_A)
         wrong_addr = Account.create().address
         assert not self.pm.verify_pot(pot, wrong_addr)
 
     def test_verify_tampered_task_id_rejected(self) -> None:
-        pot = self.pm.generate_pot("task-001", "0xWorker")
+        pot = self.pm.generate_pot("task-001", WORKER_A, amount=50_000)
         tampered = ProofOfTask(
             task_id="task-999",
             worker_address=pot.worker_address,
+            amount=pot.amount,
             signature=pot.signature,
         )
         assert not self.pm.verify_pot(tampered, self.gateway_acct.address)
 
     def test_verify_tampered_worker_rejected(self) -> None:
-        pot = self.pm.generate_pot("task-001", "0xWorker")
+        pot = self.pm.generate_pot("task-001", WORKER_A, amount=50_000)
         tampered = ProofOfTask(
             task_id=pot.task_id,
-            worker_address="0xEvil",
+            worker_address=EVIL,
+            amount=pot.amount,
             signature=pot.signature,
         )
         assert not self.pm.verify_pot(tampered, self.gateway_acct.address)

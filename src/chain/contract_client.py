@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -45,16 +45,22 @@ class SettlementContractClient(ABC):
         amount: int,
         nonce: int,
         gateway_address: str,
+        gateway_signature: str = "",
     ) -> None:
-        """Execute the oracle settlement (onlyGateway-equivalent path).
+        """Execute settlement with gateway signature verification.
+
+        The gateway signs ``keccak256(abi.encodePacked(taskId, user, worker, amount, nonce))``
+        with its ECDSA key.  Anyone can submit this — the contract recovers
+        the signer and verifies it matches the stored gateway address.
 
         Args:
-            task_id:  Unique task identifier (bytes32).
-            user:     The user whose deposit is being settled.
-            worker:   The worker who executed the task.
-            amount:   Total settlement amount (USDC, 6 decimals).
-            nonce:    Replay-protection nonce.
-            gateway_address:  The caller's address (checked against stored gateway).
+            task_id:           Unique task identifier (bytes32).
+            user:              The user whose deposit is being settled.
+            worker:            The worker who executed the task.
+            amount:            Total settlement amount (USDC, 6 decimals).
+            nonce:             Replay-protection nonce.
+            gateway_address:   The expected gateway signer address.
+            gateway_signature: Hex-encoded ECDSA signature (130 hex chars).
         """
         ...
 
@@ -82,15 +88,22 @@ class InMemorySettlementContract(SettlementContractClient):
 
     Balances, nonces, and settled/claimed task tracking live in dicts so
     tests can verify the full lifecycle without an EVM.
+
+    Gateway signature verification uses ``Account._recover_hash`` to match
+    the on-chain ``ECDSA.recover`` path.  The ``gateway_signing_key`` is
+    optional — when set, ``settle_task`` and ``claim_reward`` verify that
+    the gateway's ECDSA signature matches the stored gateway address.
     """
 
     def __init__(
         self,
         gateway_address: str,
         platform_owner: str,
+        gateway_signing_key: str | None = None,
     ) -> None:
         self._gateway_address = gateway_address.lower()
         self._platform_owner = platform_owner.lower()
+        self._gateway_signing_key = gateway_signing_key
         self._balances: dict[str, int] = {}
         self._pending_payouts: dict[str, int] = {}
         self._used_nonces: set[int] = set()
@@ -128,7 +141,51 @@ class InMemorySettlementContract(SettlementContractClient):
             raise ValueError("insufficient balance")
         self._balances[addr] = current - amount
 
-    # ── Oracle: settleTask ───────────────────────────────────────────────
+    # ── Helpers: gateway signature verification ──────────────────────────
+
+    @staticmethod
+    def _compute_settlement_hash(
+        task_id: bytes, user: str, worker: str, amount: int, nonce: int,
+    ) -> bytes:
+        """Compute ``keccak256(abi.encodePacked(taskId, user, worker, amount, nonce))``
+        in Python, matching the Solidity contract's message format.
+        """
+        from eth_utils import keccak as _keccak, to_canonical_address
+
+        user_bytes = to_canonical_address(user)
+        worker_bytes = to_canonical_address(worker)
+        amount_bytes = amount.to_bytes(32, 'big')
+        nonce_bytes = nonce.to_bytes(32, 'big')
+        return _keccak(task_id + user_bytes + worker_bytes + amount_bytes + nonce_bytes)
+
+    @staticmethod
+    def _compute_pot_hash(task_id: bytes, claimant: str, amount: int) -> bytes:
+        """Compute ``keccak256(abi.encodePacked(taskId, claimant, amount))`` matching Solidity."""
+        from eth_utils import keccak as _keccak, to_canonical_address
+
+        claimant_bytes = to_canonical_address(claimant)
+        amount_bytes = amount.to_bytes(32, 'big')
+        return _keccak(task_id + claimant_bytes + amount_bytes)
+
+    def _verify_gateway_signature(
+        self, message_hash: bytes, signature: str,
+    ) -> None:
+        """Recover signer from *signature* and verify it matches the gateway address.
+
+        Uses ``Account._recover_hash`` which mirrors Solidity's ``ecrecover``.
+        """
+        if not signature:
+            raise PermissionError("missing gateway signature")
+        from eth_account import Account
+
+        recovered = Account._recover_hash(message_hash, signature=signature)
+        if recovered.lower() != self._gateway_address:
+            raise PermissionError(
+                f"invalid gateway signature: recovered {recovered}, "
+                f"expected {self._gateway_address}"
+            )
+
+    # ── settleTask (gateway-signed) ──────────────────────────────────────
 
     def settle_task(
         self,
@@ -138,9 +195,13 @@ class InMemorySettlementContract(SettlementContractClient):
         amount: int,
         nonce: int,
         gateway_address: str,
+        gateway_signature: str = "",
     ) -> None:
-        if gateway_address.lower() != self._gateway_address:
-            raise PermissionError("onlyGateway: caller is not the gateway")
+        """Execute settlement with on-chain gateway signature verification.
+
+        The gateway signs ``keccak256(abi.encodePacked(taskId, user, worker, amount, nonce))``.
+        Anyone can submit — the contract recovers the signer and checks it.
+        """
         if amount <= 0:
             raise ValueError("amount must be > 0")
         if nonce in self._used_nonces:
@@ -152,6 +213,10 @@ class InMemorySettlementContract(SettlementContractClient):
         user_bal = self._balances.get(user_addr, 0)
         if user_bal < amount:
             raise ValueError("insufficient user balance")
+
+        # Verify gateway signature (mirrors Solidity ECDSA.recover)
+        msg_hash = self._compute_settlement_hash(task_id, user, worker, amount, nonce)
+        self._verify_gateway_signature(msg_hash, gateway_signature)
 
         # Record nonce + task
         self._used_nonces.add(nonce)
@@ -177,18 +242,26 @@ class InMemorySettlementContract(SettlementContractClient):
     def get_pending_payout(self, address: str) -> int:
         return self._pending_payouts.get(address.lower(), 0)
 
-    def claim_reward(self, task_id: bytes, claimant: str) -> int:
+    def claim_reward(
+        self, task_id: bytes, claimant: str,
+        gateway_signature: str = "",
+    ) -> int:
         """Claim the worker's payout (mirrors Solidity claimReward).
 
+        Verifies the PoT signature: gateway signs
+        ``keccak256(abi.encodePacked(taskId, claimant, amount))``.
+
         Args:
-            task_id:   The task identifier.
-            claimant:  The worker address calling claim.
+            task_id:           The task identifier.
+            claimant:          The worker address calling claim.
+            gateway_signature: Gateway's ECDSA signature over the PoT.
 
         Returns:
             The amount transferred to the claimant.
 
         Raises:
             ValueError if already claimed or no pending payout.
+            PermissionError if the PoT signature is invalid.
         """
         if task_id in self._claimed_tasks:
             raise ValueError("reward already claimed")
@@ -197,6 +270,10 @@ class InMemorySettlementContract(SettlementContractClient):
         worker_amount = self._pending_payouts.get(claimant_addr, 0)
         if worker_amount <= 0:
             raise ValueError("no pending payout for caller")
+
+        # Verify PoT gateway signature
+        pot_hash = self._compute_pot_hash(task_id, claimant, worker_amount)
+        self._verify_gateway_signature(pot_hash, gateway_signature)
 
         self._claimed_tasks.add(task_id)
         self._pending_payouts[claimant_addr] = 0
@@ -320,10 +397,13 @@ class Web3SettlementContract(SettlementContractClient):
         amount: int,
         nonce: int,
         gateway_address: str,
+        gateway_signature: str = "",
     ) -> None:
-        """Call settleTask on the contract (onlyGateway-guarded)."""
+        """Call settleTask on the contract (gateway-signed, ECDSA.recov)."""
         self._connect()
         acct = self._w3.eth.account.from_key(self._gateway_private_key)  # type: ignore[union-attr]
+
+        sig_bytes = bytes.fromhex(gateway_signature.removeprefix("0x"))
 
         txn = self._contract.functions.settleTask(  # type: ignore[union-attr]
             task_id,
@@ -331,6 +411,7 @@ class Web3SettlementContract(SettlementContractClient):
             self._w3.to_checksum_address(worker),  # type: ignore[union-attr]
             amount,
             nonce,
+            sig_bytes,
         ).build_transaction({
             "from": acct.address,
             "nonce": self._w3.eth.get_transaction_count(acct.address),  # type: ignore[union-attr]

@@ -8,7 +8,7 @@
 
 ### 认证模式
 - **EIP-712 签名认证**：替代 HMAC-SHA256，所有 `/api/run`、`/api/tasks/claim`、`/api/tasks/submit`、`/api/wallet/*` POST 请求必须携带 5 个头部：
-  - `X-User-ID`：EVM 地址（0x + 40 hex）
+  - `X-Wallet-Address`（首选，推荐）或 `X-User-ID`（回退）：EVM 地址（0x + 40 hex）
   - `X-Signature`：EIP-712 typed data 签名（130 hex chars）
   - `X-Timestamp`：UNIX 秒（300s 窗口防 replay）
   - `X-Nonce`：每地址单调递增 nonce（防 replay）

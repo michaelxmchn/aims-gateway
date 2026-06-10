@@ -191,5 +191,14 @@
 - fix(test_auth): 修复 EIP-712 paramsHash 不匹配 — 测试签名用空 params 而 body 含 search_term，导致 middleware 重建 hash 不一致返回 403
 - fix(test_bootstrap): 更新认证 scheme 断言 HMAC-SHA256 → EIP-712
 
+### 修改
+- feat(server): 中间件支持 X-Wallet-Address 为首选头部，X-User-ID 为回退
+- feat(broker): 新增 set_pot_signature()/get_pot_signature() 存储 PoT 到任务状态
+- feat(server): GET /api/tasks/{id}/status 返回 pot 字段
+- fix(contract_client): to_bytes(amount, 32) → amount.to_bytes(32, 'big') 兼容 eth_utils v4 API
+- fix(pot): to_bytes(amount, 32) → amount.to_bytes(32, 'big') 支持 amount=0
+- fix(billing): 移除 unused to_bytes import，使用 int.to_bytes()
+- fix(test): 更新所有测试 EVM 地址为有效 hex 地址；contract_interactions/billing 测试使用真实 ECDSA 网关签名
+
 ---
 *本文档由 Claude Code 自动维护，请勿手动编辑格式*

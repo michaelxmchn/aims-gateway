@@ -1,7 +1,8 @@
 """Tests for the Web3 BillingEngine (on-chain settlement orchestrator).
 
 All tests use in-memory ``Storage`` and ``InMemorySettlementContract``
-— no Redis or EVM required.
+— no Redis or EVM required. Gateway ECDSA signatures are generated
+with a test key to match the on-chain ``ECDSA.recover`` verification.
 """
 
 from __future__ import annotations
@@ -22,12 +23,15 @@ from src.gateway.billing import BillingEngine
 from src.gateway.storage import Storage
 
 
-# ── Fixtures ────────────────────────────────────────────────────────────────
+# ── Gateway key pair ────────────────────────────────────────────────────────
 
-GATEWAY = "0xGateway000000000000000000000000000000000001"
-OWNER = "0xOwner000000000000000000000000000000000001"
-USER = "0xUser00000000000000000000000000000000000001"
-WORKER = "0xWorker000000000000000000000000000000000001"
+_GATEWAY_ACCT = Account.create()
+GATEWAY_KEY = _GATEWAY_ACCT.key.hex()
+GATEWAY = _GATEWAY_ACCT.address
+
+OWNER = "0x3333333333333333333333333333333333333333"
+USER = "0x1111111111111111111111111111111111111111"
+WORKER = "0x2222222222222222222222222222222222222222"
 
 COST = BillingEngine.COST_PER_TASK_USDC  # 50_000 (0.05 USDC atomic)
 
@@ -37,6 +41,7 @@ def contract():
     return InMemorySettlementContract(
         gateway_address=GATEWAY,
         platform_owner=OWNER,
+        gateway_signing_key=GATEWAY_KEY,
     )
 
 
@@ -53,8 +58,10 @@ def billing(contract, pot_manager):
     return BillingEngine(
         storage=storage,
         owner_address=OWNER,
+        gateway_address=GATEWAY,
         contract_client=contract,
         pot_manager=pot_manager,
+        gateway_signing_key=GATEWAY_KEY,
     )
 
 
@@ -79,7 +86,7 @@ class TestCheckBalance:
         assert bal == 1_000_000
 
     def test_balance_zero_for_unknown(self, billing):
-        bal = billing.check_user_balance("0xUnknown")
+        bal = billing.check_user_balance("0xUnknownAddress00000000000000000000000000")
         assert bal == 0
 
     def test_no_contract_returns_zero(self):
@@ -127,6 +134,7 @@ class TestRequestSettlement:
             storage=storage,
             contract_client=funded_contract,
             pot_manager=None,
+            gateway_signing_key=GATEWAY_KEY,
         )
         receipt = eng.request_settlement("task-001", USER, WORKER)
         assert receipt["status"] == "COMPLETED"
@@ -147,10 +155,18 @@ class TestRequestSettlement:
     def test_settlement_then_claim(self, ready_billing, funded_contract):
         receipt = ready_billing.request_settlement("task-001", USER, WORKER)
         assert receipt["status"] == "COMPLETED"
-        # Worker claims on-chain
+        # Worker claims on-chain — must provide gateway-signed PoT
         task_id_bytes = __import__("eth_utils", fromlist=["keccak"]).keccak(text="task-001")
-        payout = funded_contract.claim_reward(task_id_bytes, WORKER)
-        assert payout == (COST * 8000 // 10000)
+        from eth_account import Account
+        from eth_utils import keccak as _keccak, to_canonical_address
+
+        expected_payout = (COST * 8000 // 10000)
+        claimant_bytes = to_canonical_address(WORKER)
+        amount_bytes = expected_payout.to_bytes(32, 'big')
+        pot_hash = _keccak(task_id_bytes + claimant_bytes + amount_bytes)
+        claim_sig = Account.unsafe_sign_hash(pot_hash, GATEWAY_KEY).signature.hex()
+        payout = funded_contract.claim_reward(task_id_bytes, WORKER, claim_sig)
+        assert payout == expected_payout
 
 
 # ── PoT generation helper ───────────────────────────────────────────────────

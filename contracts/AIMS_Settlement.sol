@@ -2,18 +2,20 @@
 pragma solidity ^0.8.20;
 
 /// @title AIMS Settlement Contract
-/// @notice On-chain settlement for the AIMS Gateway credit & revenue system.
-///         Users deposit USDC, the Gateway (oracle) authorises settlements via
-///         settleTask(), and workers claim 80 % rewards via Proof-of-Task.
+/// @notice On-chain settlement for the AIMS Gateway credit system.
+///         Users deposit USDC. Gateway signs settlement authorizations
+///         off-chain. Anyone can submit a gateway-signed settleTask to
+///         execute the 80/20 split (worker 80%, platform owner 20%).
 ///
 /// Security
 /// --------
-/// - **Nonce replay protection**: each settleTask call consumes a unique nonce.
-///   Duplicate nonces are rejected, preventing replay attacks.
-/// - **Gateway-only oracle**: settleTask can only be called by the registered
-///   gateway address.
-/// - **PoT claim verification**: claimReward() recovers the signer from the
-///   gateway's ECDSA signature and verifies it matches the stored gateway.
+/// - **Gateway signature binding**: Each settleTask call includes a
+///   gateway ECDSA signature over `(taskId, user, worker, amount)`.
+///   The contract recovers the signer — only gateway-signed settlements
+///   are accepted (no `onlyGateway` modifier needed).
+/// - **Task-idempotency**: `settledTasks[taskId]` prevents double-settle.
+/// - **PoT-based claims**: `claimReward()` recovers the gateway signature
+///   from the PoT and verifies it against the stored gateway address.
 /// - **Double-claim prevention**: each taskId can be claimed at most once.
 ///
 /// Revenue split
@@ -23,6 +25,7 @@ pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 contract AIMSSettlement {
     using SafeERC20 for IERC20;
@@ -43,7 +46,7 @@ contract AIMSSettlement {
     /// @notice The USDC token contract.
     IERC20 public immutable usdc;
 
-    /// @notice Gateway oracle address — the only caller of settleTask().
+    /// @notice Gateway oracle address — the signer of settlement authorizations.
     address public gateway;
 
     /// @notice Platform owner address — recipient of the 20 % platform fee.
@@ -133,28 +136,42 @@ contract AIMSSettlement {
         emit Withdrawn(msg.sender, amount);
     }
 
-    // ── Oracle: settleTask ───────────────────────────────────────────────────
+    // ── Settlement (gateway-signed, ECDSA.recov) ────────────────────────────
 
-    /// @notice Record a settlement (gateway oracle function).
-    ///         Deducts *amount* from *user*'s deposit balance and credits
-    ///         80 % to the worker and 20 % to the platform owner as pending payouts.
+    /// @notice Settle a task using a gateway-signed authorization.
     ///
-    /// @param taskId   Unique task identifier (keccak256 of off-chain task ID).
-    /// @param user     The user whose deposit is being settled.
-    /// @param worker   The worker who executed the task.
-    /// @param amount   Total settlement amount in USDC (6 decimals).
-    /// @param nonce    Unique nonce for replay protection.
+    ///         The gateway signs `keccak256(abi.encodePacked(taskId, user,
+    ///         worker, amount))` with its ECDSA key. Anyone can submit this
+    ///         signed settlement — the contract recovers and verifies the
+    ///         signer against the stored gateway address.
+    ///
+    ///         On success, deducts *amount* from *user*'s deposit and credits
+    ///         80 % to the worker and 20 % to the platform owner as pending
+    ///         payouts.
+    ///
+    /// @param taskId           Unique task identifier (bytes32).
+    /// @param user             The user whose deposit is being settled.
+    /// @param worker           The worker who executed the task.
+    /// @param amount           Total settlement amount in USDC (6 decimals).
+    /// @param nonce            Unique nonce for replay protection.
+    /// @param gatewaySignature Gateway's ECDSA signature over the tuple.
     function settleTask(
         bytes32 taskId,
         address user,
         address worker,
         uint256 amount,
-        uint256 nonce
-    ) external onlyGateway {
+        uint256 nonce,
+        bytes calldata gatewaySignature
+    ) external {
         require(amount > 0, "AIMSSettlement: amount must be > 0");
         require(!usedNonces[nonce], "AIMSSettlement: nonce already used");
         require(!settledTasks[taskId], "AIMSSettlement: task already settled");
         require(balances[user] >= amount, "AIMSSettlement: insufficient user balance");
+
+        // Recover the gateway signer from the ECDSA signature
+        bytes32 message = keccak256(abi.encodePacked(taskId, user, worker, amount, nonce));
+        address recovered = ECDSA.recover(message, gatewaySignature);
+        require(recovered == gateway, "AIMSSettlement: invalid gateway signature");
 
         usedNonces[nonce] = true;
         settledTasks[taskId] = true;
@@ -189,10 +206,7 @@ contract AIMSSettlement {
 
         // Recover the signer from the PoT
         bytes32 message = keccak256(abi.encodePacked(taskId, msg.sender));
-        bytes32 ethSignedMessage = keccak256(
-            abi.encodePacked("\x19Ethereum Signed Message:\n32", message)
-        );
-        address recovered = _recoverSigner(ethSignedMessage, gatewaySignature);
+        address recovered = ECDSA.recover(message, gatewaySignature);
         require(recovered == gateway, "AIMSSettlement: invalid PoT signature");
 
         claimedTasks[taskId] = true;
@@ -228,29 +242,5 @@ contract AIMSSettlement {
     function setGateway(address _newGateway) external onlyGateway {
         require(_newGateway != address(0), "AIMSSettlement: invalid address");
         gateway = _newGateway;
-    }
-
-    // ── Internal helpers ─────────────────────────────────────────────────────
-
-    /// @notice Recover signer address from a hash and ECDSA signature.
-    function _recoverSigner(
-        bytes32 hash,
-        bytes calldata signature
-    ) internal pure returns (address) {
-        require(signature.length == 65, "AIMSSettlement: invalid signature length");
-        bytes32 r;
-        bytes32 s;
-        uint8 v;
-        // solhint-disable-next-line no-inline-assembly
-        assembly {
-            r := calldataload(signature.offset)
-            s := calldataload(add(signature.offset, 0x20))
-            v := byte(0, calldataload(add(signature.offset, 0x40)))
-        }
-        // EIP-155: if v is 0 or 1, adjust to 27/28
-        if (v < 27) {
-            v += 27;
-        }
-        return ecrecover(hash, v, r, s);
     }
 }
