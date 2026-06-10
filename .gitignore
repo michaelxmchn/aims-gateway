@@ -49,3 +49,8 @@ build/
 .project.agents/
 logs/
 skills/uploaded/
+
+# --- Node / Hardhat ---
+node_modules/
+artifacts/
+cache/

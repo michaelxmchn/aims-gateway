@@ -93,6 +93,10 @@
   - 状态: 已完成
   - 文件: src/chain/settlement.py
   - 描述: UserIdentity Map、Stripe Webhook 桩（法币入金）、SessionKeyManager 存根
+- **AIMS_Settlement 智能合约 + Hardhat 测试**
+  - 状态: 已完成 (2026-06-10)
+  - 文件: contracts/AIMS_Settlement.sol / tests/hardhat/aims_settlement_test.cjs / contracts/test/MockERC20.sol
+  - 描述: Solidity 合约（USDC deposit/withdraw、settleTask 网关签名 80/20 分账、claimReward PoT 验证、claimOwnerFees、双重防重放）；18 个 Hardhat 测试验证全部合约逻辑
 
 ### Layer 6: 客户端 & MCP
 - **MCP stdio Server**
@@ -377,3 +381,9 @@
   - 文件: src/gateway/billing.py
   - 描述: 添加缺失 `from eth_account import Account` 修复 `_sign_settlement()` 中的 `NameError`；删除 `return signed.signature.hex()` 后的不可达死代码
   - 验证: 147/147 测试通过 ✓
+- **Web3 Gateway 工具 + Hardhat 合约测试**
+  - 状态: 已完成 (2026-06-10)
+  - 文件: src/gateway/web3_utils.py / tests/hardhat/aims_settlement_test.cjs
+  - 描述: web3_utils.py（verify_personal_sign / verify_eip712_signature / generate_settlement_proof / verify_settlement_proof / _compute_settlement_message_hash）；18 个 Hardhat 测试覆盖 Deposits/Withdrawals/Settlement/Claim/OwnerFees/KeyRotation
+  - 关键修复: Solidity claimReward PoT hash 增加 amount 参数保证跨平台一致性；raw ECDSA signing 替代 personal_sign 适配 ECDSA.recover()
+  - 验证: 18/18 Hardhat 测试通过 ✓ + 147/147 Python 测试通过 ✓

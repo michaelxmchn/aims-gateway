@@ -188,6 +188,24 @@ A: 待补充
 - **决策**: 沙箱隔离不做（信任模式，仅种子开发者）+ 串行执行（不做并行 DAG）
 - **原因**: 沙箱和并行调度会增加数倍复杂度，MVP 场景线性的就够用了
 
+### Raw ECDSA 签名模式（Hardhat / Solidity ECDSA.recover）
+- **不要使用 `wallet.signMessage()`**：该函数添加 `\x19Ethereum Signed Message:\n32` 前缀，Solidity `ECDSA.recover()` 期望的是 raw hash 签名
+- **正确做法**: `wallet.signingKey.sign(ethers.getBytes(hash))` 执行 raw ECDSA 签名，返回的 `Signature` 对象通过 `ethers.Signature.from(sigObj).serialized` 序列化为 `(r, s, v)` 65 字节 hex
+- **Python 对应**: `Account.unsafe_sign_hash(message_hash, private_key)` 产生兼容签名
+- **Solidity 对应**: `ECDSA.recover(keccak256(abi.encodePacked(...)), signature)` 直接验证
+
+### 跨平台 Hash 一致性约束
+- **Solidity `keccak256(abi.encodePacked(...))`** 必须与 **Python `eth_utils.keccak(bytes_concat(...))`** 产生相同结果
+- **PoT hash 三平台一致**: `keccak256(abi.encodePacked(taskId, workerAddress, amount))` — Solidity、Python POTManager、Python InMemorySettlementContract 使用完全相同计算
+- **Settlement hash**: `keccak256(abi.encodePacked(taskId, user, worker, amount, nonce))` — Solidity 和 Python `_sign_settlement()` 匹配
+- **关键**: `to_canonical_address()` 将 `0x` 地址转换为 20 字节；`amount.to_bytes(32, 'big')` 生成 32 字节大端表示
+
+### Hardhat 测试模式
+- **测试文件用 `.cjs` 扩展名**：`package.json` 有 `"type": "module"`，CommonJS 测试文件必须用 `.cjs`
+- **config 文件用 `.js`（ESM）**：`hardhat.config.js` 使用 `import`/`export default`
+- **MockERC20 部署**: `MockERC20.deploy("USD Coin", "USDC", 6)` — 6 位小数匹配 USDC
+- **Signer 管理**: `ethers.getSigners()` 返回 `[fundingSigner, user, worker, owner]` — 索引 0 为 default 签名者，用于资助 `ethers.Wallet.createRandom()` 创建的 gateway wallet
+
 ### 决策20：E2E 集成测试 8 阶段全链路验证
 - **背景**: 单一机制的单元测试无法捕捉机制间的交互问题（如 staking 后削减、冻结资金释放后的财富守恒）
 - **决策**: `tests/e2e_integration_test.py` 定义 8 阶段流水线：Account Abstraction → Developer Registration → Worker Staking → Fault Tolerance → Slashing → Tier-2 Billing → Wealth Audit → Dashboard

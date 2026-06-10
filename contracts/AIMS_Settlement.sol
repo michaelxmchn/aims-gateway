@@ -194,7 +194,9 @@ contract AIMSSettlement {
     /// @notice Claim reward for a settled task using a Proof-of-Task.
     ///
     ///         The PoT is an ECDSA signature produced by the gateway over
-    ///         `keccak256(abi.encodePacked(taskId, msg.sender))`.
+    ///         `keccak256(abi.encodePacked(taskId, msg.sender, workerAmount))`.
+    ///         Including the exact payout amount prevents signature reuse
+    ///         across different payout values.
     ///
     /// @param taskId            The task identifier.
     /// @param gatewaySignature  The gateway's ECDSA signature (r, s, v — 65 bytes).
@@ -204,15 +206,16 @@ contract AIMSSettlement {
     ) external {
         require(!claimedTasks[taskId], "AIMSSettlement: reward already claimed");
 
-        // Recover the signer from the PoT
-        bytes32 message = keccak256(abi.encodePacked(taskId, msg.sender));
+        uint256 workerAmount = pendingPayouts[msg.sender];
+        require(workerAmount > 0, "AIMSSettlement: no pending payout for caller");
+
+        // Recover the signer from the PoT — includes the exact payout amount
+        // so the signature cannot be replayed for a different amount.
+        bytes32 message = keccak256(abi.encodePacked(taskId, msg.sender, workerAmount));
         address recovered = ECDSA.recover(message, gatewaySignature);
         require(recovered == gateway, "AIMSSettlement: invalid PoT signature");
 
         claimedTasks[taskId] = true;
-
-        uint256 workerAmount = pendingPayouts[msg.sender];
-        require(workerAmount > 0, "AIMSSettlement: no pending payout for caller");
 
         // Reset before transfer to prevent re-entrancy
         pendingPayouts[msg.sender] = 0;
