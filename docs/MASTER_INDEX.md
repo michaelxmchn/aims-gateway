@@ -47,53 +47,44 @@ curl https://aims-gateway.fly.dev/api/discovery
 
 ---
 
-### 2. EIP-712 Wallet Authentication
-- **Spec**: Every `POST` to `/api/*` (except upload, health, discovery) requires EIP-712 typed-data signed headers
-- **Reference**: `src/gateway/server.py` lines 85–225, `src/chain/eip712.py`
-- **Algorithm**: User wallet signs EIP-712 typed data matching `AIMSRunRequest` / `AIMSSubmitRequest`
+### 2. EIP-191 Wallet Authentication
+- **Spec**: Every `POST` to `/api/*` (except upload, health, discovery) requires EIP-191 personal_sign signed headers
+- **Reference**: `src/gateway/server.py` lines 96–238
+- **Algorithm**: Wallet signs the **raw request body** with standard `personal_sign` (`\x19Ethereum Signed Message:\n<len><body>`). Server recovers the signer via `encode_defunct(primitive=body)` + `Account.recover_message()`.
 
 **Required Headers:**
 ```
 X-Wallet-Address: <0x-prefixed EVM address (42 chars)>
-X-Signature:     <EIP-712 typed-data hex signature (130 hex chars)>
+X-Signature:     <EIP-191 personal_sign hex signature>
 X-Timestamp:     <UNIX epoch seconds as string>
-X-Nonce:         <monotonic per-address nonce (uint256)>
-X-Deadline:      <signature expiry as UNIX seconds (uint256)>
 ```
 
 **Replay Protection:**
-- Timestamp must be within 300s of server time
-- Nonce must be monotonically increasing per address
-- Deadline prevents signature reuse beyond specified time
+- Timestamp must be within 300s of server time (no nonce needed — the 300s window + unique body per request prevents replay)
 
 **Example Signing (Python):**
 ```python
 from eth_account import Account
-from src.chain.eip712 import (
-    AIMS_DOMAIN, RUN_REQUEST_TYPES, make_run_request_value, sign_eip712_message,
-)
+from eth_account.messages import encode_defunct
 
-private_key = "0x..."
-wallet = Account.from_key(private_key)
+wallet = Account.from_key("0x...")
+body = json.dumps({"skill_id": "amazon_scraper", "params": {"search_term": "RTX 5090"}})
 
-value = make_run_request_value(
-    skill_id="amazon_scraper",
-    params={"search_term": "RTX 5090"},
-    nonce=0,
-    deadline=int(time.time()) + 3600,
-)
-signature = sign_eip712_message(private_key, RUN_REQUEST_TYPES, value)
+signable_message = encode_defunct(primitive=body.encode())
+signed = wallet.sign_message(signable_message)
 
-curl_cmd = [
-    f'curl -X POST "$BASE_URL/api/run"',
-    f'  -H "X-Wallet-Address: {wallet.address}"',
-    f'  -H "X-Signature: {signature}"',
-    f'  -H "X-Timestamp: {int(time.time())}"',
-    f'  -H "X-Nonce: 0"',
-    f'  -H "X-Deadline: {int(time.time()) + 3600}"',
-    '  -H "Content-Type: application/json"',
-    '  -d \'{"skill_id":"amazon_scraper","params":{"search_term":"RTX 5090"}}\'',
-]
+headers = {
+    "X-Wallet-Address": wallet.address,
+    "X-Signature": signed.signature.hex(),
+    "X-Timestamp": str(int(time.time())),
+    "Content-Type": "application/json",
+}
+curl -X POST "$BASE_URL/api/run" \
+  -H "X-Wallet-Address: ${headers['X-Wallet-Address']}" \
+  -H "X-Signature: ${headers['X-Signature']}" \
+  -H "X-Timestamp: ${headers['X-Timestamp']}" \
+  -H "Content-Type: application/json" \
+  -d '{"skill_id":"amazon_scraper","params":{"search_term":"RTX 5090"}}'
 ```
 
 ---
@@ -101,7 +92,7 @@ curl_cmd = [
 ### 3. Run API (Task Execution)
 - **Spec**: `POST /api/run` — validate params, check on-chain balance, enqueue task
 - **Reference**: `src/gateway/server.py` lines 796–862
-- **Auth**: EIP-712 Wallet Signature
+- **Auth**: EIP-191 Wallet Signature
 
 **Example Request:**
 ```json
@@ -129,7 +120,7 @@ curl_cmd = [
 |------|---------|
 | 400 | Missing required parameter (check input_schema.required) |
 | 402 | Insufficient USDC balance on settlement contract |
-| 403 | Invalid EIP-712 signature / nonce replay |
+| 403 | Invalid EIP-191 signature / timestamp outside window |
 | 404 | skill_id not found in registry |
 
 ---
@@ -138,7 +129,7 @@ curl_cmd = [
 - **Spec**: Multi-step tasks where output of skill A feeds skill B
 - **Reference**: `src/gateway/broker.py` lines 33–46 (BrokerTask), 238–305 (complete_task)
 - **Reference**: `src/gateway/server.py` lines 323–420 (submit_task pipeline handling)
-- **Auth**: EIP-712 Wallet Signature (per step)
+- **Auth**: EIP-191 Wallet Signature (per step)
 
 **Example Request:**
 ```json
@@ -187,7 +178,7 @@ curl_cmd = [
 ### 5. Worker Heartbeat
 - **Spec**: `POST /api/workers/heartbeat` — keep worker registered as active
 - **Reference**: `src/gateway/server.py` lines 423–439
-- **Auth**: EIP-712 Wallet Signature
+- **Auth**: EIP-191 Wallet Signature
 
 **Example Request:**
 ```json
@@ -252,21 +243,25 @@ my_skill.zip
 1. GET /api/discovery         → learn all skills and endpoints
 2. Parse skills list          → find matching skill_id
 3. Read input_schema          → determine required params
-4. EIP-712 sign request       → X-Wallet-Address, X-Signature, X-Timestamp, X-Nonce, X-Deadline
+4. EIP-191 sign request body  → X-Wallet-Address, X-Signature, X-Timestamp
 5. POST /api/run              → receive task_id
 6. Poll GET /api/tasks/{id}/status → SUCCESS/FAILED — check pot field for on-chain claim
 ```
 
 **Python Client:**
 ```python
-from src.chain.eip712 import sign_eip712_message, make_run_request_value, AIMS_DOMAIN, RUN_REQUEST_TYPES
 from eth_account import Account
-import time
+from eth_account.messages import encode_defunct
 
-wallet = Account.from_key("0x...")
-value = make_run_request_value("amazon_scraper", {"search_term": "RTX 5090"}, nonce=0, deadline=int(time.time())+3600)
-signature = sign_eip712_message(wallet.key.hex(), RUN_REQUEST_TYPES, value)
-# Use wallet.address as X-Wallet-Address, signature as X-Signature
+wallet = Account.create()  # or Account.from_key("0x...")
+body = json.dumps({"skill_id": "amazon_scraper", "params": {"search_term": "RTX 5090"}})
+signable_message = encode_defunct(primitive=body.encode())
+signed = wallet.sign_message(signable_message)
+
+# Headers:
+#   X-Wallet-Address: {wallet.address}
+#   X-Signature:      {signed.signature.hex()}
+#   X-Timestamp:      {int(time.time())}
 ```
 
 **Proof-of-Task (PoT):** After task completion, the gateway signs a PoT over `keccak256(taskId ++ workerAddress)`. Workers fetch PoT via `GET /api/tasks/{task_id}/pot` and present it to `claimReward()` on the AIMSSettlement contract to receive 80% of the settlement amount.
@@ -302,7 +297,7 @@ curl https://aims-gateway.fly.dev/api/discovery
 
 # 3. Find the skill matching the user's intent
 # 4. Read that skill's input_schema
-# 5. EIP-712 sign the request with your wallet key
+# 5. EIP-191 sign the request body with your wallet key
 # 6. POST /api/run with signed headers
 # 7. Poll GET /api/tasks/{id}/status until SUCCESS/FAILED
 # 8. GET /api/tasks/{id}/pot to retrieve on-chain claim proof

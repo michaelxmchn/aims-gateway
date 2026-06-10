@@ -19,14 +19,8 @@ from eth_account import Account
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 
-from src.chain.eip712 import (
-    AIMS_DOMAIN,
-    RUN_REQUEST_TYPES,
-    SUBMIT_REQUEST_TYPES,
-    make_run_request_value,
-    make_submit_request_value,
-    verify_eip712_signature,
-)
+from eth_account.messages import encode_defunct
+
 from src.chain.nonce_manager import NonceManager
 from src.chain.pot import POTManager
 from src.gateway.broker import TaskBroker
@@ -93,7 +87,7 @@ app = FastAPI(
     description="AIMS DePIN Network — Task Dispatch & Settlement Gateway",
 )
 
-# ── EIP-712 signature verification middleware ───────────────────────────────
+# ── EIP-191 personal_sign wallet verification middleware ────────────────────
 
 EXEMPT_PATHS = {
     "/api/health",
@@ -103,25 +97,21 @@ EXEMPT_PATHS = {
 
 
 @app.middleware("http")
-async def verify_eip712_middleware(request: Request, call_next):
-    """Verify EIP-712 typed-data signature on all ``/api/*`` requests.
+async def verify_wallet_middleware(request: Request, call_next):
+    """Verify EIP-191 wallet signature on all ``/api/*`` requests.
 
-    Required headers (replacing the old HMAC-SHA256 scheme):
-      - ``X-User-ID``  — EVM wallet address (0x-prefixed, 42 chars)
-      - ``X-Signature`` — EIP-712 typed-data hex signature
-      - ``X-Timestamp`` — UNIX epoch seconds as string (300 s window)
-      - ``X-Nonce``     — monotonic per-address nonce (uint256)
-      - ``X-Deadline``  — signature expiry as UNIX seconds (uint256)
+    Required headers:
+      - ``X-Wallet-Address`` — EVM wallet address (0x-prefixed, 42 chars)
+      - ``X-Signature``      — EIP-191 ``personal_sign`` hex signature
+      - ``X-Timestamp``      — UNIX epoch seconds as string (300 s window)
 
     The middleware:
-    1. Validates ``X-User-ID`` is a valid EVM address.
+    1. Validates ``X-Wallet-Address`` is a valid EVM address.
     2. Checks the timestamp is within the 300 s window.
-    3. Recovers the signer from the EIP-712 signature.
-    4. Verifies the signer matches ``X-User-ID``.
-    5. Checks the nonce hasn't been used.
+    3. Recovers the signer by EIP-191 ``personal_sign`` over the raw body.
+    4. Verifies the signer matches ``X-Wallet-Address``.
 
-    Exempt paths (same as before): ``/api/health``, ``/api/discovery``,
-    ``/api/skills/upload``.
+    Exempt paths: ``/api/health``, ``/api/discovery``, ``/api/skills/upload``.
     """
     path = request.url.path
 
@@ -129,32 +119,29 @@ async def verify_eip712_middleware(request: Request, call_next):
         return await call_next(request)
 
     if not path.startswith("/api/"):
-        response = await call_next(request)
-        return response
+        return await call_next(request)
 
     # ── Read headers (X-Wallet-Address primary, X-User-ID fallback) ──
-    user_id = request.headers.get("x-wallet-address", "")
-    if not user_id:
-        user_id = request.headers.get("x-user-id", "")
+    wallet_address = request.headers.get("x-wallet-address", "")
+    if not wallet_address:
+        wallet_address = request.headers.get("x-user-id", "")
     signature = request.headers.get("x-signature", "")
     ts = request.headers.get("x-timestamp", "")
-    nonce_str = request.headers.get("x-nonce", "")
-    deadline_str = request.headers.get("x-deadline", "")
 
-    if not all([user_id, signature, ts, nonce_str, deadline_str]):
+    if not all([wallet_address, signature, ts]):
         return Response(
             status_code=403,
             content=json.dumps({
-                "detail": "Missing EIP-712 headers: X-Wallet-Address (or X-User-ID), X-Signature, X-Timestamp, X-Nonce, X-Deadline",
+                "detail": "Missing EIP-191 headers: X-Wallet-Address (or X-User-ID), X-Signature, X-Timestamp",
             }),
             media_type="application/json",
         )
 
     # ── 1. Validate EVM address ──────────────────────────────────────
-    if not user_id.startswith("0x") or len(user_id) != 42:
+    if not wallet_address.startswith("0x") or len(wallet_address) != 42:
         return Response(
             status_code=403,
-            content=json.dumps({"detail": "X-User-ID must be a valid EVM address (0x-prefixed, 42 chars)"}),
+            content=json.dumps({"detail": "X-Wallet-Address must be a valid EVM address (0x-prefixed, 42 chars)"}),
             media_type="application/json",
         )
 
@@ -175,38 +162,10 @@ async def verify_eip712_middleware(request: Request, call_next):
             media_type="application/json",
         )
 
-    # ── 3. Parse nonce & deadline ────────────────────────────────────
-    try:
-        nonce = int(nonce_str)
-        deadline = int(deadline_str)
-    except ValueError:
-        return Response(
-            status_code=403,
-            content=json.dumps({"detail": "Invalid X-Nonce or X-Deadline — must be uint256"}),
-            media_type="application/json",
-        )
-
-    # ── 4. Check deadline ────────────────────────────────────────────
-    if time.time() > deadline:
-        return Response(
-            status_code=403,
-            content=json.dumps({"detail": "Signature deadline has passed"}),
-            media_type="application/json",
-        )
-
-    # ── 5. Check nonce ───────────────────────────────────────────────
-    if nonce_manager.has_nonce_been_used(user_id, nonce):
-        return Response(
-            status_code=403,
-            content=json.dumps({"detail": "Nonce already used — replay detected"}),
-            media_type="application/json",
-        )
-
-    # ── 5b. Sliding-window rate limiter (per wallet address) ──────────
+    # ── 3. Sliding-window rate limiter (per wallet address) ──────────
     window_start = int(time.time() // RATE_LIMIT_WINDOW)
-    rate_key = f"{RATE_LIMIT_NS}:{user_id}:{window_start}"
+    rate_key = f"{RATE_LIMIT_NS}:{wallet_address}:{window_start}"
     current_count = storage.incr(rate_key)
-    # Set expiry so the counter auto-cleans after two windows
     if current_count == 1 and storage.is_persistent:
         storage._redis.expire(rate_key, RATE_LIMIT_WINDOW * 2)
     if current_count > RATE_LIMIT_MAX:
@@ -218,40 +177,26 @@ async def verify_eip712_middleware(request: Request, call_next):
             media_type="application/json",
         )
 
-    # ── 6. Determine EIP-712 type based on path ──────────────────────
+    # ── 4. Verify EIP-191 personal_sign signature ────────────────────
     body = await request.body()
     try:
-        body_json = json.loads(body) if body else {}
-    except json.JSONDecodeError:
-        body_json = {}
-
-    if path == "/api/run":
-        types = RUN_REQUEST_TYPES
-        skill_id = body_json.get("skill_id", "")
-        params = body_json.get("params", {})
-        value = make_run_request_value(skill_id, params, nonce, deadline)
-    elif path in ("/api/tasks/submit", "/api/tasks/submit_result"):
-        types = SUBMIT_REQUEST_TYPES
-        task_id = body_json.get("task_id", "")
-        result_data = body_json.get("result_data", {})
-        value = make_submit_request_value(task_id, result_data, nonce, deadline)
-    else:
-        # For other endpoints use SUBMIT_REQUEST_TYPES as a generic fallback
-        types = SUBMIT_REQUEST_TYPES
-        task_id = body_json.get("task_id", body_json.get("worker_id", ""))
-        result_data = {k: v for k, v in body_json.items() if k != "task_id"}
-        value = make_submit_request_value(task_id, result_data, nonce, deadline)
-
-    # ── 7. Verify signature ──────────────────────────────────────────
-    if not verify_eip712_signature(types, AIMS_DOMAIN, value, signature, user_id):
+        signable_message = encode_defunct(primitive=body)
+        recovered = Account.recover_message(signable_message, signature=signature)
+    except Exception as exc:
         return Response(
             status_code=403,
-            content=json.dumps({"detail": "Invalid EIP-712 signature — recovered signer does not match X-User-ID"}),
+            content=json.dumps({"detail": f"Signature verification failed: {exc}"}),
             media_type="application/json",
         )
 
-    # ── 8. Consume nonce ─────────────────────────────────────────────
-    nonce_manager.mark_used(user_id, nonce)
+    if recovered.lower() != wallet_address.lower():
+        return Response(
+            status_code=403,
+            content=json.dumps({
+                "detail": "Invalid EIP-191 signature — recovered signer does not match X-Wallet-Address",
+            }),
+            media_type="application/json",
+        )
 
     response = await call_next(request)
     return response
@@ -485,27 +430,26 @@ async def discovery():
         },
         "server": {"current_time": time.time(), "timezone": "UTC"},
         "authentication": {
-            "scheme": "EIP-712",
+            "scheme": "EIP-191",
             "description": (
-                "Every request to /api/* endpoints must include five signed headers. "
+                "Every POST to /api/* endpoints must include three signed headers. "
                 "GET /api/discovery, GET /api/health, and POST /api/skills/upload are exempt."
             ),
             "headers": {
-                "X-User-ID": {"type": "string", "description": "EVM wallet address (0x-prefixed, 42 chars)"},
-                "X-Signature": {"type": "string", "description": "EIP-712 typed-data signature"},
+                "X-Wallet-Address": {"type": "string", "description": "EVM wallet address (0x-prefixed, 42 chars)"},
+                "X-Signature": {"type": "string", "description": "EIP-191 personal_sign hex signature over the raw body"},
                 "X-Timestamp": {"type": "string", "description": "UNIX epoch seconds (float). Must be within 300s."},
-                "X-Nonce": {"type": "string", "description": "Monotonic per-address nonce (uint256)"},
-                "X-Deadline": {"type": "string", "description": "Signature expiry as UNIX seconds (uint256)"},
             },
             "example_curl": (
-                '# EIP-712 signing requires eth_account\n'
-                '# See src/chain/eip712.py for the full flow\n'
-                'PRIVATE_KEY="0x..."; ADDR="0x..."; TS=$(date +%s); NONCE=0; DL=$((TS + 3600))\n'
-                'BODY=\'{"skill_id":"amazon_scraper","params":{},"user_id":"$ADDR"}\'\n'
-                '# Sign via Python (see sign_eip712_message)\n'
+                '# EIP-191 personal_sign — see bootstrap_helper.py for the full flow\n'
+                'WALLET="0x..."; TS=$(date +%s)\n'
+                'BODY=\'{"skill_id":"amazon_scraper","params":{},"user_id":"$WALLET"}\'\n'
+                '# Sign the raw body bytes via Python (eth_account):\n'
+                '# from eth_account.messages import encode_defunct\n'
+                '# sig = wallet.sign_message(encode_defunct(primitive=body.encode()))\n'
                 'curl -X POST "$BASE_URL/api/run" \\\n'
-                '  -H "X-User-ID: $ADDR" -H "X-Signature: $SIG" \\\n'
-                '  -H "X-Timestamp: $TS" -H "X-Nonce: $NONCE" -H "X-Deadline: $DL" \\\n'
+                '  -H "X-Wallet-Address: $WALLET" -H "X-Signature: $SIG" \\\n'
+                '  -H "X-Timestamp: $TS" \\\n'
                 '  -H "Content-Type: application/json" -d "$BODY"'
             ),
         },

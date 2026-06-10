@@ -29,7 +29,7 @@ client = TestClient(app)
 # Protocols that MUST appear in MASTER_INDEX.md
 REQUIRED_PROTOCOLS = [
     "Discovery Protocol",
-    "HMAC-SHA256 Authentication",
+    "EIP-191 Wallet Authentication",
     "Run API",
     "Pipeline Execution",
     "Worker Heartbeat",
@@ -38,7 +38,7 @@ REQUIRED_PROTOCOLS = [
 ]
 
 REQUIRED_TOPICS = [
-    "HMAC",
+    "personal_sign",
     "pipeline",
     "discovery",
     "heartbeat",
@@ -77,7 +77,7 @@ class TestAgentBootstrap:
         """Agent reads authentication scheme from discovery response."""
         data = client.get("/api/discovery").json()
         auth = data.get("authentication", {})
-        assert auth.get("scheme") == "EIP-712"
+        assert auth.get("scheme") == "EIP-191"
         assert "X-Signature" in auth.get("headers", {})
 
     def test_step2_documentation_root_reachable(self) -> None:
@@ -145,9 +145,9 @@ class TestAgentBootstrap:
         data = client.get("/api/discovery").json()
         auth = data.get("authentication", {})
         example = auth.get("example_curl", "")
+        assert "X-Wallet-Address" in example
         assert "X-Signature" in example
         assert "X-Timestamp" in example
-        assert "X-User-ID" in example
 
     def test_step5_run_endpoint_accepts_pipeline(self) -> None:
         """Agent discovers pipeline support for multi-step tasks."""

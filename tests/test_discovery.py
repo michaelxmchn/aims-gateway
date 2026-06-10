@@ -67,9 +67,9 @@ class TestDiscoveryEndpoint:
 
     def test_authentication_section(self) -> None:
         auth = self.data["authentication"]
-        assert auth["scheme"] == "EIP-712"
+        assert auth["scheme"] == "EIP-191"
         assert "headers" in auth
-        for hdr in ("X-Signature", "X-Timestamp", "X-User-ID", "X-Nonce", "X-Deadline"):
+        for hdr in ("X-Wallet-Address", "X-Signature", "X-Timestamp"):
             assert hdr in auth["headers"], f"Missing auth header: {hdr}"
         assert "example_curl" in auth
 

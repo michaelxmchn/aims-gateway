@@ -4,6 +4,10 @@
 Minimal client that any Python-based AI agent (or automation script) can
 use to discover and invoke AIMS skills with zero configuration.
 
+Agents no longer need a shared HMAC secret.  Each client auto-generates (or
+accepts) an ECDSA wallet and signs every POST with an EIP-191 ``personal_sign``
+signature over the raw request body.
+
 Usage:
     from bootstrap_helper import AIMSClient
 
@@ -15,38 +19,38 @@ Usage:
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import time
-import urllib.request
 import urllib.error
+import urllib.request
 from typing import Any
+
+from eth_account import Account
+from eth_account.messages import encode_defunct
 
 
 # ── Defaults ─────────────────────────────────────────────────────────────
 
 GATEWAY_URL = "https://aims-gateway.fly.dev"
-SIGNING_SECRET = b"AIMS_MOCK_SECRET_2026"
-HMAC_TIMEOUT = 300  # seconds
 
 
-# ── HMAC signing ─────────────────────────────────────────────────────────
+# ── EIP-191 personal_sign signing ───────────────────────────────────────
 
-def _sign(body: bytes, timestamp: str, user_id: str, secret: bytes = SIGNING_SECRET) -> str:
-    """HMAC-SHA256(body + '|' + timestamp + '|' + user_id)."""
-    msg = body + b"|" + timestamp.encode() + b"|" + user_id.encode()
-    return hmac.new(secret, msg, hashlib.sha256).hexdigest()
+def _headers(body: bytes, wallet: Account) -> dict[str, str]:
+    """Build EIP-191 personal_sign-signed headers for a POST request.
 
-
-def _headers(body: bytes, user_id: str) -> dict[str, str]:
-    """Build HMAC-signed headers for a POST request."""
+    The wallet signs the raw request body bytes.  The gateway middleware
+    recovers the signer with ``encode_defunct(primitive=body)`` and checks
+    it matches ``X-Wallet-Address``.
+    """
     ts = str(int(time.time()))
+    signable_message = encode_defunct(primitive=body)
+    signed = wallet.sign_message(signable_message)
     return {
         "Content-Type": "application/json",
-        "X-Signature": _sign(body, ts, user_id),
+        "X-Wallet-Address": wallet.address,
+        "X-Signature": signed.signature.hex(),
         "X-Timestamp": ts,
-        "X-User-ID": user_id,
     }
 
 
@@ -57,9 +61,9 @@ def _get(url: str) -> dict[str, Any]:
         return json.loads(resp.read().decode())
 
 
-def _post(url: str, payload: dict, user_id: str) -> dict[str, Any]:
+def _post(url: str, payload: dict, wallet: Account) -> dict[str, Any]:
     body = json.dumps(payload).encode()
-    req = urllib.request.Request(url, data=body, headers=_headers(body, user_id), method="POST")
+    req = urllib.request.Request(url, data=body, headers=_headers(body, wallet), method="POST")
     with urllib.request.urlopen(req, timeout=15) as resp:
         return json.loads(resp.read().decode())
 
@@ -69,6 +73,9 @@ def _post(url: str, payload: dict, user_id: str) -> dict[str, Any]:
 class AIMSClient:
     """A self-bootstrapping client for the AIMS DePIN network.
 
+    Every request is signed with an ECDSA wallet (auto-created or injected).
+    No shared HMAC secret required.
+
     Usage:
         client = AIMSClient()
         skills = client.discover()
@@ -76,9 +83,10 @@ class AIMSClient:
         result = client.run_skill("amazon_scraper", {...}, user_id="alice")
     """
 
-    def __init__(self, gateway_url: str = GATEWAY_URL, user_id: str = "agent") -> None:
+    def __init__(self, gateway_url: str = GATEWAY_URL, private_key: str | None = None) -> None:
         self.gateway_url = gateway_url.rstrip("/")
-        self.user_id = user_id
+        self.wallet = Account.from_key(private_key) if private_key else Account.create()
+        self.user_id = self.wallet.address
         self._skills: list[dict[str, Any]] = []
         self._skill_map: dict[str, dict[str, Any]] = {}
 
@@ -114,7 +122,7 @@ class AIMSClient:
         Args:
             skill_id: The skill to invoke (must exist in discovery results).
             params: Parameters matching the skill's input_schema.
-            user_id: The end user identifier (defaults to client's user_id).
+            user_id: The end user identifier (defaults to client's wallet address).
             compute_tier: 1=standard, 2=premium, 3=enterprise.
             max_budget: Maximum USDT budget for this task.
 
@@ -142,7 +150,7 @@ class AIMSClient:
         if missing:
             raise ValueError(f"Missing required parameters: {missing}")
 
-        # Submit task
+        # Submit task — wallet signs the request body automatically
         payload = {
             "skill_id": skill_id,
             "params": params,
@@ -150,7 +158,7 @@ class AIMSClient:
             "compute_tier": compute_tier,
             "max_budget": max_budget,
         }
-        run_resp = _post(f"{self.gateway_url}/api/run", payload, uid)
+        run_resp = _post(f"{self.gateway_url}/api/run", payload, self.wallet)
         task_id = run_resp.get("task_id")
         if not task_id:
             raise RuntimeError(f"/api/run returned no task_id: {run_resp}")
@@ -173,7 +181,7 @@ class AIMSClient:
     def heartbeat(self) -> dict[str, Any]:
         """Send a heartbeat to keep this worker registered as active."""
         return _post(f"{self.gateway_url}/api/workers/heartbeat",
-                     {"worker_id": self.user_id}, self.user_id)
+                     {"worker_id": self.user_id}, self.wallet)
 
 
 # ── CLI entry point ─────────────────────────────────────────────────────
@@ -186,6 +194,7 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "list":
         skills = client.discover()
         print(f"\nAIMS Gateway: {GATEWAY_URL}")
+        print(f"Wallet: {client.wallet.address}")
         print(f"Skills ({len(skills)}):\n")
         for s in skills:
             m = s.get("manifest", {})
