@@ -17,6 +17,8 @@ from typing import Any
 
 from eth_account import Account
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
 from eth_account.messages import encode_defunct
@@ -92,6 +94,17 @@ app = FastAPI(
     version="1.0.0",
     description="AIMS DePIN Network — Task Dispatch & Settlement Gateway",
 )
+
+# ── Static frontend ─────────────────────────────────────────────────────────
+
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+
+@app.get("/")
+async def index():
+    """Serve the AIMS Network landing page."""
+    with open("static/index.html", "r") as f:
+        return HTMLResponse(content=f.read())
 
 # ── EIP-191 personal_sign wallet verification middleware ────────────────────
 
