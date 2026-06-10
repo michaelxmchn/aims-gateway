@@ -372,3 +372,8 @@
   - 状态: 已完成 (2026-06-10)
   - 文件: tests/test_contract_interactions.py / test_billing.py / test_pot.py
   - 描述: 所有 `settle_task`/`claim_reward` 测试使用真实 ECDSA 网关签名；修复 EVM 地址为非 hex 字符问题；修复 `to_bytes(0, 32)` 兼容性问题
+- **修复 billing.py 缺失 Account 导入 + 死代码**
+  - 状态: 已完成 (2026-06-10)
+  - 文件: src/gateway/billing.py
+  - 描述: 添加缺失 `from eth_account import Account` 修复 `_sign_settlement()` 中的 `NameError`；删除 `return signed.signature.hex()` 后的不可达死代码
+  - 验证: 147/147 测试通过 ✓

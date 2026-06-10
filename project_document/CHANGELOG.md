@@ -190,6 +190,7 @@
 ### 修复
 - fix(test_auth): 修复 EIP-712 paramsHash 不匹配 — 测试签名用空 params 而 body 含 search_term，导致 middleware 重建 hash 不一致返回 403
 - fix(test_bootstrap): 更新认证 scheme 断言 HMAC-SHA256 → EIP-712
+- fix(billing): 添加缺失 `from eth_account import Account` 解决 `_sign_settlement()` NameError；删除 `return` 后死代码
 
 ### 修改
 - feat(server): 中间件支持 X-Wallet-Address 为首选头部，X-User-ID 为回退

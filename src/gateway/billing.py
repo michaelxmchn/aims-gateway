@@ -21,6 +21,7 @@ import logging
 import time
 from typing import Any, Optional
 
+from eth_account import Account
 from eth_utils import keccak, to_canonical_address
 
 from src.chain.contract_client import SettlementContractClient
@@ -208,13 +209,6 @@ class BillingEngine:
         message_hash = keccak(task_id_bytes + user_bytes + worker_bytes + amount_bytes + nonce_bytes)
         signed = Account.unsafe_sign_hash(message_hash, self._gateway_signing_key)
         return signed.signature.hex()
-
-        receipt["status"] = "COMPLETED"
-        logger.info(
-            "Settlement completed: task=%s user=%s worker=%s nonce=%d",
-            task_id, user_address, worker_address, nonce,
-        )
-        return receipt
 
     # ── PoT generation helper ────────────────────────────────────────────
 
