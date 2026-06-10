@@ -124,6 +124,10 @@ async def verify_wallet_middleware(request: Request, call_next):
     if path in EXEMPT_PATHS or path.startswith("/api/admin/"):
         return await call_next(request)
 
+    # GET requests to /api/tasks/ are public (status polling + PoT retrieval)
+    if request.method == "GET" and path.startswith("/api/tasks/"):
+        return await call_next(request)
+
     if not path.startswith("/api/"):
         return await call_next(request)
 
