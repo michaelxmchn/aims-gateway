@@ -1,8 +1,9 @@
-"""Contract ABI fragments, addresses, and constants for the AIMS Settlement contract.
+"""Contract ABI, addresses, and constants for the AIMS Agent Gateway contract.
 
-In production, deploy ``contracts/AIMS_Settlement.sol`` with a Solidity
-compiler and copy the generated ABI here.  The fragment below covers all
-functions the gateway uses.  For a full ABI use a compilation artifact.
+Provides the ABI fragment for ``AIMSAgentGateway.sol`` plus USDC constants.
+In production, deploy ``contracts/AIMSAgentGateway.sol`` and paste the
+full compilation ABI here.  The fragment below covers all functions the
+gateway and workers call.
 """
 
 from __future__ import annotations
@@ -23,16 +24,35 @@ AIMS_CONTRACT_ADDRESS: str = os.getenv(
 
 USDC_ADDRESS: str = os.getenv("USDC_ADDRESS", "")
 
-# ── Minimal ABI for the gateway's interaction with AIMSSettlement ────────────
-# Functions the gateway calls directly: balanceOf, settleTask, deposit,
-# claimReward, claimOwnerFees, and the view functions.
+# ── Settlement split (mirrors Solidity constants) ────────────────────────────
 
-AIMS_SETTLEMENT_ABI: list[dict] = [
+BPS_DENOM = 10_000
+DEVELOPER_BPS = 7_000   # 70 %
+WORKER_BPS = 2_500       # 25 %
+TREASURY_BPS = 500       # 5 %
+
+# ── Full ABI for AIMSAgentGateway ────────────────────────────────────────────
+
+AIMS_AGENT_GATEWAY_ABI: list[dict] = [
     # ── view ──
     {
         "inputs": [{"name": "", "type": "address"}],
         "name": "balances",
         "outputs": [{"name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "user", "type": "address"}],
+        "name": "balanceOf",
+        "outputs": [{"name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "", "type": "bytes32"}],
+        "name": "taskStatus",
+        "outputs": [{"name": "", "type": "uint8"}],
         "stateMutability": "view",
         "type": "function",
     },
@@ -44,23 +64,23 @@ AIMS_SETTLEMENT_ABI: list[dict] = [
         "type": "function",
     },
     {
-        "inputs": [{"name": "", "type": "uint256"}],
-        "name": "usedNonces",
-        "outputs": [{"name": "", "type": "bool"}],
+        "inputs": [],
+        "name": "accumulatedTreasuryFees",
+        "outputs": [{"name": "", "type": "uint256"}],
         "stateMutability": "view",
         "type": "function",
     },
     {
         "inputs": [{"name": "", "type": "bytes32"}],
-        "name": "settledTasks",
+        "name": "usedCompoundNonces",
         "outputs": [{"name": "", "type": "bool"}],
         "stateMutability": "view",
         "type": "function",
     },
     {
-        "inputs": [{"name": "", "type": "bytes32"}],
-        "name": "claimedTasks",
-        "outputs": [{"name": "", "type": "bool"}],
+        "inputs": [{"name": "skillIdHash", "type": "bytes32"}],
+        "name": "developers",
+        "outputs": [{"name": "", "type": "address"}],
         "stateMutability": "view",
         "type": "function",
     },
@@ -68,6 +88,50 @@ AIMS_SETTLEMENT_ABI: list[dict] = [
         "inputs": [],
         "name": "gateway",
         "outputs": [{"name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "skillIdHash", "type": "bytes32"}],
+        "name": "getDeveloper",
+        "outputs": [{"name": "", "type": "address"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "taskId", "type": "bytes32"}],
+        "name": "getTaskSettlement",
+        "outputs": [
+            {"name": "worker", "type": "address"},
+            {"name": "developer", "type": "address"},
+            {"name": "totalAmount", "type": "uint256"},
+            {"name": "workerShare", "type": "uint256"},
+            {"name": "developerShare", "type": "uint256"},
+            {"name": "treasuryShare", "type": "uint256"},
+            {"name": "settledAt", "type": "uint256"},
+            {"name": "status", "type": "uint8"},
+        ],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "nonce", "type": "uint256"}, {"name": "taskId", "type": "bytes32"}],
+        "name": "isCompoundNonceUsed",
+        "outputs": [{"name": "", "type": "bool"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "party", "type": "address"}],
+        "name": "getPendingPayout",
+        "outputs": [{"name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "getTreasuryFees",
+        "outputs": [{"name": "", "type": "uint256"}],
         "stateMutability": "view",
         "type": "function",
     },
@@ -80,14 +144,46 @@ AIMS_SETTLEMENT_ABI: list[dict] = [
         "type": "function",
     },
     {
+        "inputs": [{"name": "amount", "type": "uint256"}],
+        "name": "withdraw",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+    {
+        "inputs": [
+            {"name": "skillIdHash", "type": "bytes32"},
+            {"name": "developer", "type": "address"},
+        ],
+        "name": "registerDeveloper",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+    {
         "inputs": [
             {"name": "taskId", "type": "bytes32"},
             {"name": "user", "type": "address"},
             {"name": "worker", "type": "address"},
-            {"name": "amount", "type": "uint256"},
+            {"name": "skillIdHash", "type": "bytes32"},
+            {"name": "totalAmount", "type": "uint256"},
             {"name": "nonce", "type": "uint256"},
+            {"name": "deadline", "type": "uint256"},
+            {"name": "gatewaySignature", "type": "bytes"},
         ],
         "name": "settleTask",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+    {
+        "inputs": [
+            {"name": "taskId", "type": "bytes32"},
+            {"name": "user", "type": "address"},
+            {"name": "amount", "type": "uint256"},
+            {"name": "reason", "type": "string"},
+        ],
+        "name": "refundTask",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function",
@@ -98,6 +194,30 @@ AIMS_SETTLEMENT_ABI: list[dict] = [
             {"name": "gatewaySignature", "type": "bytes"},
         ],
         "name": "claimReward",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+    {
+        "inputs": [
+            {"name": "taskId", "type": "bytes32"},
+            {"name": "gatewaySignature", "type": "bytes"},
+        ],
+        "name": "claimDeveloperReward",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+    {
+        "inputs": [],
+        "name": "claimTreasuryFees",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function",
+    },
+    {
+        "inputs": [{"name": "newGateway", "type": "address"}],
+        "name": "setGateway",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function",

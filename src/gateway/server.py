@@ -80,9 +80,11 @@ _contract = _chain_settlement.contract  # InMemorySettlementContract or Web3Sett
 
 billing = BillingEngine(
     storage=storage,
+    treasury_address=os.getenv("AIMS_TREASURY", "0xTreasury00000000000000000000000000000000001"),
+    gateway_address=os.getenv("AIMS_GATEWAY_ADDRESS", ""),
+    gateway_signing_key=AIMS_GATEWAY_PRIVATE_KEY,
     contract_client=_contract,
     pot_manager=pot_manager,
-    gateway_signing_key=AIMS_GATEWAY_PRIVATE_KEY,
 )
 
 # Worker heartbeat tracking: worker_id → last_seen_unix_ts
@@ -377,6 +379,8 @@ class TaskStatusResponse(BaseModel):
 class PotResponse(BaseModel):
     task_id: str
     worker_address: str
+    """Legacy field — same as party_address. Kept for backwards compatibility."""
+    party_address: str = ""
     signature: str
 
 
@@ -716,6 +720,7 @@ async def submit_task(req: SubmitRequest):
         req.task_id,
         task_meta.user_id,
         locked_worker,
+        skill_id,
     )
     if settlement.get("status") == "COMPLETED":
         pot = settlement.get("pot")
@@ -841,7 +846,8 @@ async def task_pot(task_id: str):
 
     return PotResponse(
         task_id=pot.task_id,
-        worker_address=pot.worker_address,
+        worker_address=pot.party_address,
+        party_address=pot.party_address,
         signature=pot.signature,
     )
 
