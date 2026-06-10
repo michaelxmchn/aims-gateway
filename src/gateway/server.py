@@ -106,6 +106,13 @@ async def index():
     with open("static/index.html", "r") as f:
         return HTMLResponse(content=f.read())
 
+
+@app.get("/docs")
+async def docs():
+    """Serve the human-readable developer docs."""
+    with open("static/docs.html", "r") as f:
+        return HTMLResponse(content=f.read())
+
 # ── EIP-191 personal_sign wallet verification middleware ────────────────────
 
 EXEMPT_PATHS = {

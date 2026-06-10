@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AIMS Network — Developer Docs</title>
+<meta name="description" content="Learn how to use AIMS Network: connect your wallet, run Skills, earn USDC.">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;background:#0a0a0f;color:#e4e4e7;line-height:1.7;-webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-weight:700;line-height:1.2;color:#fff}
+h1{font-size:clamp(1.75rem,3vw,2.5rem)}
+h2{font-size:1.5rem;margin:2.5rem 0 1rem}
+h3{font-size:1.15rem;margin:1.75rem 0 .75rem}
+p{color:#a1a1aa;margin-bottom:1rem}
+a{color:#22d3ee;text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:'SF Mono','Fira Code',monospace;font-size:.85rem;background:rgba(255,255,255,0.05);padding:.15rem .4rem;border-radius:4px;color:#22d3ee}
+pre{background:#18181b;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:1.25rem;overflow-x:auto;margin:1rem 0}
+pre code{background:none;padding:0;color:#e4e4e7;font-size:.85rem;white-space:pre}
+.gradient-text{background:linear-gradient(135deg,#22d3ee,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.container{max-width:900px;margin:0 auto;padding:0 1.5rem}
+
+/* Nav */
+nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:rgba(10,10,15,0.85);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,0.06)}
+nav .inner{display:flex;align-items:center;justify-content:space-between;height:60px;max-width:900px;margin:0 auto;padding:0 1.5rem}
+nav a{color:#a1a1aa;font-size:.875rem;font-weight:500}
+nav a:hover{color:#fff;text-decoration:none}
+nav .logo{font-weight:700;color:#fff}
+nav .logo span{color:#22d3ee}
+
+.page{padding-top:90px;padding-bottom:4rem}
+
+/* Cards */
+.card{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:14px;padding:1.5rem;margin:1.5rem 0}
+.card h3{margin-top:0}.card p:last-child{margin-bottom:0}
+
+/* Steps */
+.step-group{counter-reset:step;margin:2rem 0}
+.step-item{position:relative;padding-left:3rem;margin-bottom:1.5rem}
+.step-item::before{counter-increment:step;content:counter(step);position:absolute;left:0;top:0;width:2rem;height:2rem;background:linear-gradient(135deg,#22d3ee,#a78bfa);border-radius:6px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem;color:#000}
+.step-item h4{color:#fff;margin-bottom:.25rem}
+.step-item p{font-size:.9rem;margin-bottom:0}
+
+/* Info box */
+.info-box{background:rgba(34,211,238,0.05);border:1px solid rgba(34,211,238,0.1);border-radius:10px;padding:1rem 1.25rem;margin:1rem 0}
+.info-box p{font-size:.9rem;margin-bottom:0;color:#e4e4e7}
+
+/* Warning box */
+.warn-box{background:rgba(167,139,250,0.05);border:1px solid rgba(167,139,250,0.12);border-radius:10px;padding:1rem 1.25rem;margin:1rem 0}
+.warn-box p{font-size:.9rem;margin-bottom:0;color:#e4e4e7}
+
+/* Tables */
+table{width:100%;border-collapse:separate;border-spacing:0;margin:1rem 0}
+th,td{padding:.7rem 1rem;text-align:left;border-bottom:1px solid rgba(255,255,255,0.06);font-size:.9rem}
+th{color:#22d3ee;font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em}
+td{color:#a1a1aa}
+
+/* Tags */
+.tag{display:inline-block;font-size:.75rem;font-weight:600;padding:.2rem .6rem;border-radius:4px;margin-right:.4rem}
+.tag.method{background:rgba(34,211,238,0.1);color:#22d3ee}
+.tag.auth{background:rgba(167,139,250,0.1);color:#a78bfa}
+.tag.public{background:rgba(52,211,153,0.1);color:#34d399}
+.tag.post{background:rgba(251,191,36,0.1);color:#fbbf24}
+
+footer{text-align:center;padding:2rem 0;border-top:1px solid rgba(255,255,255,0.06);margin-top:3rem}
+footer p{font-size:.8rem;color:#52525b;margin:0}
+
+@media(max-width:600px){
+  .step-item{padding-left:2.5rem}
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="inner">
+    <a href="/" class="logo">AIMS<span>.</span></a>
+    <div>
+      <a href="/">Home</a>
+      <a href="https://aims-gateway.fly.dev/api/discovery" target="_blank" style="margin-left:1.5rem;color:#22d3ee">API Reference &#8599;</a>
+    </div>
+  </div>
+</nav>
+
+<div class="page">
+  <div class="container">
+
+    <h1>AIMS Network <span class="gradient-text">Developer Guide</span></h1>
+    <p>How to connect, use Skills, earn USDC, and contribute to the mesh. No sign-up forms, no approvals, no subscriptions — just your EVM wallet.</p>
+
+    <!-- ── Quickstart ── -->
+    <h2>Quickstart: Run Your First Skill in 60 Seconds</h2>
+    <p>You need two things: an EVM wallet and Python 3.10+.</p>
+
+    <div class="info-box">
+      <p><strong>&#9889; Dev mode:</strong> Every new wallet gets <strong>10.0 USDC</strong> auto-seeded — enough for ~200 free invocations. No deposit needed.</p>
+    </div>
+
+    <div class="step-group">
+      <div class="step-item">
+        <h4>Install the SDK</h4>
+        <pre><code>pip install eth-account requests</code></pre>
+      </div>
+      <div class="step-item">
+        <h4>Create or import a wallet</h4>
+        <pre><code><span style="color:#71717a"># Generate a new wallet (for testing)</span>
+from eth_account import Account
+wallet = Account.create()
+print(f"Address: {wallet.address}")
+print(f"Key: {wallet.key.hex()}")
+
+<span style="color:#71717a"># Or use an existing one</span>
+wallet = Account.from_key("0xYourPrivateKey...")</code></pre>
+      </div>
+      <div class="step-item">
+        <h4>Sign and run a Skill</h4>
+        <pre><code><span style="color:#71717a"># scrape_products.py</span>
+import json, time, requests
+from eth_account import Account
+from eth_account.messages import encode_defunct
+
+wallet = Account.from_key("0xYourPrivateKey...")
+
+body = json.dumps({
+    "skill_id": "amazon_scraper",
+    "params": {"search_term": "RTX 5090", "max_results": 3},
+    "user_id": wallet.address,
+}, separators=(',', ':'))
+
+signable = encode_defunct(primitive=body.encode())
+signed = wallet.sign_message(signable)
+
+headers = {
+    "X-Wallet-Address": wallet.address,
+    "X-Signature": signed.signature.hex(),
+    "X-Timestamp": str(int(time.time())),
+    "Content-Type": "application/json",
+}
+
+r = requests.post(
+    "https://aims-gateway.fly.dev/api/run",
+    data=body, headers=headers,
+)
+task_id = r.json()["task_id"]
+print(f"Task: {task_id}")
+
+<span style="color:#71717a"># Poll until done</span>
+for _ in range(30):
+    time.sleep(2)
+    r = requests.get(f"https://aims-gateway.fly.dev/api/tasks/{task_id}/status")
+    data = r.json()
+    if data["status"] == "SUCCESS":
+        print(data["result"])
+        break
+    elif data["status"] == "FAILED":
+        print("Failed:", data)
+        break</code></pre>
+      </div>
+    </div>
+
+    <div class="warn-box">
+      <p><strong>&#9432; No worker running?</strong> The task stays <code>PENDING</code> until a worker claims it. In production, workers are always online. For local testing, start a worker with <code>python -m src.worker.worker</code>.</p>
+    </div>
+
+    <!-- ── Three Roles ── -->
+    <h2>Three Ways to Use AIMS</h2>
+    <p>Your wallet is your passport to all three roles. You can switch at any time — no re-registration needed.</p>
+
+    <div class="card">
+      <h3>&#9654; Use Skills (Consumer)</h3>
+      <p>Browse the Skill registry, pick what you need, and invoke it via the API. You pay only on success — failed tasks auto-refund.</p>
+      <table>
+        <thead><tr><th>Skill</th><th>What It Does</th><th>Cost</th></tr></thead>
+        <tbody>
+          <tr><td><code>amazon_scraper</code></td><td>Scrape Amazon product listings &amp; competitor data</td><td>0.05 USDC</td></tr>
+          <tr><td><code>code_security_audit</code></td><td>Analyse Solidity code for vulnerabilities</td><td>0.05 USDC</td></tr>
+          <tr><td><code>data_analyzer</code></td><td>Structured data analysis &amp; insights</td><td>0.05 USDC</td></tr>
+          <tr><td><code>git_changelog</code></td><td>Auto-generate changelogs from commit history</td><td>0.05 USDC</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>&#8593; Publish Skills (Developer)</h3>
+      <p>Write a Python module, package it with a manifest, and upload it. Every time someone invokes your Skill, you earn a developer premium.</p>
+      <ol style="color:#a1a1aa;padding-left:1.25rem;font-size:.9rem">
+        <li>Create <code>manifest.json</code> (name, description, input/output schema, price)</li>
+        <li>Create <code>logic.py</code> with an <code>execute(payload) &#8594; dict</code> function</li>
+        <li>Zip them together: <code>zip my_skill.zip manifest.json logic.py</code></li>
+        <li>POST the zip to <code>/api/skills/upload</code></li>
+      </ol>
+      <pre><code>curl -X POST https://aims-gateway.fly.dev/api/skills/upload \
+  -F "zip_file=@my_skill.zip"</code></pre>
+    </div>
+
+    <div class="card">
+      <h3>&#9881; Run a Node (Worker / Provider)</h3>
+      <p>Two ways to earn:</p>
+      <ul style="color:#a1a1aa;padding-left:1.25rem;font-size:.9rem;margin-bottom:.75rem">
+        <li><strong>Worker</strong> — claim pending tasks, execute Skill logic, submit results. Earn 80% of the task fee.</li>
+        <li><strong>Provider</strong> — route encrypted traffic through your residential IP when idle. Get paid for bandwidth.</li>
+      </ul>
+      <pre><code><span style="color:#71717a"># Start a worker</span>
+AIMS_WALLET_KEY=0x... python -m src.worker.worker
+
+<span style="color:#71717a"># Or run as a provider (idle bandwidth)</span>
+from aims.provider import ResidentialRouteProvider
+provider = ResidentialRouteProvider(wallet=your_wallet, region="us-west")
+provider.start()</code></pre>
+    </div>
+
+    <!-- ── How Billing Works ── -->
+    <h2>How Billing Works</h2>
+    <p>No subscriptions. No monthly fees. You pay per successful invocation, and the split is automatic.</p>
+
+    <table>
+      <thead><tr><th>Item</th><th>Amount</th><th>Who Gets It</th></tr></thead>
+      <tbody>
+        <tr><td>Base task fee</td><td>0.05 USDC</td><td>80% worker / 20% protocol</td></tr>
+        <tr><td>Compute gas</td><td>$0.01/sec (Tier-1)</td><td>Worker</td></tr>
+        <tr><td>Developer premium</td><td>Author sets it</td><td>Skill developer</td></tr>
+        <tr><td>Platform tax</td><td>1% of total</td><td>Protocol treasury</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Failed task?</strong> Your USDC never leaves escrow. The 402 safeguard rejects requests with insufficient balance before any funds move. If a worker fails to deliver valid results, the escrow refunds automatically.</p>
+
+    <!-- ── API Endpoints ── -->
+    <h2>API Endpoints at a Glance</h2>
+    <p>Full details in the <a href="https://aims-gateway.fly.dev/api/discovery" target="_blank">machine-readable API Reference</a>.</p>
+
+    <table>
+      <thead><tr><th>Endpoint</th><th>Method</th><th>Auth</th><th>What It Does</th></tr></thead>
+      <tbody>
+        <tr><td><code>/api/run</code></td><td><span class="tag method">POST</span></td><td><span class="tag auth">EIP-191</span></td><td>Execute a Skill (returns task_id)</td></tr>
+        <tr><td><code>/api/tasks/{id}/status</code></td><td><span class="tag method">GET</span></td><td><span class="tag public">Public</span></td><td>Poll task result</td></tr>
+        <tr><td><code>/api/tasks/{id}/pot</code></td><td><span class="tag method">GET</span></td><td><span class="tag public">Public</span></td><td>Get Proof-of-Task for a completed task</td></tr>
+        <tr><td><code>/api/skills/upload</code></td><td><span class="tag method">POST</span></td><td><span class="tag public">Public</span></td><td>Upload a new Skill (multipart zip)</td></tr>
+        <tr><td><code>/api/skills/{id}/logic</code></td><td><span class="tag method">GET</span></td><td><span class="tag public">Public</span></td><td>Download a Skill's logic.py</td></tr>
+        <tr><td><code>/api/wallet/balance</code></td><td><span class="tag method">GET</span></td><td><span class="tag public">Public</span></td><td>Check your USDC balance</td></tr>
+        <tr><td><code>/api/workers/heartbeat</code></td><td><span class="tag method">POST</span></td><td><span class="tag auth">EIP-191</span></td><td>Worker keep-alive ping</td></tr>
+        <tr><td><code>/api/discovery</code></td><td><span class="tag method">GET</span></td><td><span class="tag public">Public</span></td><td>Full API surface (machine-readable)</td></tr>
+        <tr><td><code>/api/health</code></td><td><span class="tag method">GET</span></td><td><span class="tag public">Public</span></td><td>Gateway health check</td></tr>
+      </tbody>
+    </table>
+
+    <!-- ── Auth ── -->
+    <h2>Authentication</h2>
+    <p>AIMS uses <strong>EIP-191 personal_sign</strong> — the same signature format your wallet uses to sign transactions. No API keys, no bearer tokens, no shared secrets.</p>
+
+    <p>Every POST request to a protected endpoint needs three headers:</p>
+    <pre><code>X-Wallet-Address: 0xYourEVMAddress
+X-Signature:      &lt;EIP-191 hex signature of the raw body&gt;
+X-Timestamp:      &lt;UNIX epoch seconds&gt;</code></pre>
+
+    <p>The signature must be over the <strong>exact request body bytes</strong> (compact JSON, no extra whitespace):</p>
+    <pre><code><span style="color:#71717a"># Python signing (client-side)</span>
+from eth_account.messages import encode_defunct
+
+body = json.dumps(payload, separators=(',', ':'))  <span style="color:#71717a"># compact!</span>
+signable = encode_defunct(primitive=body.encode())
+signed = wallet.sign_message(signable)
+signature_hex = signed.signature.hex()</code></pre>
+
+    <p>Timestamps older than 300 seconds are rejected (replay protection).</p>
+
+    <!-- ── Wallet Balance ── -->
+    <h2>Wallet &amp; Balance</h2>
+    <p>Check your on-chain USDC balance at any time:</p>
+    <pre><code>curl https://aims-gateway.fly.dev/api/wallet/balance?user_id=0xYourAddress</code></pre>
+
+    <div class="info-box">
+      <p><strong>&#9889; Dev mode auto-seed:</strong> Every wallet that passes EIP-191 verification receives <strong>10.0 USDC</strong> (~200 free calls). The auto-seed is instant — no approval needed.</p>
+    </div>
+
+    <!-- ── FAQ ── -->
+    <h2>Common Questions</h2>
+
+    <h3>Do I need to deposit real money?</h3>
+    <p>Not in dev mode. The gateway auto-seeds 10.0 USDC for testing. When mainnet launches, you'll deposit real USDC to the settlement contract on Base L2.</p>
+
+    <h3>What if a Skill fails?</h3>
+    <p>Your USDC is never deducted. The escrow is automatically refunded. The worker receives a strike — three strikes = $1.00 slashed from their staked collateral.</p>
+
+    <h3>Can I run this from a browser?</h3>
+    <p>Not yet. AIMS is an API-first protocol designed for agents and developers. The primary interface is HTTP + your wallet. A web dashboard is on the roadmap.</p>
+
+    <h3>What chains do you support?</h3>
+    <p>Settlement runs on Base (EVM L2). Any EVM wallet works for auth — MetaMask, Rabby, Frame, or a raw key.</p>
+
+    <h3>Is my data private?</h3>
+    <p>Task payloads are encrypted in transit. Provider nodes see only encrypted bytes and routing metadata — never the content. Worker nodes receive only the task parameters, not your identity.</p>
+
+  </div>
+</div>
+
+<footer>
+  <div class="container">
+    <p>AIMS Network &mdash; <a href="/">Home</a> &middot; <a href="https://aims-gateway.fly.dev/api/discovery" target="_blank">API Reference</a></p>
+  </div>
+</footer>
+
+</body>
+</html>
