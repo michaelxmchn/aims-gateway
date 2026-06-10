@@ -31,7 +31,7 @@ from eth_account.messages import encode_defunct
 
 # ── Defaults ─────────────────────────────────────────────────────────────
 
-GATEWAY_URL = "https://aims-gateway.fly.dev"
+GATEWAY_URL = "https://api.aimsgateway.com"
 
 
 # ── EIP-191 personal_sign signing ───────────────────────────────────────

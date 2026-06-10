@@ -2,7 +2,7 @@
   "name": "aims-gateway",
   "version": "1.0.0",
   "description": "AIMS DePIN Network — Dynamic Skill Execution Gateway for OpenClaw agents",
-  "endpoint": "https://aims-gateway.fly.dev/api/run",
+  "endpoint": "https://api.aimsgateway.com/api/run",
   "method": "POST",
   "auth": {
     "type": "hmac-sha256",

@@ -16,7 +16,7 @@
 
 **Example Request:**
 ```bash
-curl https://aims-gateway.fly.dev/api/discovery
+curl https://api.aimsgateway.com/api/discovery
 ```
 
 **Example Response:**
@@ -30,8 +30,8 @@ curl https://aims-gateway.fly.dev/api/discovery
       "description": "Scrape Amazon product listings",
       "execution": { "endpoint": "/api/run", "method": "POST" },
       "resources": {
-        "logic_script_url": "https://aims-gateway.fly.dev/api/skills/amazon_scraper/logic",
-        "manifest_url": "https://aims-gateway.fly.dev/api/discovery"
+        "logic_script_url": "https://api.aimsgateway.com/api/skills/amazon_scraper/logic",
+        "manifest_url": "https://api.aimsgateway.com/api/discovery"
       },
       "capabilities": ["web-scraping", "e-commerce"],
       "manifest": { "input_schema": { ... }, "output_schema": { ... } }
@@ -206,7 +206,7 @@ curl -X POST "$BASE_URL/api/run" \
 
 **Example Request:**
 ```bash
-curl -X POST https://aims-gateway.fly.dev/api/skills/upload \
+curl -X POST https://api.aimsgateway.com/api/skills/upload \
   -F "zip_file=@my_skill.zip"
 ```
 
@@ -322,7 +322,7 @@ Every AI agent session MUST begin with:
 
 ```bash
 # 1. Discover the gateway
-curl https://aims-gateway.fly.dev/api/discovery
+curl https://api.aimsgateway.com/api/discovery
 
 # 2. Read the documentation root
 #    documentation_root points here: docs/MASTER_INDEX.md

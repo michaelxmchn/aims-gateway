@@ -239,5 +239,9 @@
 - chore(auth): 移除 EIP-712 模块依赖（不再需要 typed data 验证）
 - chore(bootstrap): 移除 hmac/hashlib 导入和 SIGNING_SECRET
 
+### 新增
+- feat(deploy): 全局域名 aims-gateway.fly.dev → api.aimsgateway.com（8 个文件）
+- fix(billing): check_user_balance() 自动注入 10 USDC 初始额度（InMemory 模式，签约通过的钱包自动获得）
+
 ---
 *本文档由 Claude Code 自动维护，请勿手动编辑格式*

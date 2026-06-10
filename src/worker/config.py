@@ -6,7 +6,7 @@ import os
 
 GATEWAY_URL: str = os.getenv(
     "AIMS_GATEWAY_URL",
-    "https://aims-gateway.fly.dev",
+    "https://api.aimsgateway.com",
 )
 """Production gateway endpoint.  Override via ``AIMS_GATEWAY_URL`` for local dev."""
 

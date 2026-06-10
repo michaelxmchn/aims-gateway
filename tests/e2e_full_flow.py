@@ -11,7 +11,7 @@ Usage::
     python tests/e2e_full_flow.py
 
     # Against production Fly.io gateway
-    AIMS_GATEWAY_URL=https://aims-gateway.fly.dev \\
+    AIMS_GATEWAY_URL=https://api.aimsgateway.com \\
     AIMS_SIGNING_SECRET=your-secret \\
     python tests/e2e_full_flow.py
 

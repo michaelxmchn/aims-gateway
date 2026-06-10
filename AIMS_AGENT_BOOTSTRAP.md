@@ -11,7 +11,7 @@
 
 ```bash
 # AIMS Gateway 生产地址
-export AIMS_GATEWAY_URL="https://aims-gateway.fly.dev"
+export AIMS_GATEWAY_URL="https://api.aimsgateway.com"
 
 # 如果你是本地开发
 # export AIMS_GATEWAY_URL="http://localhost:8000"
@@ -27,11 +27,11 @@ export AIMS_GATEWAY_URL="https://aims-gateway.fly.dev"
 
 ```
 You are connected to the AIMS DePIN Network — a decentralized AI-Mediated Skill Network.
-Your gateway URL is: https://aims-gateway.fly.dev
+Your gateway URL is: https://api.aimsgateway.com
 
 ## Discovery Protocol (execute on every session start)
 
-1. Call GET https://aims-gateway.fly.dev/api/discovery
+1. Call GET https://api.aimsgateway.com/api/discovery
 2. Parse the JSON response. Key sections to understand:
    - "authentication": HMAC-SHA256 signing requirements and headers
    - "skills": list of available skills with their input_schema/output_schema
@@ -107,7 +107,7 @@ from typing import Any
 
 # ── Defaults ─────────────────────────────────────────────────────────────
 
-GATEWAY_URL = "https://aims-gateway.fly.dev"
+GATEWAY_URL = "https://api.aimsgateway.com"
 SIGNING_SECRET = b"AIMS_MOCK_SECRET_2026"
 HMAC_TIMEOUT = 300  # seconds
 
@@ -331,7 +331,7 @@ User: "抓取 Amazon 上 RTX 5090 的价格"
 
 ```
 1. 将 System Prompt 粘贴到 Custom Instructions
-2. 设置环境变量: AIMS_GATEWAY_URL=https://aims-gateway.fly.dev
+2. 设置环境变量: AIMS_GATEWAY_URL=https://api.aimsgateway.com
 3. 在对话中输入自然语言请求
 4. Agent 会自动完成 discovery → signature → run → poll 流程
 ```
@@ -341,7 +341,7 @@ User: "抓取 Amazon 上 RTX 5090 的价格"
 ```
 1. 在 Instructions 字段粘贴 System Prompt
 2. 添加 Action:
-   - Server URL: https://aims-gateway.fly.dev
+   - Server URL: https://api.aimsgateway.com
    - Schema: 从 GET /api/discovery 自动推断
 3. 启用 "Make Code Interpreter" (用于 HMAC 签名)
 ```

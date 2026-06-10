@@ -70,12 +70,25 @@ class BillingEngine:
     def check_user_balance(self, user_address: str) -> int:
         """Read the user's deposited USDC balance from the contract.
 
+        In InMemory mode, auto-seeds **10.0 USDC** for any wallet that
+        passes signature verification — the ``run_skill`` endpoint calls
+        this after the middleware validates the EIP-191 signature, so only
+        authenticated wallets receive the seed.
+
         Returns the balance in atomic USDC units (6 decimals).
         """
         if self._contract is None:
             logger.warning("No contract client configured — returning 0 for %s", user_address)
             return 0
-        return self._contract.get_user_balance(user_address)
+
+        balance = self._contract.get_user_balance(user_address)
+        if balance == 0 and hasattr(self._contract, "deposit"):
+            # Auto-seed 10.0 USDC for dev/testing (atomic units = 6 decimals)
+            seed_amount = 10 * USDC_UNIT
+            self._contract.deposit(user_address, seed_amount)
+            logger.info("Auto-seeded %s with 10.0 USDC (InMemory mode)", user_address)
+            return seed_amount
+        return balance
 
     # ── Settlement orchestration ─────────────────────────────────────────
 

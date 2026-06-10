@@ -16,7 +16,7 @@ Usage::
     from src.worker.bootstrap import execute_dynamic_skill
 
     result = execute_dynamic_skill(
-        gateway_url="https://aims-gateway.fly.dev",
+        gateway_url="https://api.aimsgateway.com",
         skill_id="my_skill",
         payload={"query": "hello", "image": "data:image/png;base64,..."},
         worker_id="worker-001",

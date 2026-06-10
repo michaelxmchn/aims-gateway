@@ -420,7 +420,7 @@ async def admin_setup():
 @app.get("/api/discovery")
 async def discovery():
     """Auto-discovery endpoint — returns the full API surface as self-documenting JSON."""
-    base_url = "https://aims-gateway.fly.dev"
+    base_url = "https://api.aimsgateway.com"
     skills_list = []
     all_manifests = await _run_in_thread(registry.get_all_manifests)
     for m in all_manifests:
