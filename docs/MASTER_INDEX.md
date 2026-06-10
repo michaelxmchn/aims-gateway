@@ -273,6 +273,38 @@ signed = wallet.sign_message(signable_message)
 - **Reference**: `src/gateway/server.py` lines 736–751
 - **Auth**: None (PoT is public)
 
+---
+
+### 9. EVM / Base Network Compliance
+- **Network**: Base (EVM-compatible L2)
+- **Chain IDs**: `8453` (mainnet), `84532` (testnet/baseSepolia)
+- **Settlement Token**: USDC (canonical `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913` on Base mainnet, MockERC20 on testnets)
+- **Contract**: `AIMSSettlement` deployed via Hardhat — see `scripts/deploy_settlement.js`
+- **Platform Owner**: `0x08c9fd0a915f2b0856353850b8adea943f226bcf` — immutable 20% fee recipient (Solidity `immutable`, permanently burned into bytecode)
+
+**Deployment Commands:**
+```bash
+# Base mainnet
+DEPLOYER_PRIVATE_KEY=0x... npx hardhat run scripts/deploy_settlement.js --network base
+
+# Base Sepolia testnet
+DEPLOYER_PRIVATE_KEY=0x... npx hardhat run scripts/deploy_settlement.js --network baseSepolia
+```
+
+**Environment Variables** (see `.env.example`):
+```
+DEPLOYER_PRIVATE_KEY=<deployer wallet key, no 0x prefix>
+BASE_RPC_URL=https://mainnet.base.org
+BASE_SEPOLIA_RPC_URL=https://sepolia.base.org
+PLATFORM_OWNER=0x08c9fd0a915f2b0856353850b8adea943f226bcf
+```
+
+**Signature Compliance:**
+- All wallet signatures use **EIP-191 personal_sign** standard: `\x19Ethereum Signed Message:\n<len><body>`
+- PoT (Proof-of-Task) uses **raw ECDSA** `keccak256(abi.encodePacked(taskId, worker, amount))` for Solidity `ECDSA.recover()` compatibility
+- Hardhat tests use raw ECDSA via `wallet.signingKey.sign(ethers.getBytes(hash))`
+- Python `Account.unsafe_sign_hash()` mirrors raw ECDSA for cross-platform consistency
+
 **Example Response:**
 ```json
 {

@@ -214,6 +214,26 @@
 - feat(hardhat): 创建 hardhat.config.js — Hardhat v2 配置（Solidity 0.8.20、优化器 200 runs、contracts + tests 路径映射）
 - feat(deps): package.json 添加 hardhat / @nomicfoundation/hardhat-toolbox / @openzeppelin/contracts 依赖
 - chore(gitignore): 添加 node_modules/、artifacts/、cache/ 忽略规则
+- feat(config): 创建 .env.example — 部署环境变量模板（DEPLOYER_PRIVATE_KEY / BASE_RPC_URL / PLATFORM_OWNER / AIMS_CONTRACT_ADDRESS）
+- feat(scripts): 创建 scripts/deploy_settlement.js — Base 网络部署脚本（主网 canonical USDC、测试网 MockERC20、硬编码 immutable PLATFORM_OWNER、后部署校验）
+- feat(network): hardhat.config.js 新增 base（chainId 8453）和 baseSepolia（chainId 84532）双网络配置，DEPLOYER_PRIVATE_KEY 环境变量注入
+- feat(docs): MASTER_INDEX.md 新增 EVM/Base Compliance 协议节
+
+### 修改
+- refactor(middleware): server.py EIP-712 → EIP-191 personal_sign 简化为 3 头部（X-Wallet-Address / X-Signature / X-Timestamp），移除 nonce/deadline
+- refactor(bootstrap): bootstrap_helper.py HMAC → ECDSA 钱包自动生成 + EIP-191 签名
+- refactor(test): test_server_auth.py EIP-712 → EIP-191（remove nonce/replay tests）
+- refactor(test): test_discovery.py auth scheme EIP-712 → EIP-191
+- refactor(docs): MASTER_INDEX.md 所有认证章节 EIP-712 → EIP-191
+- refactor(contract): _verifyWorkerBinding() 统一 ECDSA 验证（OZ v5.6.0 tryRecover 3 值解构）
+- refactor(settlement): worker-binding 签名格式简化至 3 参数（taskId + worker + amount）
+- refactor(server): submit_task anti-tampering — 使用 broker-locked claimed_worker 而非 self-reported worker_id
+- refactor(server): 新增滑动窗口限流器（100 req/60s per X-Wallet-Address）
+- refactor(server): POST /api/run budget control（max_budget < COST_PER_TASK_USDC * steps 时 400）
+
+### 移除
+- chore(auth): 移除 EIP-712 模块依赖（不再需要 typed data 验证）
+- chore(bootstrap): 移除 hmac/hashlib 导入和 SIGNING_SECRET
 
 ---
 *本文档由 Claude Code 自动维护，请勿手动编辑格式*

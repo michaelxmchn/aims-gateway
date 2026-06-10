@@ -169,6 +169,14 @@
   - 状态: 待部署
   - 文件: Dockerfile / fly.toml / .dockerignore / requirements.txt
   - 描述: python:3.11-slim 容器，sin 区域，256MB，min_machines_running=1
+- **Base 网络部署配置**
+  - 状态: 已完成 (2026-06-10)
+  - 文件: hardhat.config.js / .env.example / scripts/deploy_settlement.js
+  - 描述: Hardhat 配置（base mainnet chainId 8453 + baseSepolia chainId 84532），部署脚本（PLATFORM_OWNER 硬编码 immutable + 主网 canonical USDC / 测试网 MockERC20），后部署校验（platformOwner + gateway 验证）
+- **EVM/Base 文档补充**
+  - 状态: 已完成 (2026-06-10)
+  - 文件: docs/MASTER_INDEX.md
+  - 描述: 新增 EVM/Base Compliance 协议节（网络/Chain IDs/USDC/部署命令/Env Vars/签名合规）
 
 ## 部署指南
 
