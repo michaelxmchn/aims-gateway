@@ -15,6 +15,9 @@
 - fix(skills): `test_skill` 的 `input_schema` 添加 `additionalProperties: true`，解除所有参数限制，空 `{}` 和任意字段均放行
 - feat(skills): `SkillManifest` 新增 `agent_hint` 可选字段 — 自然语言 Agent 提示词契约，通过 discovery 端点向外暴露
 - feat(skills): `test_skill` 恢复 `repo_path` 必填字符串校验 + `agent_hint` 中文指引 AI 客户端自动补全路径
+- fix(billing): `check_user_balance` 在 Web3 模式跳过错误的 on-chain auto-seed（gateway 未 approve USDC 导致 `ERC20InsufficientAllowance` revert），改用 on-chain + local 和值校验
+- fix(server): `admin_setup` 调用不存在的 `simulate_stripe_webhook()` 导致 AttributeError 500 — Web3 模式下跳过该行
+- fix(server): `run_skill` 余额校验纳入 `_local_deposits` 本地代理充值
 - feat(billing): 添加可逆审计追踪系统 — `_audit_ledger` 记录每笔 settlement/refund 的 [ts, action, roles, amounts]，支持按 task_id 回溯和全局聚合查询
 - feat(server): 添加 `GET /api/admin/audit` 审计回溯端点，返回完整结算流水和统计摘要
 ### 新增
