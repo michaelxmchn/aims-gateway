@@ -256,6 +256,9 @@
 ### 修改
 - docs(master_index): 添加 escrow 遗留参考说明和 70/25/5 分账描述，修复 agent bootstrap 测试断言
 - test(bootstrap): REQUIRED_TOPICS 改为两阶断言 — 硬性主题 + `ALTERNATIVE_TOPICS` ANY-match 兼容未来文档演进
+### 重构
+- refactor(anvil/gateway): 生产级安全加固 — `_load_gateway_key()` 严格 env var 加载（AIMS_GATEWAY_PRIVATE_KEY），NonceManager 线程安全 + 可选 Redis 后端，GasEstimator EIP-1559 动态计费 + replace-by-fee 重试
+- fix(anvil/pipeline): 环境变量名对齐 — `GATEWAY_KEY` → `AIMS_GATEWAY_PRIVATE_KEY`，`_deploy_via_forge` 兼容双 key 读取
 
 ## [2026-06-10]
 ### 修复

@@ -339,3 +339,21 @@ A: 待补充
 - **Gateway hot wallet**：交易由 Gateway 签名并广播，Consumer **不支付 Gas**。Gateway 使用 `build_transaction` + `sign_transaction` + `send_raw_transaction` 全流程
 - **部署策略**：优先 `forge create`（需 Foundry），回退使用 `py-solc-x` + `solcx.compile_source` 编译后 `eth_sendTransaction` 部署
 - **余额验证**：场景 A 对比 4 个地址的 ETH 余额变化（Consumer `availableBalance`、Developer 原生余额、Worker 原生余额、Gateway 原生余额），允许 0.5% Gas 误差
+
+### 生产级 Hot Wallet 密钥安全模式
+- **单一来源**：私钥仅从 `AIMS_GATEWAY_PRIVATE_KEY` 环境变量加载，无默认值/空字符串回退，`_load_gateway_key()` 启动时严格校验
+- **严格验证**：`len(removeprefix("0x")) != 64` 长度检查 + `int(hex_key, 16)` hex 格式验证，非法 key 立即 `raise RuntimeError`
+- **启动崩溃**：私钥缺失/格式错误时在 import 阶段（server bind 前）崩溃，杜绝启动后再发现配置问题
+- **环境变量映射**：`pipeline_e2e_test.py` 使用 `AIMS_GATEWAY_PRIVATE_KEY` + `_deploy_via_forge` 兼容双 key（`AIMS_GATEWAY_PRIVATE_KEY` 优先，`GATEWAY_KEY` 回退）
+
+### NonceManager 分布式单调 Nonce 模式
+- **初始化同步**：构造时从 `w3.eth.get_transaction_count(address)` 同步链上 nonce，确保进程重启后 counters 不冲突
+- **线程安全**：`threading.Lock()` 保护 `self._next_nonce` 增减，`get_nonce()` 原子返回并自增
+- **可选 Redis 后端**：`REDIS_URL` 设置时使用 `redis.INCR` 命令实现跨进程原子计数，自动识别 Redis 不可用并回退内存锁
+- **链上重同步**：`sync_nonce()` 对比链上 `get_transaction_count` 与本地计数器，链上领先时推进（交易失败后恢复），本地领先时保持不变（pending tx 保护）
+
+### GasEstimator + Replace-by-Fee 模式
+- **EIP-1559 动态计费**：`get_block("pending").baseFeePerGas` + `max_priority_fee` 乘以可配置乘数（`GAS_MULTIPLIER`/`PRIORITY_FEE_MULTIPLIER`），不支持 1559 时回退 `gas_price`
+- **Gas bump 策略**：`bump_fees()` 将 `maxFeePerGas`/`maxPriorityFeePerGas`/`gasPrice` 按 `GAS_BUMP_PERCENT`（默认 20%）等比增加，用于 replace-by-fee
+- **`_send_with_retry()` 全生命周期**：build → attach fees + nonce → sign → broadcast → poll 120s → timeout → bump gas → re-broadcast，最多 `MAX_TX_RETRIES`（默认 3）次
+- **失败重同步**：每次 retry 前调用 `nonce_mgr.sync_nonce()` 修复 stuck nonce，确保 bump tx 使用正确 nonce

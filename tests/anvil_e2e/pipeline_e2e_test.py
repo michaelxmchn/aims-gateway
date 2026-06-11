@@ -322,7 +322,7 @@ def deploy_contract(w3: Web3) -> str:
 
 def _deploy_via_forge(w3: Web3, forge_path: str) -> str:
     """Deploy using ``forge create``."""
-    gateway_key = os.getenv("GATEWAY_KEY", GATEWAY_KEY)
+    gateway_key = os.getenv("AIMS_GATEWAY_PRIVATE_KEY") or os.getenv("GATEWAY_KEY", GATEWAY_KEY)
     rpc_url = os.getenv("ANVIL_RPC", "http://127.0.0.1:8545")
 
     result = subprocess.run(
@@ -410,7 +410,7 @@ def start_gateway(contract_address: str, port: int = 8000) -> subprocess.Popen:
     env = {
         "ANVIL_RPC": os.getenv("ANVIL_RPC", "http://127.0.0.1:8545"),
         "CONTRACT_ADDRESS": contract_address,
-        "GATEWAY_KEY": GATEWAY_KEY,
+        "AIMS_GATEWAY_PRIVATE_KEY": GATEWAY_KEY,
         "WORKER_URL": os.getenv("WORKER_URL", "http://127.0.0.1:8001"),
         "GATEWAY_PORT": str(port),
     }

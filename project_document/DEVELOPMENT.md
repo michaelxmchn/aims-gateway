@@ -424,3 +424,16 @@
   - `tests/anvil_e2e/gateway.py` — 独立 FastAPI 网关（EIP-191 personal_sign 认证、402 billing interceptor、httpx 异步 Worker 路由、Gateway hot wallet 签名 settleTask 交易）
   - `tests/anvil_e2e/mock_agent_node.py` — Worker 模拟器（模拟执行延迟、ECDSA 签署 keccak256(taskId) 生成 PoT）
   - `tests/anvil_e2e/pipeline_e2e_test.py` — 完整编排脚本（自动启动 Anvil/部署合约/启动 Gateway+Worker/运行 3 个场景：成功 70/25/5 验证 + 402 无余额 + 403 篡改签名）
+### 生产级安全加固 gateway.py
+- **状态**: 已完成 (2026-06-11)
+- **描述**: 对 `tests/anvil_e2e/gateway.py` 进行三项生产级安全加固：
+  - **Hot Wallet 密钥安全**: `_load_gateway_key()` 从 `AIMS_GATEWAY_PRIVATE_KEY` 严格加载，启动时校验长度/hex 格式，无默认值
+  - **分布式 Nonce Manager**: `NonceManager` 类 — `threading.Lock()` 线程安全 + 可选 Redis `INCR` 后端，`get_nonce()` 原子消费 + `sync_nonce()` 链上重同步
+  - **Gas 估算 + Replace-by-Fee**: `GasEstimator` EIP-1559 动态计费 + `_send_with_retry()` 120s 超时 → gas bump 20% → 最多 3 次重试
+- **兼容性修复**: `pipeline_e2e_test.py` 环境变量名对齐 `GATEWAY_KEY` → `AIMS_GATEWAY_PRIVATE_KEY`，`_deploy_via_forge` 双 key 兼容
+
+### 当前任务更新
+- [x] Phase 3: 生产安全 — Gas 重试、Nonce+UUID 复合防重放
+- [x] Phase 4: E2E 测试 — Anvil/Hardhat 三方余额差验证
+- [x] 全部 178/178 单元测试通过 ✓
+- [ ] Foundry Anvil E2E 全管道验证（需安装 Foundry）
