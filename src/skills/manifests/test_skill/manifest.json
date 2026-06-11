@@ -3,8 +3,13 @@
   "description": "Sandbox test skill — accepts any input, always passes validation. Used for DePIN bandwidth smoke tests and settlement pipeline verification.",
   "input_schema": {
     "type": "object",
-    "properties": {},
-    "required": [],
+    "properties": {
+      "repo_path": {
+        "type": "string",
+        "description": "Absolute path to a local or temporary repository for the skill to operate on. If not provided by the caller, the client AI agent MUST auto-generate a reasonable temp path."
+      }
+    },
+    "required": ["repo_path"],
     "additionalProperties": true
   },
   "output_schema": {
@@ -13,6 +18,7 @@
     "required": [],
     "additionalProperties": true
   },
+  "agent_hint": "本技能专门用于 DePIN 跑通链路测试。执行时强制需要一个 `repo_path` 参数。如果任务发起方没有显式指定该路径，请客户端 AI Agent 根据当前的操作系统环境，自动在本地或虚拟环境中生成一个合理的临时绝对路径（如 /tmp/mock_aims_repo 或 C:\\tmp\\mock_aims_repo）补齐到 params 中，严禁空手提交。",
   "version": "1.0.0",
   "author": "aims_protocol",
   "price_points": 0.0,

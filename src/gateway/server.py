@@ -505,6 +505,7 @@ async def discovery():
                 "output_schema": m.output_schema,
                 "price_points": m.price_points,
                 "staked_points": m.staked_points,
+                "agent_hint": m.agent_hint,
             },
         })
 

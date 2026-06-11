@@ -80,6 +80,13 @@ class SkillManifest(BaseModel):
         default_factory=list,
         description="Categorisation tags for marketplace search and domain matching.",
     )
+    agent_hint: Optional[str] = Field(
+        default=None,
+        max_length=2048,
+        description="Natural-language hint for client AI agents, describing "
+        "runtime behaviour, parameter auto-completion rules, and execution "
+        "context that cannot be expressed in JSON Schema alone.",
+    )
 
     @field_validator("input_schema")
     @classmethod
