@@ -182,6 +182,10 @@ class InMemorySettlementContract(SettlementContractClient):
         # Pending payouts
         self._pending_payouts: dict[str, int] = {}
 
+        # Per-party claim tracking (independent worker + developer claims)
+        self._worker_claimed: dict[bytes, bool] = {}
+        self._developer_claimed: dict[bytes, bool] = {}
+
         # Accumulated treasury fees
         self._accumulated_treasury_fees: int = 0
 
@@ -342,6 +346,8 @@ class InMemorySettlementContract(SettlementContractClient):
         status = self._task_status.get(task_id, TASK_STATUS_NONE)
         if status != TASK_STATUS_SETTLED:
             raise ValueError("task not settled")
+        if self._worker_claimed.get(task_id) or self._developer_claimed.get(task_id):
+            raise ValueError("cannot refund after claim")
         if amount <= 0:
             raise ValueError("amount must be > 0")
 
@@ -382,9 +388,10 @@ class InMemorySettlementContract(SettlementContractClient):
     def claim_reward(
         self, task_id: bytes, claimant: str, gateway_signature: str = "",
     ) -> int:
-        status = self._task_status.get(task_id, TASK_STATUS_NONE)
-        if status != TASK_STATUS_SETTLED:
-            raise ValueError("task not settled or already claimed")
+        if self._worker_claimed.get(task_id):
+            raise ValueError("worker already claimed for this task")
+        if self._task_status.get(task_id) == TASK_STATUS_REFUNDED:
+            raise ValueError("task was refunded")
 
         settlement = self._settlements.get(task_id)
         if settlement is None:
@@ -404,8 +411,14 @@ class InMemorySettlementContract(SettlementContractClient):
         pot_hash = self._compute_binding_hash(task_id, claimant, worker_amount)
         self._verify_gateway_signature(pot_hash, gateway_signature)
 
-        self._task_status[task_id] = TASK_STATUS_CLAIMED
+        self._worker_claimed[task_id] = True
         self._pending_payouts[claimant.lower()] = pending - worker_amount
+
+        # Transition to CLAIMED only when both parties have claimed
+        settlement = self._settlements.get(task_id)
+        if settlement and self._developer_claimed.get(task_id):
+            self._task_status[task_id] = TASK_STATUS_CLAIMED
+
         return worker_amount
 
     # ── Claim: Developer (70 %) ─────────────────────────────────────────
@@ -413,9 +426,10 @@ class InMemorySettlementContract(SettlementContractClient):
     def claim_developer_reward(
         self, task_id: bytes, developer: str, gateway_signature: str = "",
     ) -> int:
-        status = self._task_status.get(task_id, TASK_STATUS_NONE)
-        if status != TASK_STATUS_SETTLED:
-            raise ValueError("task not settled or already claimed")
+        if self._developer_claimed.get(task_id):
+            raise ValueError("developer already claimed for this task")
+        if self._task_status.get(task_id) == TASK_STATUS_REFUNDED:
+            raise ValueError("task was refunded")
 
         settlement = self._settlements.get(task_id)
         if settlement is None:
@@ -435,8 +449,14 @@ class InMemorySettlementContract(SettlementContractClient):
         pot_hash = self._compute_binding_hash(task_id, developer, dev_amount)
         self._verify_gateway_signature(pot_hash, gateway_signature)
 
-        self._task_status[task_id] = TASK_STATUS_CLAIMED
+        self._developer_claimed[task_id] = True
         self._pending_payouts[developer.lower()] = pending - dev_amount
+
+        # Transition to CLAIMED only when both parties have claimed
+        settlement = self._settlements.get(task_id)
+        if settlement and self._worker_claimed.get(task_id):
+            self._task_status[task_id] = TASK_STATUS_CLAIMED
+
         return dev_amount
 
     # ── Treasury ────────────────────────────────────────────────────────

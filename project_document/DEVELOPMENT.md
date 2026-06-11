@@ -409,3 +409,15 @@
 	  - 状态: 已完成 (2026-06-10)
 	  - 文件: contracts/AIMSAgentGateway.sol
 	  - 描述: 生产级 Solidity 合约（USDC 托管、PoT 链上验证、70/25/5 三方分账、超时退款防护、Compound Nonce 防重放、开发者注册表）
+
+### Phase 3-4: Production Security Fixes & Full Test Pass
+- **状态**: 已完成 (2026-06-10)
+- **描述**: 修复独立索赔竞态：Worker/Developer 可独立领款，`_task_status` 仅在双方都领完后才进入 CLAIMED。新增 `_worker_claimed` / `_developer_claimed` 映射追踪。PoT 金额修正为按份额签发（Worker=25%/12,500, Developer=70%/35,000）而非总任务成本。修复 Solidity `claimReward`/`claimDeveloperReward` 同样问题。全测试套件 164 项通过。
+
+### Anvil E2E 测试基础设施 (Phase 4)
+- **状态**: 已完成 (2026-06-11)
+- **描述**: 完整的 Foundry Anvil E2E 测试套件，4 个新文件：
+  - `contracts/tests/anvil_e2e/AIMSAgentGateway.sol` — 简化版原生 ETH 合约（worker-signed PoT via ecrecover、70/25/5 分账、onlyGateway + nonReentrant、CEI 模式）
+  - `tests/anvil_e2e/gateway.py` — 独立 FastAPI 网关（EIP-191 personal_sign 认证、402 billing interceptor、httpx 异步 Worker 路由、Gateway hot wallet 签名 settleTask 交易）
+  - `tests/anvil_e2e/mock_agent_node.py` — Worker 模拟器（模拟执行延迟、ECDSA 签署 keccak256(taskId) 生成 PoT）
+  - `tests/anvil_e2e/pipeline_e2e_test.py` — 完整编排脚本（自动启动 Anvil/部署合约/启动 Gateway+Worker/运行 3 个场景：成功 70/25/5 验证 + 402 无余额 + 403 篡改签名）

@@ -1,59 +1,52 @@
 """Tests for InMemorySettlementContract — full Solidity-mirror lifecycle.
 
-Covers deposit, withdraw, settleTask, reward split, claimReward,
-claimOwnerFees, nonce replay protection, and double-claim prevention.
+Covers deposit, withdraw, settleTask, 70/25/5 split, claimReward,
+claimDeveloperReward, claimTreasuryFees, compound nonce, and lifecycle.
 
-All gateway-signed operations (settleTask, claimReward) use real ECDSA
-signatures generated with the gateway's private key, mirroring the
-on-chain ``ECDSA.recover`` path.
+All gateway-signed operations use real ECDSA signatures.
 """
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(PROJECT_ROOT))
+import time
 
 from eth_account import Account
-from eth_utils import keccak, to_bytes, to_canonical_address
+from eth_utils import keccak, to_canonical_address
 import pytest
 
 from src.chain.contract_client import (
     InMemorySettlementContract,
+    TASK_STATUS_NONE,
+    TASK_STATUS_SETTLED,
+    TASK_STATUS_REFUNDED,
+    TASK_STATUS_CLAIMED,
+)
+from src.chain.abi import (
     BPS_DENOM,
     WORKER_BPS,
-    OWNER_BPS,
+    DEVELOPER_BPS,
+    TREASURY_BPS,
 )
 
-
-# ── Gateway key pair (shared across all tests) ──────────────────────────────
-# Generate once so all fixture instances use the same gateway identity.
+# ── Well-known test keys ──────────────────────────────────────────────────────
 
 _GATEWAY_ACCT = Account.create()
 GATEWAY_KEY = _GATEWAY_ACCT.key.hex()
 GATEWAY = _GATEWAY_ACCT.address
 
-OWNER = "0x3333333333333333333333333333333333333333"
+TREASURY = "0xTreasury00000000000000000000000000000000001"
 USER = "0x1111111111111111111111111111111111111111"
 WORKER = "0x2222222222222222222222222222222222222222"
+DEVELOPER = "0x3333333333333333333333333333333333333333"
 
-
-# ── Signing helpers ─────────────────────────────────────────────────────────
+COST = 50_000
+SKILL = keccak(text="test-skill")
 
 
 def _settle_sig(
-    task_id: bytes, user: str, worker: str, amount: int, nonce: int,
+    task_id: bytes, worker: str, amount: int,
 ) -> str:
-    """Sign a settleTask message with the gateway's private key.
-
-    Produces the same signature that ``BillingEngine._sign_settlement``
-    creates, matching the Solidity ``ECDSA.recover`` path.
-
-    The gateway signs ``keccak256(abi.encodePacked(taskId, worker, amount))``
-    — user and nonce are function parameters only, not part of the signed hash.
-    """
+    """Sign a settleTask message with the gateway's private key."""
     worker_bytes = to_canonical_address(worker)
     amount_bytes = amount.to_bytes(32, 'big')
     msg_hash = keccak(task_id + worker_bytes + amount_bytes)
@@ -70,16 +63,17 @@ def _claim_sig(task_id: bytes, claimant: str, amount: int) -> str:
     return signed.signature.hex()
 
 
-# ── Contract fixture ─────────────────────────────────────────────────────────
-
-
 @pytest.fixture
 def contract():
     return InMemorySettlementContract(
         gateway_address=GATEWAY,
-        platform_owner=OWNER,
+        treasury=TREASURY,
         gateway_signing_key=GATEWAY_KEY,
     )
+
+
+def _deadline() -> int:
+    return int(time.time()) + 300
 
 
 # ── Deposit / Withdraw ──────────────────────────────────────────────────────
@@ -122,138 +116,188 @@ class TestDepositWithdraw:
 # ── SettleTask ──────────────────────────────────────────────────────────────
 
 class TestSettleTask:
-    def _settle(self, contract, task_id: bytes, nonce: int = 0, **kw):
-        """Convenience helper: deposit, then settle with a gateway signature."""
-        contract.deposit(USER, 100_000) if kw.get("pre_deposit", True) else None
-        sig = _settle_sig(task_id, USER, WORKER, 50_000, nonce)
-        contract.settle_task(
-            task_id, USER, WORKER, 50_000, nonce,
-            gateway_address=GATEWAY, gateway_signature=sig,
-        )
-
     def test_settle_deducts_from_user(self, contract):
-        self._settle(contract, keccak(text="task-001"))
+        contract.deposit(USER, 100_000)
+        tid = keccak(text="task-001")
+        sig = _settle_sig(tid, WORKER, COST)
+        contract.settle_task(tid, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig)
         assert contract.get_user_balance(USER) == 50_000
 
     def test_settle_credits_worker_payout(self, contract):
-        self._settle(contract, keccak(text="task-001"))
-        expected_worker = (50_000 * WORKER_BPS) // BPS_DENOM  # 40_000
-        assert contract.get_pending_payout(WORKER) == expected_worker
+        contract.deposit(USER, 100_000)
+        tid = keccak(text="task-001")
+        sig = _settle_sig(tid, WORKER, COST)
+        contract.settle_task(tid, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig)
+        expected = (COST * WORKER_BPS) // BPS_DENOM  # 12_500
+        assert contract.get_pending_payout(WORKER) == expected
 
-    def test_settle_credits_owner_payout(self, contract):
-        self._settle(contract, keccak(text="task-001"))
-        expected_owner = 50_000 - ((50_000 * WORKER_BPS) // BPS_DENOM)  # 10_000
-        assert contract.get_pending_payout(OWNER) == expected_owner
-
-    def test_settle_split_is_80_20(self, contract):
-        self._settle(contract, keccak(text="task-001"))
-        worker_amt = (50_000 * WORKER_BPS) // BPS_DENOM
-        owner_amt = 50_000 - worker_amt
-        assert worker_amt + owner_amt == 50_000
-        assert worker_amt == 40_000
-        assert owner_amt == 10_000
+    def test_settle_split_is_70_25_5(self, contract):
+        contract.deposit(USER, 100_000)
+        contract.register_developer(SKILL, DEVELOPER)
+        tid = keccak(text="task-001")
+        sig = _settle_sig(tid, WORKER, COST)
+        contract.settle_task(tid, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig)
+        worker_amt = (COST * WORKER_BPS) // BPS_DENOM
+        dev_amt = (COST * DEVELOPER_BPS) // BPS_DENOM
+        treasury_amt = COST - worker_amt - dev_amt
+        assert worker_amt + dev_amt + treasury_amt == COST
+        assert contract.get_pending_payout(WORKER) == worker_amt
+        assert contract.get_pending_payout(DEVELOPER) == dev_amt
+        assert contract.accumulated_treasury_fees == treasury_amt
 
     def test_settle_rejects_zero_amount(self, contract):
-        task_id = keccak(text="task-001")
+        tid = keccak(text="task-001")
         with pytest.raises(ValueError, match="amount must be > 0"):
-            contract.settle_task(task_id, USER, WORKER, 0, 0, GATEWAY, "")
+            contract.settle_task(tid, USER, WORKER, SKILL, 0, 0, _deadline(), GATEWAY, "")
 
-    def test_settle_rejects_used_nonce(self, contract):
-        self._settle(contract, keccak(text="task-001"), nonce=0)
-        task_id2 = keccak(text="task-002")
-        sig = _settle_sig(task_id2, USER, WORKER, 10_000, 0)
+    def test_settle_rejects_used_compound_nonce(self, contract):
+        """Same compound key (same nonce, same taskId) rejected."""
+        contract.deposit(USER, 100_000)
+        tid1 = keccak(text="task-001")
+        sig1 = _settle_sig(tid1, WORKER, COST)
+        contract.settle_task(tid1, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig1)
+        # Same nonce (0) with same taskId → must be rejected
         with pytest.raises(ValueError, match="nonce already used"):
-            contract.settle_task(task_id2, USER, WORKER, 10_000, 0, GATEWAY, sig)
+            contract.settle_task(tid1, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig1)
+
+    def test_settle_same_nonce_different_task_allowed(self, contract):
+        """Same numeric nonce with different taskId is allowed (compound nonce)."""
+        contract.deposit(USER, 200_000)
+        tid1 = keccak(text="task-a")
+        sig1 = _settle_sig(tid1, WORKER, COST)
+        contract.settle_task(tid1, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig1)
+
+        tid2 = keccak(text="task-b")
+        sig2 = _settle_sig(tid2, WORKER, COST)
+        contract.settle_task(tid2, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig2)
+
+        assert contract.get_task_status(tid1) == TASK_STATUS_SETTLED
+        assert contract.get_task_status(tid2) == TASK_STATUS_SETTLED
 
     def test_settle_rejects_duplicate_task(self, contract):
-        tid = keccak(text="task-001")
-        self._settle(contract, tid, nonce=0)
-        sig = _settle_sig(tid, USER, WORKER, 10_000, 1)
-        with pytest.raises(ValueError, match="task already settled"):
-            contract.settle_task(tid, USER, WORKER, 10_000, 1, GATEWAY, sig)
-
-    def test_settle_rejects_non_gateway(self, contract):
         contract.deposit(USER, 100_000)
-        task_id = keccak(text="task-001")
-        # Sign with USER's key instead of gateway — recovered signer won't match
-        user_key = Account.create().key.hex()
+        tid = keccak(text="task-001")
+        sig = _settle_sig(tid, WORKER, COST)
+        contract.settle_task(tid, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig)
+        with pytest.raises(ValueError, match="task already settled"):
+            contract.settle_task(tid, USER, WORKER, SKILL, COST, 1, _deadline(), GATEWAY, sig)
+
+    def test_settle_rejects_invalid_signature(self, contract):
+        contract.deposit(USER, 100_000)
+        tid = keccak(text="task-001")
+        bad_key = Account.create().key.hex()
         worker_bytes = to_canonical_address(WORKER)
-        amount_bytes = (50_000).to_bytes(32, 'big')
-        msg_hash = keccak(task_id + worker_bytes + amount_bytes)
-        bad_sig = Account.unsafe_sign_hash(msg_hash, user_key).signature.hex()
+        amount_bytes = COST.to_bytes(32, 'big')
+        msg_hash = keccak(tid + worker_bytes + amount_bytes)
+        bad_sig = Account.unsafe_sign_hash(msg_hash, bad_key).signature.hex()
         with pytest.raises(PermissionError, match="invalid gateway signature"):
-            contract.settle_task(task_id, USER, WORKER, 50_000, 0, GATEWAY, bad_sig)
+            contract.settle_task(tid, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, bad_sig)
 
     def test_settle_rejects_insufficient_balance(self, contract):
-        task_id = keccak(text="task-001")
-        sig = _settle_sig(task_id, USER, WORKER, 50_000, 0)
+        tid = keccak(text="task-001")
+        sig = _settle_sig(tid, WORKER, COST)
         with pytest.raises(ValueError, match="insufficient user balance"):
-            contract.settle_task(task_id, USER, WORKER, 50_000, 0, GATEWAY, sig)
+            contract.settle_task(tid, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig)
 
-    def test_settle_records_nonce(self, contract):
-        self._settle(contract, keccak(text="task-001"), nonce=42)
-        assert contract.is_nonce_used(42)
-        assert not contract.is_nonce_used(43)
+    def test_settle_rejects_expired_deadline(self, contract):
+        contract.deposit(USER, 100_000)
+        tid = keccak(text="task-001")
+        sig = _settle_sig(tid, WORKER, COST)
+        with pytest.raises(ValueError, match="deadline"):
+            contract.settle_task(tid, USER, WORKER, SKILL, COST, 0, 0, GATEWAY, sig)
 
-    def test_settle_records_task(self, contract):
-        self._settle(contract, keccak(text="task-001"))
-        assert contract.is_task_settled(keccak(text="task-001"))
-        assert not contract.is_task_settled(keccak(text="other"))
+    def test_settle_tracks_status(self, contract):
+        contract.deposit(USER, 100_000)
+        tid = keccak(text="task-status")
+        assert contract.get_task_status(tid) == TASK_STATUS_NONE
+        sig = _settle_sig(tid, WORKER, COST)
+        contract.settle_task(tid, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig)
+        assert contract.get_task_status(tid) == TASK_STATUS_SETTLED
 
 
 # ── ClaimReward ─────────────────────────────────────────────────────────────
 
 class TestClaimReward:
-    def test_claim_reward_transfers_to_worker(self, contract):
+    def test_worker_claims_25_percent(self, contract):
         contract.deposit(USER, 100_000)
-        task_id = keccak(text="task-001")
-        sig = _settle_sig(task_id, USER, WORKER, 50_000, 0)
-        contract.settle_task(task_id, USER, WORKER, 50_000, 0, GATEWAY, sig)
-        claim_sig = _claim_sig(task_id, WORKER, 40_000)
-        amount = contract.claim_reward(task_id, WORKER, claim_sig)
-        expected = (50_000 * WORKER_BPS) // BPS_DENOM
+        contract.register_developer(SKILL, DEVELOPER)
+        tid = keccak(text="task-001")
+        sig = _settle_sig(tid, WORKER, COST)
+        contract.settle_task(tid, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig)
+
+        expected = (COST * WORKER_BPS) // BPS_DENOM
+        claim_sig = _claim_sig(tid, WORKER, expected)
+        amount = contract.claim_reward(tid, WORKER, claim_sig)
         assert amount == expected
         assert contract.get_pending_payout(WORKER) == 0
 
-    def test_claim_reward_double_claim_rejected(self, contract):
+    def test_double_claim_rejected(self, contract):
         contract.deposit(USER, 100_000)
-        task_id = keccak(text="task-001")
-        sig = _settle_sig(task_id, USER, WORKER, 50_000, 0)
-        contract.settle_task(task_id, USER, WORKER, 50_000, 0, GATEWAY, sig)
-        claim_sig = _claim_sig(task_id, WORKER, 40_000)
-        contract.claim_reward(task_id, WORKER, claim_sig)
-        with pytest.raises(ValueError, match="reward already claimed"):
-            contract.claim_reward(task_id, WORKER, claim_sig)
+        contract.register_developer(SKILL, DEVELOPER)
+        tid = keccak(text="task-002")
+        sig = _settle_sig(tid, WORKER, COST)
+        contract.settle_task(tid, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig)
+        expected = (COST * WORKER_BPS) // BPS_DENOM
+        claim_sig = _claim_sig(tid, WORKER, expected)
+        contract.claim_reward(tid, WORKER, claim_sig)
+        with pytest.raises(ValueError, match="worker already claimed"):
+            contract.claim_reward(tid, WORKER, claim_sig)
 
-    def test_claim_reward_no_payout_rejected(self, contract):
-        task_id = keccak(text="no-settle")
-        with pytest.raises(ValueError, match="no pending payout"):
-            contract.claim_reward(task_id, WORKER, "")
-
-
-# ── ClaimOwnerFees ──────────────────────────────────────────────────────────
-
-class TestClaimOwnerFees:
-    def test_owner_claims_accumulated_fees(self, contract):
+    def test_developer_claims_70_percent(self, contract):
         contract.deposit(USER, 100_000)
-        tid1 = keccak(text="task-001")
-        contract.settle_task(tid1, USER, WORKER, 50_000, 0, GATEWAY,
-                             _settle_sig(tid1, USER, WORKER, 50_000, 0))
-        tid2 = keccak(text="task-002")
-        contract.settle_task(tid2, USER, WORKER, 50_000, 1, GATEWAY,
-                             _settle_sig(tid2, USER, WORKER, 50_000, 1))
-        amount = contract.claim_owner_fees(OWNER)
-        expected_per = 50_000 - ((50_000 * WORKER_BPS) // BPS_DENOM)
-        assert amount == expected_per * 2
-        assert contract.get_pending_payout(OWNER) == 0
+        contract.register_developer(SKILL, DEVELOPER)
+        tid = keccak(text="task-003")
+        sig = _settle_sig(tid, WORKER, COST)
+        contract.settle_task(tid, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig)
 
-    def test_non_owner_cannot_claim_fees(self, contract):
+        expected = (COST * DEVELOPER_BPS) // BPS_DENOM
+        claim_sig = _claim_sig(tid, DEVELOPER, expected)
+        amount = contract.claim_developer_reward(tid, DEVELOPER, claim_sig)
+        assert amount == expected
+        assert contract.get_pending_payout(DEVELOPER) == 0
+
+    def test_wrong_worker_rejected(self, contract):
         contract.deposit(USER, 100_000)
-        tid = keccak(text="task-001")
-        contract.settle_task(tid, USER, WORKER, 50_000, 0, GATEWAY,
-                             _settle_sig(tid, USER, WORKER, 50_000, 0))
-        with pytest.raises(PermissionError, match="only platform owner"):
-            contract.claim_owner_fees(WORKER)
+        tid = keccak(text="task-004")
+        sig = _settle_sig(tid, WORKER, COST)
+        contract.settle_task(tid, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig)
+        with pytest.raises(PermissionError, match="not the assigned worker"):
+            contract.claim_reward(tid, DEVELOPER, "")
+
+    def test_no_settlement_rejected(self, contract):
+        tid = keccak(text="no-settle")
+        with pytest.raises(ValueError, match="no settlement record"):
+            contract.claim_reward(tid, WORKER, "")
+
+
+# ── Treasury ────────────────────────────────────────────────────────────────
+
+class TestTreasury:
+    def test_treasury_claims_accumulated_fees(self, contract):
+        contract.deposit(USER, 200_000)
+        contract.register_developer(SKILL, DEVELOPER)
+        for i in range(2):
+            tid = keccak(text=f"task-{i}")
+            sig = _settle_sig(tid, WORKER, COST)
+            contract.settle_task(tid, USER, WORKER, SKILL, COST, i, _deadline(), GATEWAY, sig)
+
+        treasury_share = COST - ((COST * (WORKER_BPS + DEVELOPER_BPS)) // BPS_DENOM)
+        expected = treasury_share * 2
+        amount = contract.claim_treasury_fees(TREASURY)
+        assert amount == expected
+        assert contract.accumulated_treasury_fees == 0
+
+    def test_non_treasury_cannot_claim_fees(self, contract):
+        contract.deposit(USER, 100_000)
+        tid = keccak(text="task-fees")
+        sig = _settle_sig(tid, WORKER, COST)
+        contract.settle_task(tid, USER, WORKER, SKILL, COST, 0, _deadline(), GATEWAY, sig)
+        with pytest.raises(PermissionError, match="only treasury"):
+            contract.claim_treasury_fees(WORKER)
+
+    def test_treasury_no_fees_raises_error(self, contract):
+        with pytest.raises(ValueError, match="no accumulated fees"):
+            contract.claim_treasury_fees(TREASURY)
 
 
 # ── Gateway management ──────────────────────────────────────────────────────

@@ -302,3 +302,32 @@ A: 待补充
 
 ---
 *本文档由 Claude Code 自动维护，请勿手动编辑格式*
+
+## 代码模式
+
+### 独立认领模式（Per-Party Claim）
+- **`_worker_claimed[taskId]`**/**`_developer_claimed[taskId]`**：Worker 和 Developer 可分别独立调用 `claimReward`/`claimDeveloperReward`，互不阻塞
+- **两阶段状态机**：`taskStatus` 仅在双方都认领后才转为 `CLAIMED`（此前保持 `SETTLED`）；`refundTask` 检查任一方认领后禁止退款
+- **PoT 份额签名**：Gateway 签发的 PoT 金额为按 `WORKER_BPS`(2500)/`DEVELOPER_BPS`(7000) 计算的份额，而非 `COST_PER_TASK_USDC`
+- **Solidity 映射要求**：`mapping(bytes32 => bool) public hasClaimedWorker; mapping(bytes32 => bool) public hasClaimedDeveloper;`
+- **InMemory 同步**：`InMemorySettlementContract` 完全镜像上述 Solidity 逻辑，所有测试使用真实 ECDSA 签名验证
+
+## 技术决策记录
+
+### 2026-06-10: Per-Party Claim 替代 Single TaskStatus
+- **问题**：Worker 先 `claimReward` 后，`taskStatus` 变为 `CLAIMED`，Developer 无法再调用 `claimDeveloperReward`
+- **方案**：增加 `_worker_claimed[taskId]` 和 `_developer_claimed[taskId]` 独立追踪
+- **副作用**：`claimReward` 失败消息从 "task not settled" 变为 "worker already claimed"；`refundTask` 需额外检查认领状态
+
+### Anvil E2E Pipeline 模式
+- **四文件结构**：
+  - `AIMSAgentGateway.sol` — 简化 Solidity 合约（native ETH，无需 USDC），worker-signed PoT 用 `ecrecover` 验证，70/25/5 分账，`onlyGateway` + `nonReentrant` 守卫
+  - `gateway.py` — 独立 FastAPI 网关，EIP-191 personal_sign 中间件认证，402 billing 拦截器调用 `availableBalance()` 链上余额检查，`POST /api/run` 通过 httpx 异步调用 Worker
+  - `mock_agent_node.py` — Worker 模拟 FastAPI 服务，`POST /api/execute` 模拟执行延迟后调用 `Account.unsafe_sign_hash(keccak256(taskId))` 生成 PoT
+  - `pipeline_e2e_test.py` — 编排脚本，`ProcessManager` 管理 Anvil/Gateway/Worker 子进程生命周期，3 个场景（成功 70/25/5 ETH 余额验证 + 402 zero-balance + 403 signature tamper）
+- **EIP-191 认证头部**（`gateway.py` 中间件）：`X-AIMS-Address`（consumer EVM address）、`X-AIMS-Signature`（`encode_defunct(primitive=body)` 签名 130 hex chars）、`X-AIMS-Timestamp`（UNIX 秒，±300s 窗口）
+- **402 billing 拦截器**：中间件在 auth 通过后调用 `contract.functions.availableBalance(consumer).call()`，若 `< 0.05 ETH` 返回 HTTP 402 + 结构化 JSON（`insufficient balance`/`required_eth`/`balance_eth`/`action`）
+- **Worker-signed PoT**：Worker 用自身私钥对 `keccak256(taskId)` 做 raw ECDSA 签名，gateway 用 `Account._recover_hash()` 验签后调用合约 `settleTask`，合约再用 `ecrecover` 二次验证
+- **Gateway hot wallet**：交易由 Gateway 签名并广播，Consumer **不支付 Gas**。Gateway 使用 `build_transaction` + `sign_transaction` + `send_raw_transaction` 全流程
+- **部署策略**：优先 `forge create`（需 Foundry），回退使用 `py-solc-x` + `solcx.compile_source` 编译后 `eth_sendTransaction` 部署
+- **余额验证**：场景 A 对比 4 个地址的 ETH 余额变化（Consumer `availableBalance`、Developer 原生余额、Worker 原生余额、Gateway 原生余额），允许 0.5% Gas 误差

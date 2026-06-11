@@ -246,3 +246,24 @@
 
 ---
 *本文档由 Claude Code 自动维护，请勿手动编辑格式*
+
+## [2026-06-11]
+### 新增
+- feat(anvil): 创建 tests/anvil_e2e/AIMSAgentGateway.sol — 简化原生 ETH 合约，worker-signed PoT via ecrecover、70/25/5 分账、nonReentrant
+- feat(anvil): 创建 tests/anvil_e2e/gateway.py — 独立 FastAPI 网关（EIP-191 personal_sign 认证、402 billing interceptor、httpx Worker 路由、hot wallet 签名 settleTask）
+- feat(anvil): 创建 tests/anvil_e2e/mock_agent_node.py — Worker 模拟器，ECDSA 签署 keccak256(taskId) 生成 Proof-of-Task
+- feat(anvil): 创建 tests/anvil_e2e/pipeline_e2e_test.py — 编排脚本，自动启动 Anvil/部署合约/启动服务/运行 3 场景（成功 70/25/5 + 402 + 403）
+
+## [2026-06-10]
+### 修复
+- fix(contract): Worker/Developer 独立领款（per-party claim），仅双方都认领后状态才转为 CLAIMED
+- fix(billing): PoT 金额修正为份额（25%/70%）而非任务总额，确保 on-chain claim 验证通过
+- fix(solidity): `claimReward`/`claimDeveloperReward` 使用 `hasClaimedWorker`/`hasClaimedDeveloper` 独立映射
+- fix(refund): `refundTask` 新增认领后禁止退款检查
+- fix(tests): 更新所有测试适配 `party_address` 重命名、compound key 查找和 70/25/5 分账
+### 修改
+- refactor(contract): `_worker_claimed` + `_developer_claimed` 映射替代单一 taskStatus 认领守卫
+- refactor(billing): 导入 `WORKER_BPS`/`DEVELOPER_BPS` 计算索赔 PoT 金额
+- refactor(test_billing): 适配新的 BillingEngine 构造函数和 `party_address`
+- refactor(test_contract_interactions): 完全重写适应 70/25/5 API
+- refactor(test_pot): 适配 `party_address` 和 compound key 查找

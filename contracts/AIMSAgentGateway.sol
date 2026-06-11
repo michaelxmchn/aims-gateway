@@ -103,6 +103,11 @@ contract AIMSAgentGateway {
     /// @notice Settlement snapshot per taskId.
     mapping(bytes32 => TaskSettlement) public taskSettlements;
 
+    /// @notice Per-party claim tracking — worker and developer claim independently
+    ///         so the first claim does not block the second.
+    mapping(bytes32 => bool) public hasClaimedWorker;
+    mapping(bytes32 => bool) public hasClaimedDeveloper;
+
     // ════════════════════════════════════════════════════════════════════
     // Events
     // ════════════════════════════════════════════════════════════════════
@@ -356,6 +361,10 @@ contract AIMSAgentGateway {
             taskStatus[taskId] == TaskStatus.Settled,
             "AIMSAgentGateway: task not settled"
         );
+        require(
+            !hasClaimedWorker[taskId] && !hasClaimedDeveloper[taskId],
+            "AIMSAgentGateway: cannot refund after claim"
+        );
         require(amount > 0, "AIMSAgentGateway: amount must be > 0");
 
         TaskSettlement memory settlement = taskSettlements[taskId];
@@ -416,8 +425,12 @@ contract AIMSAgentGateway {
         bytes calldata gatewaySignature
     ) external {
         require(
-            taskStatus[taskId] == TaskStatus.Settled,
-            "AIMSAgentGateway: task not settled or already claimed"
+            !hasClaimedWorker[taskId],
+            "AIMSAgentGateway: worker already claimed"
+        );
+        require(
+            taskStatus[taskId] != TaskStatus.Refunded,
+            "AIMSAgentGateway: task was refunded"
         );
 
         TaskSettlement storage settlement = taskSettlements[taskId];
@@ -434,8 +447,13 @@ contract AIMSAgentGateway {
         // keccak256(abi.encodePacked(taskId, worker, amount))
         _verifyGatewaySignature(taskId, msg.sender, workerAmount, gatewaySignature);
 
-        // Mark as claimed
-        taskStatus[taskId] = TaskStatus.Claimed;
+        // Mark worker as claimed (independent of developer claim)
+        hasClaimedWorker[taskId] = true;
+
+        // Transition to Claimed only when both parties have claimed
+        if (hasClaimedDeveloper[taskId]) {
+            taskStatus[taskId] = TaskStatus.Claimed;
+        }
 
         // Deduct from pending payouts (protect against re-entrancy)
         pendingPayouts[msg.sender] -= workerAmount;
@@ -462,8 +480,12 @@ contract AIMSAgentGateway {
         bytes calldata gatewaySignature
     ) external {
         require(
-            taskStatus[taskId] == TaskStatus.Settled,
-            "AIMSAgentGateway: task not settled or already claimed"
+            !hasClaimedDeveloper[taskId],
+            "AIMSAgentGateway: developer already claimed"
+        );
+        require(
+            taskStatus[taskId] != TaskStatus.Refunded,
+            "AIMSAgentGateway: task was refunded"
         );
 
         TaskSettlement storage settlement = taskSettlements[taskId];
@@ -482,11 +504,13 @@ contract AIMSAgentGateway {
         // Verify gateway PoT signature
         _verifyGatewaySignature(taskId, msg.sender, developerAmount, gatewaySignature);
 
-        // Mark task as claimed (developer claims first, or worker already claimed)
-        // Use a separate flag so both can claim independently — we use claimed status
-        // only after BOTH have claimed. If worker already set Claimed, we still allow
-        // developer claim. We use a secondary mapping for developer claim tracking.
-        taskStatus[taskId] = TaskStatus.Claimed;
+        // Mark developer as claimed (independent of worker claim)
+        hasClaimedDeveloper[taskId] = true;
+
+        // Transition to Claimed only when both parties have claimed
+        if (hasClaimedWorker[taskId]) {
+            taskStatus[taskId] = TaskStatus.Claimed;
+        }
 
         pendingPayouts[msg.sender] -= developerAmount;
         usdc.safeTransfer(msg.sender, developerAmount);

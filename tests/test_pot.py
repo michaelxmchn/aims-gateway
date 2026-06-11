@@ -41,7 +41,7 @@ class TestPotGeneration:
         pot = self.pm.generate_pot("task-001", WORKER_A)
         assert isinstance(pot, ProofOfTask)
         assert pot.task_id == "task-001"
-        assert pot.worker_address == WORKER_A
+        assert pot.party_address == WORKER_A
         assert len(pot.signature) == 130  # 65 bytes * 2 hex chars, no 0x prefix
 
     def test_generate_different_tasks_different_signatures(self) -> None:
@@ -64,19 +64,19 @@ class TestPotPersistence:
     def test_get_pot_returns_none_for_missing(self) -> None:
         assert self.pm.get_pot("no-such-task") is None
 
-    def test_get_pot_after_generate(self) -> None:
+    def test_get_pot_after_generate_with_party(self) -> None:
         generated = self.pm.generate_pot("task-001", WORKER_A)
-        retrieved = self.pm.get_pot("task-001")
+        # Must pass party_address for compound key lookup
+        retrieved = self.pm.get_pot("task-001", WORKER_A)
         assert retrieved is not None
         assert retrieved.task_id == generated.task_id
-        assert retrieved.worker_address == generated.worker_address
+        assert retrieved.party_address == generated.party_address
         assert retrieved.signature == generated.signature
 
     def test_pot_survives_separate_instance(self) -> None:
         self.pm.generate_pot("task-001", WORKER_A)
-        # New manager with same storage should find the PoT
         pm2 = POTManager(storage=self.storage, gateway_signing_key=self.key)
-        retrieved = pm2.get_pot("task-001")
+        retrieved = pm2.get_pot("task-001", WORKER_A)
         assert retrieved is not None
 
 
@@ -100,7 +100,7 @@ class TestPotVerification:
         pot = self.pm.generate_pot("task-001", WORKER_A, amount=50_000)
         tampered = ProofOfTask(
             task_id="task-999",
-            worker_address=pot.worker_address,
+            party_address=pot.party_address,
             amount=pot.amount,
             signature=pot.signature,
         )
@@ -110,7 +110,7 @@ class TestPotVerification:
         pot = self.pm.generate_pot("task-001", WORKER_A, amount=50_000)
         tampered = ProofOfTask(
             task_id=pot.task_id,
-            worker_address=EVIL,
+            party_address=EVIL,
             amount=pot.amount,
             signature=pot.signature,
         )

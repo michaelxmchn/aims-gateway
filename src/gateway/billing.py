@@ -26,6 +26,7 @@ from src.chain.contract_client import SettlementContractClient
 from src.chain.nonce_manager import NonceManager
 from src.chain.pot import POTManager, ProofOfTask
 from src.gateway.storage import Storage
+from src.chain.abi import BPS_DENOM, WORKER_BPS, DEVELOPER_BPS
 
 logger = logging.getLogger(__name__)
 
@@ -193,22 +194,24 @@ class BillingEngine:
             logger.error("request_settlement %s: settleTask failed: %s", task_id, exc)
             return receipt
 
-        # 6. Generate worker PoT
+        # 6. Generate worker PoT (signed over worker's 25% share)
         if self._pot_manager is not None:
+            worker_share = (self.COST_PER_TASK_USDC * WORKER_BPS) // BPS_DENOM
             try:
                 pot = self._pot_manager.generate_pot(
-                    task_id, worker_address, amount=self.COST_PER_TASK_USDC,
+                    task_id, worker_address, amount=worker_share,
                 )
                 receipt["pot"] = pot
             except Exception as exc:
                 logger.warning("request_settlement %s: PoT failed: %s", task_id, exc)
 
-            # 7. Generate developer PoT (if developer is registered)
+            # 7. Generate developer PoT (signed over developer's 70% share)
             dev_address = self._contract.get_developer(skill_id_hash)
             if dev_address:
+                dev_share = (self.COST_PER_TASK_USDC * DEVELOPER_BPS) // BPS_DENOM
                 try:
                     dev_pot = self._pot_manager.generate_pot(
-                        task_id, dev_address, amount=self.COST_PER_TASK_USDC,
+                        task_id, dev_address, amount=dev_share,
                     )
                     receipt["developer_pot"] = dev_pot
                 except Exception as exc:
