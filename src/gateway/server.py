@@ -797,6 +797,19 @@ async def wallet_balance(user_id: str):
     return BalanceResponse(user_id=user_id, credits=credits)
 
 
+@app.get("/api/admin/audit")
+async def audit_trail(task_id: str | None = None, limit: int = 100):
+    """Query the reversible settlement audit trail.
+
+    Optional ``?task_id=<task_id>`` filters to one task.
+    ``?limit=N`` controls max entries (default 100).
+    """
+    return {
+        "entries": billing.get_audit_trail(task_id=task_id, limit=limit),
+        "summary": billing.get_audit_summary(),
+    }
+
+
 @app.post("/api/workers/heartbeat")
 async def worker_heartbeat(req: HeartbeatRequest):
     """Receive a keep-alive heartbeat from a worker.

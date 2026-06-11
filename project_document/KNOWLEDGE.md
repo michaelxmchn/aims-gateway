@@ -52,6 +52,10 @@
 - **环境变量矩阵**：`AIMS_RPC_URL` / `AIMS_CONTRACT_ADDRESS` / `AIMS_USDC_ADDRESS` / `AIMS_GATEWAY_PRIVATE_KEY` / `AIMS_GATEWAY_ADDRESS` / `AIMS_TREASURY` 六项决定结算引擎行为
 - **web3.py v7 兼容性**：`ContractFunction` 对象无 `estimate_transaction` 方法，使用 `estimate_gas()` 替代
 - **`full_settlement_test.py`**：`scripts/full_settlement_test.py` — 完整结算生命周期验证。步骤：0) 给 Worker/Developer 铸造 MockUSDC；1) Gateway EOA 注册开发者到 skill；2) 用户调用 run_skill；3) Worker claim+submit；4) 链上核实 70/25/5 分账；5) Worker 通过 PoT 领取 25%；6) Developer 通过 PoT 领取 70%。已验证 0.05 USDC → 0.0125 Worker + 0.0350 Developer + 0.0025 Treasury 完整通路
+### 审计追踪模式
+- **`BillingEngine._audit_ledger`**：内存账本列表，记录每条状态流转。字段：`[ts, tx_hash, action, task_id, roles, amounts, detail]`
+- **`_record()` 自动埋点**：`request_settlement()` 成功时自动记录 `action="settle"` 包含 user/worker/developer 角色和 70/25/5 分账金额；`request_refund()` 记录 `action="refund"`
+- **`GET /api/admin/audit`** 查询端点，支持 `?task_id=<id>` 过滤和 `?limit=N` 控制条目数，同时返回 `summary` 聚合统计（总条目数、总金额、各 action 次数、最后一条记录）
 
 ### Document-Driven 架构
 - **子目录结构**：`skills/manifests/<skill_name>/manifest.json`（元数据）+ `rules.md`（Markdown 规则文件）

@@ -41,6 +41,10 @@ class BillingEngine:
     Each task costs ``COST_PER_TASK`` USDC (0.05).  On SUCCESS, the gateway
     oracle calls ``settleTask`` on the contract which splits 70/25/5 between
     developer / worker / treasury.
+
+    Maintains a reversible audit trail — every settlement event is recorded
+    in ``_audit_ledger`` with [timestamp, tx_hash, action, roles, amount]
+    for retrospective query and reconciliation.
     """
 
     COST_PER_TASK_USDC: int = 50_000  # 0.05 USDC in atomic units (6 decimals)
@@ -62,6 +66,59 @@ class BillingEngine:
         self._contract = contract_client
         self._pot_manager = pot_manager
         self._nonce_manager = NonceManager(storage)
+        # Reversible audit trail: list of dicts with keys:
+        #   ts, tx_hash, action, task_id, roles, amounts, detail
+        self._audit_ledger: list[dict] = []
+
+    # ── Audit trail ─────────────────────────────────────────────────────
+
+    def _record(
+        self,
+        action: str,
+        task_id: str,
+        roles: dict[str, str],
+        amounts: dict[str, int],
+        tx_hash: str = "",
+        detail: str = "",
+    ) -> None:
+        """Append an immutable entry to the audit trail."""
+        self._audit_ledger.append({
+            "ts": time.time(),
+            "tx_hash": tx_hash,
+            "action": action,
+            "task_id": task_id,
+            "roles": dict(roles),
+            "amounts": dict(amounts),
+            "detail": detail,
+        })
+
+    def get_audit_trail(
+        self,
+        task_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Query the reversible audit trail, optionally filtered by task_id."""
+        if task_id:
+            return [e for e in self._audit_ledger if e["task_id"] == task_id][-limit:]
+        return self._audit_ledger[-limit:]
+
+    def get_audit_summary(self) -> dict:
+        """Return aggregate settlement stats from the audit trail."""
+        total_settled = 0
+        action_counts: dict[str, int] = {}
+        for entry in self._audit_ledger:
+            action_counts[entry["action"]] = action_counts.get(entry["action"], 0) + 1
+            if "amounts" in entry:
+                total_settled += sum(
+                    v for k, v in entry["amounts"].items()
+                    if k in ("user_deduction", "worker_share", "developer_share", "treasury_share")
+                )
+        return {
+            "total_entries": len(self._audit_ledger),
+            "total_settled_atomic": total_settled,
+            "action_counts": action_counts,
+            "last_entry": self._audit_ledger[-1] if self._audit_ledger else None,
+        }
 
     # ── Balance (view function, no gas) ─────────────────────────────────
 
@@ -194,6 +251,30 @@ class BillingEngine:
             logger.error("request_settlement %s: settleTask failed: %s", task_id, exc)
             return receipt
 
+        # 5a. Audit trail — record the settlement
+        worker_share = (self.COST_PER_TASK_USDC * WORKER_BPS) // BPS_DENOM
+        dev_address = self._contract.get_developer(skill_id_hash) if skill_id_hash else ""
+        dev_share = (self.COST_PER_TASK_USDC * DEVELOPER_BPS) // BPS_DENOM if dev_address else 0
+        treasury_share = self.COST_PER_TASK_USDC - worker_share - dev_share
+        self._record(
+            action="settle",
+            task_id=task_id,
+            roles={
+                "user": user_address,
+                "worker": worker_address,
+                "developer": dev_address or treasury_address,
+                "gateway": self._gateway_address,
+            },
+            amounts={
+                "user_deduction": self.COST_PER_TASK_USDC,
+                "worker_share": worker_share,
+                "developer_share": dev_share,
+                "treasury_share": treasury_share,
+            },
+            tx_hash="",
+            detail=f"nonce={nonce} skill={skill_id}",
+        )
+
         # 6. Generate worker PoT (signed over worker's 25% share)
         if self._pot_manager is not None:
             worker_share = (self.COST_PER_TASK_USDC * WORKER_BPS) // BPS_DENOM
@@ -272,6 +353,13 @@ class BillingEngine:
                 reason="timeout",
             )
             result["status"] = "COMPLETED"
+            self._record(
+                action="refund",
+                task_id=task_id,
+                roles={"user": user_address, "gateway": self._gateway_address},
+                amounts={"refund": self.COST_PER_TASK_USDC},
+                detail="timeout refund",
+            )
         except (ValueError, RuntimeError) as exc:
             result["error"] = str(exc)
         return result

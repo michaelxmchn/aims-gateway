@@ -9,7 +9,9 @@
 ### 修改
 - fix(contract_client): `_send_tx()` 中 `estimate_transaction` → `estimate_gas`（web3.py v7 API 兼容）
 - fix(server): 移除 test_skill 计费旁路，使其通过标准 `request_settlement()` 触发链上结算
-### 修改
+- fix(scripts): 修正 `scripts/full_settlement_test.py` 中 DEV_KEY 常量 — 映射到正确的 Hardhat Account #2 地址
+- feat(billing): 添加可逆审计追踪系统 — `_audit_ledger` 记录每笔 settlement/refund 的 [ts, action, roles, amounts]，支持按 task_id 回溯和全局聚合查询
+- feat(server): 添加 `GET /api/admin/audit` 审计回溯端点，返回完整结算流水和统计摘要
 - fix(contract_client): `_send_tx()` 中 `estimate_transaction` → `estimate_gas`（web3.py v7 API 兼容）
 - fix(server): 移除 test_skill 计费旁路，使其通过标准 `request_settlement()` 触发链上结算
 - fix(scripts): 修正 `scripts/full_settlement_test.py` 中 DEV_KEY 常量 — 映射到正确的 Hardhat Account #2 地址
