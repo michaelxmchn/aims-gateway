@@ -772,14 +772,10 @@ async def wallet_deposit(req: DepositRequest):
     # Convert float USDC to atomic units (6 decimals)
     amount_atomic = int(round(req.amount * 10**6))
 
-    from src.chain.settlement import ChainSettlement
-    chain = ChainSettlement(os.getenv("AIMS_RPC_URL", ""))
-    contract = chain.contract
+    # Use the module-level singleton contract
+    _contract.deposit(req.user_id, amount_atomic)
 
-    # For InMemorySettlementContract, deposit directly
-    contract.deposit(req.user_id, amount_atomic)
-
-    new_balance = contract.get_user_balance(req.user_id)
+    new_balance = _contract.get_user_balance(req.user_id)
 
     return DepositResponse(
         user_id=req.user_id,
@@ -795,10 +791,7 @@ async def wallet_balance(user_id: str):
     Query parameter: ``?user_id=<evm_address>``.
     Reads from the settlement contract view function (no gas).
     """
-    from src.chain.settlement import ChainSettlement
-    chain = ChainSettlement(os.getenv("AIMS_RPC_URL", ""))
-    contract = chain.contract
-    balance_atomic = contract.get_user_balance(user_id)
+    balance_atomic = _contract.get_user_balance(user_id)
     credits = float(balance_atomic) / 10**6
 
     return BalanceResponse(user_id=user_id, credits=credits)

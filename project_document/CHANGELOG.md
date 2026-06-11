@@ -263,6 +263,9 @@
 - feat(console): 创建 static/console.html — Web3 前端控制面板，MetaMask 钱包直连，EIP-191 浏览器端签名，三角色视图（Consumer/Developer/Worker），AIMS Execution Pipeline 进度条，402 余额不足弹窗
 - feat(server): 添加 CORS 中间件（开发模式全放行） — `from fastapi.middleware.cors import CORSMiddleware`
 - feat(server): 添加 `GET /console` 路由 — 托管 Web3 控制面板
+- feat(worker): 创建 run_aims_worker.py — 独立 OpenClaw 兼容 Worker 节点，EIP-191 认证，PoT 签名，claim→execute→submit 全循环
+### 修复
+- fix(server): `wallet_deposit`/`wallet_balance` 每个请求创建独立 `ChainSettlement` 实例 → `InMemorySettlementContract` 余额不共享。改为使用模块级 `_contract` 单例
 
 ## [2026-06-10]
 ### 修复

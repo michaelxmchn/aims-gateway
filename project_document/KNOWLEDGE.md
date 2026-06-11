@@ -61,6 +61,12 @@ A: 待补充
   - **网络不可达降级**：`test_step2_documentation_root_reachable` 等远程测试在 GitHub raw URL 不可达时自动 `pytest.skip`，不影响本地 CI
 - **`TestBootstrapDocumentation`** 验证 `AIMS_AGENT_BOOTSTRAP.md`（System Prompt 存在性）和 `bootstrap_helper.py`（客户端库存在性）
 
+### InMemoryContract 模块级单例模式
+- **问题**：`wallet_deposit()` 和 `wallet_balance()` 每个请求中调用 `ChainSettlement(...)` 创建新实例 → `InMemorySettlementContract` 是纯内存对象，每次请求独立实例导致余额写后读不一致
+- **解决方案**：在 `server.py` 模块级别创建一次 `_chain_settlement` 和 `_contract`（行 78-80），所有钱包端点直接使用全局 `_contract` 单例
+- **模式**：`server.py` 模块加载时初始化 → 所有请求共享同一个 `_contract` 引用
+- **生产环境**：切换到 `Web3SettlementContract` 后，每次请求通过 web3.py RPC 调用查询链上状态，不存在单例问题
+
 ### 多模态输入预处理模式
 - **Base64 解码**：`_detect_base64()` 识别长度 ≥20 的 base64 编码字符串 → 解码为临时文件，通过文件头字节检测图像格式（PNG/JPEG/GIF/WebP）
 - **URL 下载**：`_detect_url()` 识别 http/https/file 开头的 URL → `_download_to_temp()` 下载到临时文件，通过扩展名推断 MIME 类型
