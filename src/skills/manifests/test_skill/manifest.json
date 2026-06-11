@@ -1,0 +1,19 @@
+{
+  "name": "test_skill",
+  "description": "Sandbox test skill — accepts any input, always passes validation. Used for DePIN bandwidth smoke tests and settlement pipeline verification.",
+  "input_schema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "version": "1.0.0",
+  "author": "aims_protocol",
+  "price_points": 0.0,
+  "tags": ["test", "sandbox", "echo"],
+  "compute_tier": 1
+}

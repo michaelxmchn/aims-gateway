@@ -268,6 +268,8 @@
 - fix(server): `wallet_deposit`/`wallet_balance` 每个请求创建独立 `ChainSettlement` 实例 → `InMemorySettlementContract` 余额不共享。改为使用模块级 `_contract` 单例
 ### 修复
 - fix(worker): `run_aims_worker.py` `execute_skill()` 生成 mock 数据不匹配 skill 的 `output_schema` → 提交时 `VALIDATE GENERIC FAIL` → `complete_task("FAILED")` → 后续 worker 全 204。新增 `_fetch_output_schema()` 从 `/api/discovery` 获取输出 schema，`_build_mock_result()` 按 schema 生成合规 mock 数据
+### 新增
+- feat(test_skill): 创建 `test_skill` 沙盒技能 — 完全宽松的 `output_schema`（`{"type":"object"}`，无 required），`submit_task` 短路由直接返回 `outcome=ACCEPTED`，跳过结算/托管流程。用于 DePIN 带宽烟雾测试和流水线验证
 
 ## [2026-06-10]
 ### 修复

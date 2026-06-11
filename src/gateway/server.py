@@ -707,6 +707,21 @@ async def submit_task(req: SubmitRequest):
             ),
         )
 
+    # ── 4b. test_skill short-circuit — skip billing/escrow, always ACCEPTED ─
+    if skill_id == "test_skill":
+        logger.info("test_skill task=%s → ACCEPTED (billing bypassed)", req.task_id)
+        return SubmitResponse(
+            task_id=req.task_id,
+            worker_id=req.worker_id,
+            outcome="ACCEPTED",
+            gas_cost=0.0,
+            total_cost=0.0,
+            platform_tax=0.0,
+            developer_payout=0.0,
+            unused_refund=0.0,
+            pot=None,
+        )
+
     # ── 5. Final step — calculate execution time & settle escrow ──────
     execution_time = max(time.time() - claimed_at, 0.1)
 

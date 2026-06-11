@@ -273,11 +273,19 @@ def _dashboard_impl(arguments: Dict[str, Any]) -> str:
     return json.dumps(result, indent=2)
 
 
+def _test_skill_impl(arguments: Dict[str, Any]) -> str:
+    """Echo input params — pure sandbox test."""
+    from src.skills.test_skill import echo
+    result = echo(arguments.get("params"))
+    return json.dumps(result, indent=2)
+
+
 SKILL_IMPLS: Dict[str, Callable[[Dict[str, Any]], str]] = {
     "amazon_scraper": _amazon_scraper_impl,
     "git_changelog": _git_changelog_impl,
     "code_security_audit": _code_security_audit_impl,
     "dashboard_skill": _dashboard_impl,
+    "test_skill": _test_skill_impl,
 }
 
 
