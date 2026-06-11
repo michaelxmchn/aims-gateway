@@ -91,6 +91,17 @@ A: 待补充
 - **解决方案**：Worker 在 `execute_skill()` 中调用 `_fetch_output_schema(skill_id)` 从 `GET /api/discovery` 获取目标 skill 的 `output_schema`，`_build_mock_result()` 遍历 `properties` 按 type 生成合规 Mock 值（string→`"completed"`/`"mock_*"`，number→delay，boolean→true 等），`required` 缺省补全
 - **回退安全**：discovery endpoint 不可达时返回 `{"status": "success", "message": "..."}` 通用格式，确保 worker 不崩溃
 
+### Wallet 代理充值 — Web3 模式本地回退
+- **问题**：Web3 模式下 `_contract` 为 `Web3SettlementContract`，其 `deposit()` 调用 Solidity `deposit(uint256)` 使用 `msg.sender` 作为充值地址。但网关使用 gateway key 签名交易，`msg.sender` = gateway 而非实际用户，且用户私钥不在网关口内，导致 500 崩溃
+- **解决方案**：在 `server.py` 引入 `_local_deposits: dict[str, int]` 内存字典。Web3 模式下 `/api/wallet/deposit` 写入此字典而非调用链上 depsoit；`wallet_balance` 将链上余额 + 本地余额相加返回。以 `_is_web3_mode = isinstance(_contract, Web3SettlementContract)` 标志动态切换
+- **模式**：代理充值只适用于测试/开发。生产环境用户直接通过 MetaMask 等钱包调用合约 `deposit()`，不经过网关
+
+### Skill Logic 脚本分发
+- **`skills/uploaded/{skill_id}/logic.py`**：`SkillStore` 从 `skills/uploaded/` 目录读取逻辑脚本，通过 `GET /api/skills/{skill_id}/logic` 分发给 Worker
+- **`get_logic_source()`** 查找 `UPLOAD_BASE / skill_id / logic.py`（`skills/uploaded/{skill_id}/logic.py`），不存在则返回 404
+- **内置 skill 补充**：`test_skill` 等内置 skill 默认无 `logic.py`，需在 `skills/uploaded/test_skill/` 手动创建并注册 manifest 到 Storage。`logic.py` 只需实现 `run(params, user_id, task_id) → dict` 接口，Worker 运行时动态加载调用
+- **`SkillStore.register()`**：通过 `storage.dict_set(MANIFEST_NS, skill_id, manifest)` 注册 manifest，路径存在即可被 `serve_logic` 端点发现
+
 ### InMemoryContract 模块级单例模式
 - **问题**：`wallet_deposit()` 和 `wallet_balance()` 每个请求中调用 `ChainSettlement(...)` 创建新实例 → `InMemorySettlementContract` 是纯内存对象，每次请求独立实例导致余额写后读不一致
 - **解决方案**：在 `server.py` 模块级别创建一次 `_chain_settlement` 和 `_contract`（行 78-80），所有钱包端点直接使用全局 `_contract` 单例

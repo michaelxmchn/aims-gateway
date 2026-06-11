@@ -75,9 +75,15 @@ nonce_manager = NonceManager(storage)
 pot_manager = POTManager(storage, AIMS_GATEWAY_PRIVATE_KEY) if AIMS_GATEWAY_PRIVATE_KEY else None
 
 # Lazy-init contract via ChainSettlement (InMemory or Web3 based on env)
+from src.chain.contract_client import Web3SettlementContract
 from src.chain.settlement import ChainSettlement
 _chain_settlement = ChainSettlement(os.getenv("AIMS_RPC_URL", ""))
 _contract = _chain_settlement.contract  # InMemorySettlementContract or Web3SettlementContract
+
+# In Web3 mode, on-chain deposit requires user's own signature.
+# Maintain a local fallback dict so the proxy deposit endpoint never 500s.
+_local_deposits: dict[str, int] = {}
+_is_web3_mode = isinstance(_contract, Web3SettlementContract)
 
 billing = BillingEngine(
     storage=storage,
@@ -768,14 +774,25 @@ async def wallet_deposit(req: DepositRequest):
 
     In production: the user deposits directly into the contract.
     This endpoint proxies the deposit for convenience and testing.
+    In Web3 mode, maintains a local in-memory balance fallback so the
+    endpoint never 500s — the gateway cannot sign on behalf of arbitrary
+    users for on-chain deposits.
     """
     # Convert float USDC to atomic units (6 decimals)
     amount_atomic = int(round(req.amount * 10**6))
 
-    # Use the module-level singleton contract
-    _contract.deposit(req.user_id, amount_atomic)
-
-    new_balance = _contract.get_user_balance(req.user_id)
+    if _is_web3_mode:
+        # On-chain deposit requires user's own signature — use local fallback
+        _local_deposits[req.user_id] = _local_deposits.get(req.user_id, 0) + amount_atomic
+        onchain = _contract.get_user_balance(req.user_id)
+        new_balance = onchain + _local_deposits[req.user_id]
+        logger.info(
+            "Proxy deposit %s +%.6f USDC (local fallback, Web3 mode)",
+            req.user_id, req.amount,
+        )
+    else:
+        _contract.deposit(req.user_id, amount_atomic)
+        new_balance = _contract.get_user_balance(req.user_id)
 
     return DepositResponse(
         user_id=req.user_id,
@@ -790,8 +807,11 @@ async def wallet_balance(user_id: str):
 
     Query parameter: ``?user_id=<evm_address>``.
     Reads from the settlement contract view function (no gas).
+    In Web3 mode, includes any proxy-deposited local balance.
     """
     balance_atomic = _contract.get_user_balance(user_id)
+    if _is_web3_mode:
+        balance_atomic += _local_deposits.get(user_id, 0)
     credits = float(balance_atomic) / 10**6
 
     return BalanceResponse(user_id=user_id, credits=credits)

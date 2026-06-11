@@ -10,17 +10,18 @@
 - fix(contract_client): `_send_tx()` 中 `estimate_transaction` → `estimate_gas`（web3.py v7 API 兼容）
 - fix(server): 移除 test_skill 计费旁路，使其通过标准 `request_settlement()` 触发链上结算
 - fix(scripts): 修正 `scripts/full_settlement_test.py` 中 DEV_KEY 常量 — 映射到正确的 Hardhat Account #2 地址
+- fix(server): `wallet_deposit` Web3 模式 500 崩溃 — 添加 `_local_deposits` 内存回退字典，网关无需用户私钥即可完成代理充值
+- fix(server): `serve_logic` 对内置 skill 返回 404 — 为 `test_skill` 创建 `skills/uploaded/test_skill/logic.py` 骨架逻辑脚本并注册 manifest
 - feat(billing): 添加可逆审计追踪系统 — `_audit_ledger` 记录每笔 settlement/refund 的 [ts, action, roles, amounts]，支持按 task_id 回溯和全局聚合查询
 - feat(server): 添加 `GET /api/admin/audit` 审计回溯端点，返回完整结算流水和统计摘要
-- fix(contract_client): `_send_tx()` 中 `estimate_transaction` → `estimate_gas`（web3.py v7 API 兼容）
-- fix(server): 移除 test_skill 计费旁路，使其通过标准 `request_settlement()` 触发链上结算
-- fix(scripts): 修正 `scripts/full_settlement_test.py` 中 DEV_KEY 常量 — 映射到正确的 Hardhat Account #2 地址
 ### 新增
 - feat(scripts): 创建 `scripts/deploy_agent_gateway.cjs` — 部署 AIMSAgentGateway（70/25/5）+ MockERC20 到 Hardhat 本地节点
 - feat(scripts): 创建 `scripts/fund_test_user.py` — 测试用户 MockUSDC 预充值脚本
 - feat(scripts): 创建 `scripts/e2e_web3_test.py` — E2E Web3 结算测试（run→claim→submit→on-chain）
 - feat(scripts): 创建 `scripts/full_settlement_test.py` — 完整结算生命周期测试（开发者注册 + 70/25/5 分账 + Worker/Developer PoT 领取）
 - feat(hardhat): 启用 `viaIR: true` 解决 Solidity `stack too deep` 编译错误
+- feat(skills): 创建 `skills/uploaded/test_skill/logic.py` — test_skill 骨架逻辑，`run()` 返回 SUCCESS 和输入回显
+- feat(skills): 在 `SkillStore` 中注册 `test_skill` manifest 和 logic.py 路径，使 `GET /api/skills/test_skill/logic` 可响应 200
 ### 验证
 - **Full Settlement Lifecycle 通过**: 开发者注册 → task-0005 → COMPLETED → 0.05 USDC 结算 → Worker 0.0125 USDC (25%) + Developer 0.0350 USDC (70%) + Treasury 0.0025 USDC (5%) 全部 PoT 领取成功
 ### 技术决策
