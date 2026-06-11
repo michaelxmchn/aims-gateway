@@ -255,6 +255,7 @@
 - feat(anvil): 创建 tests/anvil_e2e/pipeline_e2e_test.py — 编排脚本，自动启动 Anvil/部署合约/启动服务/运行 3 场景（成功 70/25/5 + 402 + 403）
 ### 修改
 - docs(master_index): 添加 escrow 遗留参考说明和 70/25/5 分账描述，修复 agent bootstrap 测试断言
+- test(bootstrap): REQUIRED_TOPICS 改为两阶断言 — 硬性主题 + `ALTERNATIVE_TOPICS` ANY-match 兼容未来文档演进
 
 ## [2026-06-10]
 ### 修复

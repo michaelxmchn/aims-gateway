@@ -414,7 +414,10 @@
 - **状态**: 已完成 (2026-06-10)
 - **描述**: 修复独立索赔竞态：Worker/Developer 可独立领款，`_task_status` 仅在双方都领完后才进入 CLAIMED。新增 `_worker_claimed` / `_developer_claimed` 映射追踪。PoT 金额修正为按份额签发（Worker=25%/12,500, Developer=70%/35,000）而非总任务成本。修复 Solidity `claimReward`/`claimDeveloperReward` 同样问题。全测试套件 164 项通过。
 
-### Anvil E2E 测试基础设施 (Phase 4)
+### 测试全绿 208/208
+- **状态**: 已完成 (2026-06-11)
+- **描述**: 修复 `test_step2_documentation_contains_topics` 最后一盏红灯。MASTER_INDEX.md 添加 escrow 遗留参考 + settleTask/70/25/5 协议文档。测试改为两阶断言：`REQUIRED_TOPICS` 硬性检查 + `ALTERNATIVE_TOPICS` ANY-match（escrow/streaming/pot 任一命中即可），未来文档演进不再因单个关键词断裂。
+- **结果**: 208/208 PASSED ✓（178 单元 + 30 生产 E2E）
 - **状态**: 已完成 (2026-06-11)
 - **描述**: 完整的 Foundry Anvil E2E 测试套件，4 个新文件：
   - `contracts/tests/anvil_e2e/AIMSAgentGateway.sol` — 简化版原生 ETH 合约（worker-signed PoT via ecrecover、70/25/5 分账、onlyGateway + nonReentrant、CEI 模式）

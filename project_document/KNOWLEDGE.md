@@ -53,6 +53,8 @@ A: 待补充
 - **`tests/test_agent_bootstrap.py`** 模拟外部 AI Agent 自引导流程，验证 7 个步骤：
   - **Step 1 (Discovery)**：`GET /api/discovery` 返回 200，包含 `documentation_root` URL 和 `skills` 列表
   - **Step 2 (Documentation)**：`documentation_root` URL（GitHub raw）可达，内容包含全部 7 个必需协议和关键技术主题
+  - **两阶断言策略**：`REQUIRED_TOPICS`（7 个硬性主题必须全部命中: personal_sign/pipeline/discovery/heartbeat/bootstrap/70/25/5/settleTask）+ `ALTERNATIVE_TOPICS`（escrow/streaming/pot 任一命中即可，兼容架构演进）
+  - **本地回退**：`_load_doc_content()` 优先远程 GitHub 获取，本地文件评分更高时自动回退，确保未推送的文档变更仍可通过测试
   - **Step 3 (Schema)**：每个技能有完整的 `input_schema`（`type`/`properties`/`required`），AI Agent 据此构造请求参数
   - **Step 4 (Auth)**：认证部分有 `example_curl` 示例，Agent 可直接适配
   - **Step 5 (Pipeline)**：`POST /api/run` 端点文档化，Agent 发现支持 pipeline 多步骤任务

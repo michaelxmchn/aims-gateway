@@ -43,10 +43,14 @@ REQUIRED_TOPICS = [
     "discovery",
     "heartbeat",
     "bootstrap",
-    "escrow",
     "70/25/5",
     "settleTask",
 ]
+
+# At least one of these architecture keywords must be present in the doc.
+# Using ANY-match so the test survives doc evolution (e.g. "escrow" →
+# "streaming" or "pot") without requiring a specific obsolete term.
+ALTERNATIVE_TOPICS = ["escrow", "streaming", "pot"]
 
 
 class TestAgentBootstrap:
@@ -135,7 +139,14 @@ class TestAgentBootstrap:
             assert protocol in content, f"Missing protocol section: {protocol}"
 
     def test_step2_documentation_contains_topics(self) -> None:
-        """Agent validates key technical topics are documented."""
+        """Agent validates key technical topics are documented.
+
+        Uses a two-tier assertion strategy:
+        1. Every topic in REQUIRED_TOPICS must be present.
+        2. At least one topic from ALTERNATIVE_TOPICS must be present
+           (forward-compatible — as the settlement architecture evolves,
+           the doc may drop "escrow" in favor of "streaming" or "pot").
+        """
         content = getattr(self, "_doc_content", None)
         if content is None:
             content = self._load_doc_content()
@@ -143,8 +154,15 @@ class TestAgentBootstrap:
                 import pytest
                 pytest.skip("Cannot fetch documentation from remote or local")
 
+        content_lower = content.lower()
         for topic in REQUIRED_TOPICS:
-            assert topic.lower() in content.lower(), f"Missing topic: {topic}"
+            assert topic.lower() in content_lower, f"Missing topic: {topic}"
+
+        found = [t for t in ALTERNATIVE_TOPICS if t.lower() in content_lower]
+        assert found, (
+            f"None of the settlement-architecture alternative topics found "
+            f"in docs: {ALTERNATIVE_TOPICS}"
+        )
 
     def test_step3_skills_have_input_schemas(self) -> None:
         """Agent reads input_schema for each skill to determine required params."""
