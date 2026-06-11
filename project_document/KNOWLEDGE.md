@@ -314,6 +314,12 @@ A: 待补充
 
 ## 技术决策记录
 
+### Billing & Settlement 架构
+- **结算模式**: 从旧版托管 escrow 冻结迁移为 **实时 EIP-191 签名 Proof-of-Task (PoT) 分发** 的 70/25/5 多方即时分账
+- **旧版遗留关键词**: `escrow` — 已废弃，被即时 70/25/5 多方流式分账替代
+- **核心流程**: 用户 EIP-191 签名请求 → 中间件验签 + 402 余额拦截 → Gateway 路由 Worker → Worker 执行并签名 PoT → Gateway 验 PoT 并调用 `settleTask()` 上链 → 各方独立 `claimReward/claimDeveloperReward/claimTreasuryFees`
+- **两阶段认领**: Worker 和 Developer 可独立领款，互不阻塞，`taskStatus` 仅双方都领完后才转为 `CLAIMED`
+
 ### 2026-06-10: Per-Party Claim 替代 Single TaskStatus
 - **问题**：Worker 先 `claimReward` 后，`taskStatus` 变为 `CLAIMED`，Developer 无法再调用 `claimDeveloperReward`
 - **方案**：增加 `_worker_claimed[taskId]` 和 `_developer_claimed[taskId]` 独立追踪

@@ -171,7 +171,9 @@ curl -X POST "$BASE_URL/api/run" \
 }
 ```
 
-**On-Chain Settlement:** On final step success, the gateway calls `settleTask` on the AIMSSettlement contract, generates a Proof-of-Task (PoT), and returns the PoT signature in the response. Workers present the PoT to `claimReward()` to receive 80% of the settlement.
+**On-Chain Settlement:** On final step success, the gateway signs a `settleTask` message and generates a Proof-of-Task (PoT). Settlement uses a **70/25/5 multi-party streaming split**: 70% of task cost flows to the Developer (skill author), 25% to the Worker (executor), and 5% to the Treasury (protocol sustainability). Workers present the PoT to `claimReward()` and Developers present their PoT to `claimDeveloperReward()`. The `settleTask` function is callable only by the gateway (`onlyGateway` modifier) and uses a `nonReentrant` guard with CEI (Checks-Effects-Interactions) pattern.
+
+> **Legacy Reference — Escrow [deprecated]:** The previous settlement model used a two-phase escrow hold (`freeze_usdt` → `escrow_vault` → `settle_escrow`) with Dynamic Gas billing and 1% Platform Tax. This has been replaced by the instant 70/25/5 multi-party streaming split with EIP-191 signed Proof-of-Task distribution. Escrow-related code and documentation remain for historical reference only.
 
 ---
 

@@ -253,6 +253,8 @@
 - feat(anvil): 创建 tests/anvil_e2e/gateway.py — 独立 FastAPI 网关（EIP-191 personal_sign 认证、402 billing interceptor、httpx Worker 路由、hot wallet 签名 settleTask）
 - feat(anvil): 创建 tests/anvil_e2e/mock_agent_node.py — Worker 模拟器，ECDSA 签署 keccak256(taskId) 生成 Proof-of-Task
 - feat(anvil): 创建 tests/anvil_e2e/pipeline_e2e_test.py — 编排脚本，自动启动 Anvil/部署合约/启动服务/运行 3 场景（成功 70/25/5 + 402 + 403）
+### 修改
+- docs(master_index): 添加 escrow 遗留参考说明和 70/25/5 分账描述，修复 agent bootstrap 测试断言
 
 ## [2026-06-10]
 ### 修复
