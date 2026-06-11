@@ -193,7 +193,8 @@ def execute_skill(task: dict[str, Any]) -> dict[str, Any]:
     """Execute the claimed skill locally and return result data.
 
     In production this would call the actual skill logic (e.g. via
-    ``importlib`` or a subprocess).  Here we simulate a realistic output.
+    ``importlib`` or a subprocess).  Here we simulate a realistic output
+    that passes the skill's output schema validation.
     """
     skill_id = task.get("skill_id", "unknown")
     params = task.get("payload") or task.get("params") or {}
@@ -206,20 +207,71 @@ def execute_skill(task: dict[str, Any]) -> dict[str, Any]:
     delay = 0.5 * tier
     time.sleep(delay)
 
-    # Generate mock result
-    result_data = {
-        "task_id": task_id,
-        "status": "completed",
-        "skill": skill_id,
-        "output": {
-            "data": f"Mock execution result for {skill_id} — task {task_id}",
-            "params_received": params,
-            "execution_time_s": delay,
-        },
-        "timestamp": int(time.time()),
-    }
+    # Build schema-compliant mock result by fetching the skill manifest
+    # from the gateway's discovery endpoint.
+    result_data = _build_mock_result(skill_id, task_id, params, delay)
 
     return result_data
+
+
+def _build_mock_result(
+    skill_id: str, task_id: str, params: dict[str, Any], delay: float,
+) -> dict[str, Any]:
+    """Fetch the skill manifest and build a mock result that passes schema validation."""
+    schema = _fetch_output_schema(skill_id)
+
+    if not schema:
+        # No schema — use a safe generic default
+        return {"status": "success", "message": f"Executed {skill_id}"}
+
+    result: dict[str, Any] = {}
+
+    # Fill in type-compatible mock values for each property in the schema
+    props = schema.get("properties", {})
+    for prop_name, prop_schema in props.items():
+        prop_type = prop_schema.get("type", "string")
+        if prop_type == "string":
+            if prop_name == "status":
+                result[prop_name] = "completed"
+            elif prop_name == "message":
+                result[prop_name] = f"Mock execution result for {skill_id} — task {task_id}"
+            elif prop_name == "path":
+                result[prop_name] = f"/tmp/{skill_id}_{task_id}.out"
+            else:
+                result[prop_name] = f"mock_{prop_name}"
+        elif prop_type == "number":
+            result[prop_name] = delay
+        elif prop_type == "boolean":
+            result[prop_name] = True
+        elif prop_type == "object":
+            result[prop_name] = {"data": f"mock output for {skill_id}", "params": params}
+        elif prop_type == "array":
+            result[prop_name] = []
+        else:
+            result[prop_name] = f"mock_{prop_name}"
+
+    # Ensure all required fields are present even if missing from properties
+    required = schema.get("required", [])
+    for field in required:
+        if field not in result:
+            result[field] = f"mock_{field}"
+
+    return result
+
+
+def _fetch_output_schema(skill_id: str) -> dict[str, Any] | None:
+    """Fetch the output schema for *skill_id* from the gateway discovery endpoint."""
+    try:
+        resp = httpx.get(f"{GATEWAY_URL}/api/discovery", timeout=5)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        for skill in data.get("skills", []):
+            if skill.get("id") == skill_id:
+                return skill.get("output_schema")
+    except Exception as exc:
+        logger.warning("Failed to fetch schema for %s: %s", skill_id, exc)
+    return None
 
 
 # ═════════════════════════════════════════════════════════════════════════════

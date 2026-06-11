@@ -61,6 +61,11 @@ A: 待补充
   - **网络不可达降级**：`test_step2_documentation_root_reachable` 等远程测试在 GitHub raw URL 不可达时自动 `pytest.skip`，不影响本地 CI
 - **`TestBootstrapDocumentation`** 验证 `AIMS_AGENT_BOOTSTRAP.md`（System Prompt 存在性）和 `bootstrap_helper.py`（客户端库存在性）
 
+### Worker Schema-Aware Mock 模式
+- **问题**：`run_aims_worker.py` 的 `execute_skill()` 输出固定 mock 格式 `{task_id, status, skill, output, timestamp}`，但不同 skill 的 `output_schema` 各异（如 `dashboard_skill` 需要 `status` + `message`），导致 `VALIDATE GENERIC FAIL` → 任务被 `complete_task("FAILED")` 永久标记 → 所有后续 worker 拿到 204
+- **解决方案**：Worker 在 `execute_skill()` 中调用 `_fetch_output_schema(skill_id)` 从 `GET /api/discovery` 获取目标 skill 的 `output_schema`，`_build_mock_result()` 遍历 `properties` 按 type 生成合规 Mock 值（string→`"completed"`/`"mock_*"`，number→delay，boolean→true 等），`required` 缺省补全
+- **回退安全**：discovery endpoint 不可达时返回 `{"status": "success", "message": "..."}` 通用格式，确保 worker 不崩溃
+
 ### InMemoryContract 模块级单例模式
 - **问题**：`wallet_deposit()` 和 `wallet_balance()` 每个请求中调用 `ChainSettlement(...)` 创建新实例 → `InMemorySettlementContract` 是纯内存对象，每次请求独立实例导致余额写后读不一致
 - **解决方案**：在 `server.py` 模块级别创建一次 `_chain_settlement` 和 `_contract`（行 78-80），所有钱包端点直接使用全局 `_contract` 单例

@@ -266,6 +266,8 @@
 - feat(worker): 创建 run_aims_worker.py — 独立 OpenClaw 兼容 Worker 节点，EIP-191 认证，PoT 签名，claim→execute→submit 全循环
 ### 修复
 - fix(server): `wallet_deposit`/`wallet_balance` 每个请求创建独立 `ChainSettlement` 实例 → `InMemorySettlementContract` 余额不共享。改为使用模块级 `_contract` 单例
+### 修复
+- fix(worker): `run_aims_worker.py` `execute_skill()` 生成 mock 数据不匹配 skill 的 `output_schema` → 提交时 `VALIDATE GENERIC FAIL` → `complete_task("FAILED")` → 后续 worker 全 204。新增 `_fetch_output_schema()` 从 `/api/discovery` 获取输出 schema，`_build_mock_result()` 按 schema 生成合规 mock 数据
 
 ## [2026-06-10]
 ### 修复
