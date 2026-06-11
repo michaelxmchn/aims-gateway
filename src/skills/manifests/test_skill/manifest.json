@@ -4,12 +4,14 @@
   "input_schema": {
     "type": "object",
     "properties": {},
-    "required": []
+    "required": [],
+    "additionalProperties": true
   },
   "output_schema": {
     "type": "object",
     "properties": {},
-    "required": []
+    "required": [],
+    "additionalProperties": true
   },
   "version": "1.0.0",
   "author": "aims_protocol",
