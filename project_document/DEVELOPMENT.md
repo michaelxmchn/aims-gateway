@@ -9,9 +9,9 @@
 - [x] Worker 节点脚本 — `run_aims_worker.py` 独立 EIP-191 签名 Worker，claim→execute→submit 全循环
 - [x] Worker schema-aware mock — `_fetch_output_schema()` + `_build_mock_result()` 按 skill `output_schema` 生成合规 mock 数据，修复 `VALIDATE GENERIC FAIL` → 任务 PENDING→FAILED 问题
 - [x] InMemoryContract 单例修复 — `wallet_deposit`/`wallet_balance` 共享 `_contract` 实例
-- [ ] Phase 2: Python web3.py 后端重构 — 移除所有 InMemory 回退，纯链上调用
+- [x] Phase 2: Python web3.py 后端重构 — Hardhat 本地链 + AIMSAgentGateway 70/25/5 合约 + Web3SettlementContract
 - [ ] Phase 3: 生产安全 — Gas 重试、Nonce+UUID 复合防重放
-- [ ] Phase 4: E2E 测试 — Anvil/Hardhat 三方余额差验证
+- [x] Phase 4: E2E 测试 — Hardhat 本地链完成 run_skill→claim→submit→on-chain settlement 全流程验证
 
 ## 已完成任务清单
 

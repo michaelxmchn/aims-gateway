@@ -55,6 +55,7 @@ from eth_account import Account
 from eth_account.messages import encode_defunct
 from eth_utils import keccak, to_bytes
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from web3 import Web3
 from web3.types import TxParams, Wei
@@ -393,6 +394,15 @@ def _send_with_retry(
 # ── FastAPI app ─────────────────────────────────────────────────────────────
 
 app = FastAPI(title="AIMS Gateway", version="2.0.0")
+
+# ── CORS (局域网 / multi-machine dev) ────────────────────────────────────────
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Lazy-initialised globals
 _web3: Web3 | None = None

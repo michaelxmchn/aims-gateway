@@ -5,6 +5,18 @@
 > **格式要求**: 严格遵循 `.claude/output-styles/bullet-points.md` 格式规范  
 > **提交规范**: 遵循 commitlint 规范（type(scope): subject）
 
+## [2026-06-11]
+### 修改
+- fix(contract_client): `_send_tx()` 中 `estimate_transaction` → `estimate_gas`（web3.py v7 API 兼容）
+- fix(server): 移除 test_skill 计费旁路，使其通过标准 `request_settlement()` 触发链上结算
+### 新增
+- feat(scripts): 创建 `scripts/deploy_agent_gateway.cjs` — 部署 AIMSAgentGateway（70/25/5）+ MockERC20 到 Hardhat 本地节点
+- feat(scripts): 创建 `scripts/fund_test_user.py` — 测试用户 MockUSDC 预充值脚本
+- feat(scripts): 创建 `scripts/e2e_web3_test.py` — E2E Web3 结算测试（run→claim→submit→on-chain）
+- feat(hardhat): 启用 `viaIR: true` 解决 Solidity `stack too deep` 编译错误
+### 技术决策
+- 部署脚本使用 `--network localhost`（而非 `--network hardhat`）连接持久化 Hardhat 节点
+
 ## [2026-06-09]
 ### 新增
 - feat(billing): 创建 src/gateway/billing.py — BillingEngine 信用计费引擎（COST_PER_TASK=0.05、80/20 分账、Lua 脚本原子结算、Reservation 防双花模式）

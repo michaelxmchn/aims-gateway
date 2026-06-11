@@ -572,7 +572,7 @@ class Web3SettlementContract(SettlementContractClient):
         """Build, sign, send, and wait for a transaction. Returns receipt."""
         self._connect()
         acct = self._w3.eth.account.from_key(self._gateway_private_key)
-        gas_estimate = fn_call.estimate_transaction({"from": acct.address})
+        gas_estimate = fn_call.estimate_gas({"from": acct.address})
         txn = fn_call.build_transaction({
             "from": acct.address,
             "nonce": self._w3.eth.get_transaction_count(acct.address),

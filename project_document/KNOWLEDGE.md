@@ -32,6 +32,17 @@
 - **部署脚本硬编码 PLATFORM_OWNER**：`scripts/deploy_settlement.js` 中 `PLATFORM_OWNER = "0x08c9fd0a915f2b0856353850b8adea943f226bcf"`（Solidity `immutable`，烧入合约字节码，永久不可更改）
 - **Base 网络配置**：`hardhat.config.js` 包含 mainnet（chainId 8453）和 baseSepolia（chainId 84532）双网络，`DEPLOYER_PRIVATE_KEY` 环境变量注入
 
+### Web3 链上结算模式
+- **`ChainSettlement` 惰性初始化**：`settlement.py` 的 `contract` 属性根据 `AIMS_CONTRACT_ADDRESS` 环境变量自动选择实现 — sentinel `0x0...01` → `InMemorySettlementContract`（本地开发），真实地址 → `Web3SettlementContract`（生产/测试链）
+- **`Web3SettlementContract`**：`contract_client.py` 中通过 web3.py v7 调用已部署的 `AIMSAgentGateway` Solidity 合约。读方法（`balances`、`pendingPayouts`）用 view 调用免 Gas，写方法（`settleTask`、`claimReward`）通过 `_send_tx()` 构建、签名（gateway EOA）并广播交易
+- **`_send_tx()` 流程**：`fn_call.estimate_gas()` → `build_transaction()` → `acct.sign_transaction()` → `send_raw_transaction()` → `wait_for_transaction_receipt()`。使用 EIP-1559 费用市场（`maxPriorityFeePerGas`）
+- **AIMSAgentGateway 合约**：`contracts/AIMSAgentGateway.sol` — 70/25/5 纯链上分账（`DEVELOPER_BPS=7000`/`WORKER_BPS=2500`/`TREASURY_BPS=500`），Gateway ECDSA 签名认证，Compound nonce（`keccak256(nonce, taskId)`）防重放，Task 生命周期状态机（None→Settled→Refunded/Claimed）
+- **Hardhat 本地测试网**：`npx hardhat node` 启动 :8545，`npx hardhat run scripts/deploy_agent_gateway.cjs --network localhost` 部署。需注意 `--network hardhat` 使用内存网络而非持久节点
+- **合约部署脚本**：`scripts/deploy_agent_gateway.cjs` — 同时部署 `MockERC20`（USDC，6 位小数）和 `AIMSAgentGateway`，Mint 1M MockUSDC 给 deployer，输出所有环境变量
+- **测试用户预充值**：`scripts/fund_test_user.py` — Mint MockUSDC → Approve 合约 → Deposit 进入合约。使用 Hardhat 已知测试私钥
+- **环境变量矩阵**：`AIMS_RPC_URL` / `AIMS_CONTRACT_ADDRESS` / `AIMS_USDC_ADDRESS` / `AIMS_GATEWAY_PRIVATE_KEY` / `AIMS_GATEWAY_ADDRESS` / `AIMS_TREASURY` 六项决定结算引擎行为
+- **web3.py v7 兼容性**：`ContractFunction` 对象无 `estimate_transaction` 方法，使用 `estimate_gas()` 替代
+
 ### Document-Driven 架构
 - **子目录结构**：`skills/manifests/<skill_name>/manifest.json`（元数据）+ `rules.md`（Markdown 规则文件）
 - **rules.md 即文档即代码**：纯 Markdown 格式，任何 AI（Claude/GPT/Codex）都能原生读取理解，无需自定义解析器
