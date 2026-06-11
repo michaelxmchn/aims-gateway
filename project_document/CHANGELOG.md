@@ -20,6 +20,11 @@
 - fix(server): `run_skill` 余额校验纳入 `_local_deposits` 本地代理充值
 - feat(billing): 添加可逆审计追踪系统 — `_audit_ledger` 记录每笔 settlement/refund 的 [ts, action, roles, amounts]，支持按 task_id 回溯和全局聚合查询
 - feat(server): 添加 `GET /api/admin/audit` 审计回溯端点，返回完整结算流水和统计摘要
+- feat(server): `POST /api/skills/register-developer` — 通过网关 API 注册 Skill 开发者地址，BillingEngine 自动为开发者分配 70% 分润
+- feat(skills): `SkillManifest.agent_hint` 字段支持自然语言提示词，指导 AI 客户端正确构造请求参数
+- fix(server): `GET /api/tasks/{task_id}/pot` 支持 `?party=` 查询参数指定领取方，无参数时自动回退至 task worker_id
+- feat(skills): 创建 `royalty_test_skill` — 自定义 zip 上传 Skill，严格 `output_schema`（`status`+`message` 必填），演示 70/25/5 动态分润全流程
+- feat(store): `SkillStore.install_zip()` 期望 zip 根目录下包含 `manifest.json` + `logic.py`
 ### 新增
 - feat(scripts): 创建 `scripts/deploy_agent_gateway.cjs` — 部署 AIMSAgentGateway（70/25/5）+ MockERC20 到 Hardhat 本地节点
 - feat(scripts): 创建 `scripts/fund_test_user.py` — 测试用户 MockUSDC 预充值脚本

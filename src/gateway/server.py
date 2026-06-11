@@ -879,13 +879,26 @@ async def health():
 
 
 @app.get("/api/tasks/{task_id}/pot")
-async def task_pot(task_id: str):
+async def task_pot(task_id: str, request: Request):
     """Retrieve the Proof-of-Task for a completed task.
 
     The worker fetches this after task completion and presents the
     signature to ``claimReward()`` on the settlement contract.
+
+    Supports querying both worker PoT (default) and developer PoT
+    via the optional ``?party=`` query parameter.
     """
-    pot = pot_manager.get_pot(task_id) if pot_manager else None
+    party = request.query_params.get("party", "")
+    pot = pot_manager.get_pot(task_id, party_address=party) if pot_manager else None
+    # Fallback: if no party given, try the task's worker address
+    if pot is None and not party:
+        try:
+            status = broker.get_task_status(task_id)
+            worker_id = status.get("worker_id") if status else None
+            if worker_id:
+                pot = pot_manager.get_pot(task_id, party_address=worker_id)
+        except Exception:
+            pass
     if pot is None:
         raise HTTPException(status_code=404, detail=f"No PoT found for task {task_id}")
 
@@ -926,6 +939,32 @@ async def upload_skill(zip_file: UploadFile = File(...)):
         name=result["name"],
         version=result["version"],
     )
+
+
+class RegisterDeveloperRequest(BaseModel):
+    skill_id: str = Field(..., min_length=1, max_length=64)
+    developer_address: str = Field(
+        ..., min_length=42, max_length=42,
+        description="EVM wallet address (0x + 40 hex)",
+    )
+
+
+@app.post("/api/skills/register-developer", response_model=dict)
+async def register_developer(req: RegisterDeveloperRequest):
+    """Register a developer wallet address for a skill.
+
+    The registered address receives **70%** of task settlement (via
+    ``claimDeveloperReward``).  Can only be called by the gateway admin.
+    """
+    manifest = registry.get(req.skill_id)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail=f"Skill '{req.skill_id}' not found")
+    billing.register_developer(req.skill_id, req.developer_address)
+    return {
+        "status": "ok",
+        "skill_id": req.skill_id,
+        "developer_address": req.developer_address,
+    }
 
 
 @app.get("/api/skills/{skill_id}/logic")

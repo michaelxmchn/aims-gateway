@@ -57,6 +57,25 @@
 - **`_record()` 自动埋点**：`request_settlement()` 成功时自动记录 `action="settle"` 包含 user/worker/developer 角色和 70/25/5 分账金额；`request_refund()` 记录 `action="refund"`
 - **`GET /api/admin/audit`** 查询端点，支持 `?task_id=<id>` 过滤和 `?limit=N` 控制条目数，同时返回 `summary` 聚合统计（总条目数、总金额、各 action 次数、最后一条记录）
 
+### EIP-191 客户端签名模式（httpx 兼容）
+- **关键注意事项**：不要使用 `httpx.post(json=body)` 配合预先计算的签名，因为 httpx 内部 JSON 序列化可能与 `json.dumps()` 产生不同字节。应使用 `body_bytes = json.dumps(body_dict).encode()` 先序列化 → 签名 → `httpx.post(content=body_bytes, headers={"Content-Type": "application/json"})`
+- **`signed_post` 辅助函数模式**：`def signed_post(url, body_dict, wallet, key): body_bytes = json.dumps(body_dict).encode(); sig = Account.sign_message(encode_defunct(primitive=body_bytes), key).signature.hex(); return httpx.post(url, content=body_bytes, headers={"X-Wallet-Address": wallet, "X-Signature": sig, "X-Timestamp": str(int(time.time())), "Content-Type": "application/json"}, timeout=30)`
+- **验证**：`content=body_bytes` 模式通过 200，`json=body` 模式返回 403（签名不匹配）
+
+### PoT 检索模式
+- **`GET /api/tasks/{id}/pot`** 获取 Proof-of-Task，用于 Worker/Developer 链上领取报酬
+- **`?party=` 参数**：指定领取方 EVM 地址（0x 前缀），返回该地址对应的 PoT（含签名、金额、任务 ID）
+- **无参数回退**：省略 `?party=` 时自动从 task status 查找 worker_id 并返回 Worker 的 PoT
+- **Developer PoT**：显式传入 `?party=0xDeveloperAddress` 获取 70% 份额的 Developer PoT
+- **PoT 存储 key**：`chain:pot:{task_id}:{party_address_lower}`，首次无参数调用会回退到 legacy key `chain:pot:{task_id}`（已弃用）
+
+### 自定义 Skill 上传模式
+- **zip 结构要求**：`manifest.json` + `logic.py` 必须位于 **zip 根目录**（非子目录内），且使用 `zip -j` 扁平压缩
+- **`output_schema` 验证**：submit 时自动按 `output_schema` 验证 `result_data`，不匹配返回 `REJECTED`。`additionalProperties: false` 时拒绝任何未知字段
+- **开发者注册**：上传后通过 `POST /api/skills/register-developer` 注册开发者地址，合约 settlement 时会查询 `skillIdHash → developer` 映射分配 70% 份额
+- **Agent Hint**：`manifest.json` 的 `agent_hint` 字段提供自然语言指引，通过 discovery 端点暴露给 AI 客户端
+- **AIMS_GATEWAY_PRIVATE_KEY 必需**：`request_settlement()` 使用此 key 对 settleTask 进行 ECDSA 签名，PoT 生成也依赖此 key。未设置时 `_sign_binding` 返回空签名导致 settleTask 失败
+
 ### Document-Driven 架构
 - **子目录结构**：`skills/manifests/<skill_name>/manifest.json`（元数据）+ `rules.md`（Markdown 规则文件）
 - **rules.md 即文档即代码**：纯 Markdown 格式，任何 AI（Claude/GPT/Codex）都能原生读取理解，无需自定义解析器

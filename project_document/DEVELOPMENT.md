@@ -14,6 +14,8 @@
 - [x] Phase 4: E2E 测试 — Hardhat 本地链完成 run_skill→claim→submit→on-chain settlement 全流程验证
 - [x] **Full Settlement Lifecycle 验证** — `scripts/full_settlement_test.py` 完整开发者注册 + 70/25/5 链上分账 + Worker/Developer PoT 领取全流程通过
 - [x] **可逆审计追踪** — `BillingEngine._audit_ledger` 内存账本，记录每笔 settlement/refund 的 [ts, action, roles, amounts]；`GET /api/admin/audit` 端点支持按 task_id 回溯和全局聚合
+- [x] **自定义 Skill 上传 + 动态 70/25/5 分润** — `royalty_test_skill` zip 上传，注册开发者地址后全流程自动 70/25/5 链上分账 + PoT 生成
+- [x] **PoT API 修复** — `GET /api/tasks/{id}/pot` 支持 `?party=` 参数，无参数时自动回退到 task worker_id
 
 ## 已完成任务清单
 

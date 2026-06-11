@@ -2,22 +2,30 @@
 """Full 70/25/5 settlement lifecycle with developer registration + PoT claims.
 
 Steps:
-  1. Register developer for test_skill (gateway EOA signs tx)
-  2. run_skill (user = Account #1)
-  3. Worker (Account #4) claims & submits
-  4. Verify 70/25/5 split on-chain
-  5. Worker claims 25% via PoT
-  6. Developer (Account #3) claims 70% via PoT
+  1. Register developer for royalty_test_skill (gateway EOA signs tx)
+  2. Upload royalty_test_skill via /api/skills/upload
+  3. run_skill (user = Account #1)
+  4. Worker (Account #4) claims & submits
+  5. Verify 70/25/5 split on-chain
+  6. Worker claims 25% via PoT
+  7. Developer (Account #3) claims 70% via PoT
 
 Usage:
     python3 scripts/full_settlement_test.py
 """
 
-import json, time, httpx, os, sys
+import json, time, os, sys
 from eth_account import Account
 from eth_account.messages import encode_defunct
 from eth_utils import keccak, to_canonical_address
 from web3 import Web3
+
+# Unset proxy vars so httpx doesn't try SOCKS
+for k in list(os.environ):
+    if k.lower() in ("http_proxy", "https_proxy", "all_proxy", "no_proxy"):
+        os.environ.pop(k, None)
+
+import httpx
 
 # ── Chain ──────────────────────────────────────────────────────────────────
 RPC = "http://127.0.0.1:8545"
@@ -26,8 +34,8 @@ CONTRACT_ADDR = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
 USDC_ADDR = "0x5FbDB2315678afecb367f032d93F642f64180aa3"
 
 GATEWAY_KEY = "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-USER_KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"       # Account #1
-DEV_KEY = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"       # Account #2
+USER_KEY = "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"        # Account #1
+DEV_KEY = "0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"        # Account #2
 WORKER_KEY = "0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a"      # Account #4
 
 USER_ADDR = Account.from_key(USER_KEY).address
@@ -35,7 +43,7 @@ DEV_ADDR = Account.from_key(DEV_KEY).address
 WORKER_ADDR = Account.from_key(WORKER_KEY).address
 
 w3 = Web3(Web3.HTTPProvider(RPC))
-w3.is_connected()
+assert w3.is_connected(), "Not connected to RPC"
 
 # ── ABI fragments ──────────────────────────────────────────────────────────
 GATEWAY_ABI = [
@@ -61,6 +69,7 @@ USDC_ABI = [
 contract = w3.eth.contract(address=Web3.to_checksum_address(CONTRACT_ADDR), abi=GATEWAY_ABI)
 usdc = w3.eth.contract(address=Web3.to_checksum_address(USDC_ADDR), abi=USDC_ABI)
 
+
 def send_tx(fn, key, gas=200_000):
     acct = Account.from_key(key)
     base_fee = w3.eth.get_block("latest")["baseFeePerGas"]
@@ -76,15 +85,21 @@ def send_tx(fn, key, gas=200_000):
     assert receipt.status == 1, f"tx reverted: {receipt.transactionHash.hex()}"
     return receipt
 
-def eip191_sign(body, key):
-    return Account.from_key(key).sign_message(encode_defunct(primitive=body.encode())).signature.hex()
 
-def auth(body, wallet, key):
-    return {"X-Wallet-Address": wallet, "X-Signature": eip191_sign(body, key),
-            "X-Timestamp": str(int(time.time())), "Content-Type": "application/json"}
+def eip191_auth(body_dict: dict, wallet: str, key: str) -> dict:
+    """Create EIP-191 auth headers. Signs the exact JSON bytes sent on the wire."""
+    body_bytes = json.dumps(body_dict).encode()
+    sig = Account.sign_message(encode_defunct(primitive=body_bytes), key).signature.hex()
+    return {
+        "X-Wallet-Address": wallet,
+        "X-Signature": sig,
+        "X-Timestamp": str(int(time.time())),
+        "Content-Type": "application/json",
+    }
+
 
 # ══════════════════════════════════════════════════════════════════════════
-# Step 0: Fund worker + developer with MockUSDC (for deposit if needed)
+# Step 0: Fund worker + developer with MockUSDC
 # ══════════════════════════════════════════════════════════════════════════
 print("=== Step 0: Fund worker & developer MockUSDC ===")
 for addr, key, label in [(WORKER_ADDR, WORKER_KEY, "Worker"), (DEV_ADDR, DEV_KEY, "Developer")]:
@@ -94,47 +109,63 @@ for addr, key, label in [(WORKER_ADDR, WORKER_KEY, "Worker"), (DEV_ADDR, DEV_KEY
         print(f"  Minted 100 USDC to {label}: {addr}")
 
 # ══════════════════════════════════════════════════════════════════════════
-# Step 1: Register developer for test_skill
+# Step 1: Register developer for royalty_test_skill
 # ══════════════════════════════════════════════════════════════════════════
 print("\n=== Step 1: Register developer ===")
-skill_id_hash = keccak(text="test_skill")
+skill_name = "royalty_test_skill"
+skill_id_hash = keccak(text=skill_name)
 print(f"  skill_id_hash: 0x{skill_id_hash.hex()}")
 send_tx(contract.functions.registerDeveloper(skill_id_hash, Web3.to_checksum_address(DEV_ADDR)), GATEWAY_KEY)
-onchain_dev = contract.functions.gateway().call()
-print(f"  Gateway EOA: {onchain_dev}")
+gw_eoa = contract.functions.gateway().call()
+print(f"  Gateway EOA: {gw_eoa}")
 print(f"  Developer registered: {DEV_ADDR}")
 
 # ══════════════════════════════════════════════════════════════════════════
-# Step 2: run_skill (user = Account #1)
+# Step 2: Upload royalty_test_skill
 # ══════════════════════════════════════════════════════════════════════════
-print("\n=== Step 2: run_skill ===")
-c = httpx.Client()
-body = json.dumps({"skill_id": "test_skill", "user_id": USER_ADDR, "params": {"test": "70_25_5_split"}})
-r = c.post(f"{GATEWAY}/api/run", content=body, headers=auth(body, USER_ADDR, USER_KEY))
-task_id = r.json()["task_id"]
+print("\n=== Step 2: Upload royalty_test_skill ===")
+zip_path = "/tmp/royalty_test_skill.zip"
+with open(zip_path, "rb") as f:
+    r = httpx.post(f"{GATEWAY}/api/skills/upload", files={"file": ("skill.zip", f, "application/zip")}, timeout=30)
+print(f"  Upload: {r.status_code} {r.text[:300]}")
+
+# ══════════════════════════════════════════════════════════════════════════
+# Step 3: run_skill (user = Account #1)
+# ══════════════════════════════════════════════════════════════════════════
+print("\n=== Step 3: run_skill ===")
+body = {"skill_id": skill_name, "user_id": USER_ADDR, "params": {"repo_path": "/tmp/test"}}
+headers = eip191_auth(body, USER_ADDR, USER_KEY)
+r = httpx.post(f"{GATEWAY}/api/run", json=body, headers=headers, timeout=30)
+print(f"  run_skill: {r.status_code} {r.text[:500]}")
+if r.status_code != 200:
+    print(f"  FAILED — exiting")
+    sys.exit(1)
+task_data = r.json()
+task_id = task_data.get("task_id") if "task_id" in task_data else task_data.get("taskId", "")
 print(f"  Task: {task_id}")
 
 # ══════════════════════════════════════════════════════════════════════════
-# Step 3: Worker claims & submits
+# Step 4: Worker claims & submits
 # ══════════════════════════════════════════════════════════════════════════
-print("\n=== Step 3: Claim + Submit ===")
-body = json.dumps({"worker_id": WORKER_ADDR})
-r = c.post(f"{GATEWAY}/api/tasks/claim", content=body, headers=auth(body, WORKER_ADDR, WORKER_KEY))
-assert r.status_code == 200, f"claim failed: {r.text}"
+print("\n=== Step 4: Claim + Submit ===")
+body = {"worker_id": WORKER_ADDR}
+headers = eip191_auth(body, WORKER_ADDR, WORKER_KEY)
+r = httpx.post(f"{GATEWAY}/api/tasks/claim", json=body, headers=headers, timeout=30)
+assert r.status_code == 200, f"claim failed: {r.text[:500]}"
 print(f"  Claimed: {r.status_code}")
 
-result_data = {"status": "accepted", "echo": {"test": "70_25_5_split"}}
-body = json.dumps({"task_id": task_id, "worker_id": WORKER_ADDR, "result_data": result_data})
-r = c.post(f"{GATEWAY}/api/tasks/submit", content=body, headers=auth(body, WORKER_ADDR, WORKER_KEY))
+result_data = {"status": "accepted", "echo": {"repo_path": "/tmp/test"}}
+body = {"task_id": task_id, "worker_id": WORKER_ADDR, "result_data": result_data}
+headers = eip191_auth(body, WORKER_ADDR, WORKER_KEY)
+r = httpx.post(f"{GATEWAY}/api/tasks/submit", json=body, headers=headers, timeout=30)
 d = r.json()
 print(f"  Submit: {r.status_code}")
-print(f"  Outcome: {d['outcome']}  Total: ${d['total_cost']:.4f}  PoT: {str(d.get('pot'))[:32]}...")
-pot_sig = d.get("pot")
+print(f"  Outcome: {d.get('outcome', 'N/A')}  Total: ${d.get('total_cost', 0):.4f}  PoT: {str(d.get('pot', ''))[:48]}...")
 
 # ══════════════════════════════════════════════════════════════════════════
-# Step 4: Verify 70/25/5 split on-chain
+# Step 5: Verify 70/25/5 split on-chain
 # ══════════════════════════════════════════════════════════════════════════
-print("\n=== Step 4: On-chain 70/25/5 split ===")
+print("\n=== Step 5: On-chain 70/25/5 split ===")
 task_id_bytes = keccak(text=task_id)
 settlement = contract.functions.getTaskSettlement(task_id_bytes).call()
 print(f"  Settlement: worker={settlement[0][:12]}... dev={settlement[1][:12]}...")
@@ -152,34 +183,33 @@ print(f"  Worker pending:        {worker_pending / 10**6:.4f} USDC")
 print(f"  Developer pending:     {dev_pending / 10**6:.4f} USDC")
 
 # ══════════════════════════════════════════════════════════════════════════
-# Step 5: Worker claims 25% via PoT
+# Step 6: Worker claims 25% via PoT
 # ══════════════════════════════════════════════════════════════════════════
-print("\n=== Step 5: Worker claims 25% via PoT ===")
-gw_key_obj = Account.from_key(GATEWAY_KEY)
-worker_amount = settlement[3]  # worker_share from settlement
+print("\n=== Step 6: Worker claims 25% via PoT ===")
+worker_amount = settlement[3]
 worker_binding = keccak(task_id_bytes + to_canonical_address(WORKER_ADDR) + worker_amount.to_bytes(32, 'big'))
 worker_pot = Account.unsafe_sign_hash(worker_binding, GATEWAY_KEY).signature.hex()
-print(f"  Worker PoT: {worker_pot[:32]}...")
+print(f"  Worker PoT: {worker_pot[:48]}...")
 
 worker_bal_before = usdc.functions.balanceOf(Web3.to_checksum_address(WORKER_ADDR)).call()
 send_tx(contract.functions.claimReward(task_id_bytes, bytes.fromhex(worker_pot)), WORKER_KEY)
 worker_bal_after = usdc.functions.balanceOf(Web3.to_checksum_address(WORKER_ADDR)).call()
-print(f"  Worker USDC: {worker_bal_before / 10**6:.4f} → {worker_bal_after / 10**6:.4f}")
+print(f"  Worker USDC: {worker_bal_before / 10**6:.4f} -> {worker_bal_after / 10**6:.4f}")
 print(f"  Claimed:     {(worker_bal_after - worker_bal_before) / 10**6:.4f} USDC")
 
 # ══════════════════════════════════════════════════════════════════════════
-# Step 6: Developer claims 70% via PoT
+# Step 7: Developer claims 70% via PoT
 # ══════════════════════════════════════════════════════════════════════════
-print("\n=== Step 6: Developer claims 70% via PoT ===")
+print("\n=== Step 7: Developer claims 70% via PoT ===")
 dev_amount = settlement[4]
 dev_binding = keccak(task_id_bytes + to_canonical_address(DEV_ADDR) + dev_amount.to_bytes(32, 'big'))
 dev_pot = Account.unsafe_sign_hash(dev_binding, GATEWAY_KEY).signature.hex()
-print(f"  Developer PoT: {dev_pot[:32]}...")
+print(f"  Developer PoT: {dev_pot[:48]}...")
 
 dev_bal_before = usdc.functions.balanceOf(Web3.to_checksum_address(DEV_ADDR)).call()
 send_tx(contract.functions.claimDeveloperReward(task_id_bytes, bytes.fromhex(dev_pot)), DEV_KEY)
 dev_bal_after = usdc.functions.balanceOf(Web3.to_checksum_address(DEV_ADDR)).call()
-print(f"  Developer USDC: {dev_bal_before / 10**6:.4f} → {dev_bal_after / 10**6:.4f}")
+print(f"  Developer USDC: {dev_bal_before / 10**6:.4f} -> {dev_bal_after / 10**6:.4f}")
 print(f"  Claimed:        {(dev_bal_after - dev_bal_before) / 10**6:.4f} USDC")
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -192,6 +222,6 @@ print(f"  User deducted:      0.0500 USDC")
 print(f"  Worker claimed:     {(worker_bal_after - worker_bal_before) / 10**6:.4f} USDC (25%)")
 print(f"  Developer claimed:  {(dev_bal_after - dev_bal_before) / 10**6:.4f} USDC (70%)")
 print(f"  Treasury (acc):     {contract.functions.accumulatedTreasuryFees().call() / 10**6:.4f} USDC (5%)")
-total_distributed = (worker_bal_after - worker_bal_before) + (dev_bal_after - dev_bal_before) + contract.functions.accumulatedTreasuryFees().call()
-print(f"  Total distributed:  {total_distributed / 10**6:.4f} USDC")
+total_dist = (worker_bal_after - worker_bal_before) + (dev_bal_after - dev_bal_before) + contract.functions.accumulatedTreasuryFees().call()
+print(f"  Total distributed:  {total_dist / 10**6:.4f} USDC")
 print("=" * 50)
