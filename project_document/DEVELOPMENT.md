@@ -12,6 +12,7 @@
 - [x] Phase 2: Python web3.py 后端重构 — Hardhat 本地链 + AIMSAgentGateway 70/25/5 合约 + Web3SettlementContract
 - [ ] Phase 3: 生产安全 — Gas 重试、Nonce+UUID 复合防重放
 - [x] Phase 4: E2E 测试 — Hardhat 本地链完成 run_skill→claim→submit→on-chain settlement 全流程验证
+- [x] **Full Settlement Lifecycle 验证** — `scripts/full_settlement_test.py` 完整开发者注册 + 70/25/5 链上分账 + Worker/Developer PoT 领取全流程通过
 
 ## 已完成任务清单
 

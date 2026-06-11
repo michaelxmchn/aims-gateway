@@ -32,6 +32,15 @@
 - **部署脚本硬编码 PLATFORM_OWNER**：`scripts/deploy_settlement.js` 中 `PLATFORM_OWNER = "0x08c9fd0a915f2b0856353850b8adea943f226bcf"`（Solidity `immutable`，烧入合约字节码，永久不可更改）
 - **Base 网络配置**：`hardhat.config.js` 包含 mainnet（chainId 8453）和 baseSepolia（chainId 84532）双网络，`DEPLOYER_PRIVATE_KEY` 环境变量注入
 
+### Hardhat 测试账户映射（关键）
+- **Account #0 (Gateway EOA)**: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` — 私钥: `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
+- **Account #1 (User)**: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` — 私钥: `0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d`
+- **Account #2 (Developer)**: `0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC` — 私钥: `0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a`
+- **Account #4 (Worker)**: `0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65` — 私钥: `0x47e179ec197488593b187f80a00eb0da91f1b9d0b13f8733639f19c30a34926a`
+- **重要**: Account #2 的常见错误私钥 `0x5de4111afa1a4b94908f83103eb1f15f0f8b1c7e3f5d8e8e3b7c5e8f4e2d8b0` 对应地址 `0x69BBBE8F...` **非** Account #2。末尾 `d8b0` → `ab365a` 才是正确值
+- **Worker/Developer 需 ETH 付 Gas**：Account #2 和 #4 默认无 ETH，需从 Gateway EOA（Account #0）转账至少 1 ETH
+- **MockERC20 mint 无访问控制**：任何人可调用 `mint(address, uint256)` 铸造测试 USDC
+
 ### Web3 链上结算模式
 - **`ChainSettlement` 惰性初始化**：`settlement.py` 的 `contract` 属性根据 `AIMS_CONTRACT_ADDRESS` 环境变量自动选择实现 — sentinel `0x0...01` → `InMemorySettlementContract`（本地开发），真实地址 → `Web3SettlementContract`（生产/测试链）
 - **`Web3SettlementContract`**：`contract_client.py` 中通过 web3.py v7 调用已部署的 `AIMSAgentGateway` Solidity 合约。读方法（`balances`、`pendingPayouts`）用 view 调用免 Gas，写方法（`settleTask`、`claimReward`）通过 `_send_tx()` 构建、签名（gateway EOA）并广播交易
@@ -42,6 +51,7 @@
 - **测试用户预充值**：`scripts/fund_test_user.py` — Mint MockUSDC → Approve 合约 → Deposit 进入合约。使用 Hardhat 已知测试私钥
 - **环境变量矩阵**：`AIMS_RPC_URL` / `AIMS_CONTRACT_ADDRESS` / `AIMS_USDC_ADDRESS` / `AIMS_GATEWAY_PRIVATE_KEY` / `AIMS_GATEWAY_ADDRESS` / `AIMS_TREASURY` 六项决定结算引擎行为
 - **web3.py v7 兼容性**：`ContractFunction` 对象无 `estimate_transaction` 方法，使用 `estimate_gas()` 替代
+- **`full_settlement_test.py`**：`scripts/full_settlement_test.py` — 完整结算生命周期验证。步骤：0) 给 Worker/Developer 铸造 MockUSDC；1) Gateway EOA 注册开发者到 skill；2) 用户调用 run_skill；3) Worker claim+submit；4) 链上核实 70/25/5 分账；5) Worker 通过 PoT 领取 25%；6) Developer 通过 PoT 领取 70%。已验证 0.05 USDC → 0.0125 Worker + 0.0350 Developer + 0.0025 Treasury 完整通路
 
 ### Document-Driven 架构
 - **子目录结构**：`skills/manifests/<skill_name>/manifest.json`（元数据）+ `rules.md`（Markdown 规则文件）

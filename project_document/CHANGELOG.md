@@ -9,13 +9,20 @@
 ### 修改
 - fix(contract_client): `_send_tx()` 中 `estimate_transaction` → `estimate_gas`（web3.py v7 API 兼容）
 - fix(server): 移除 test_skill 计费旁路，使其通过标准 `request_settlement()` 触发链上结算
+### 修改
+- fix(contract_client): `_send_tx()` 中 `estimate_transaction` → `estimate_gas`（web3.py v7 API 兼容）
+- fix(server): 移除 test_skill 计费旁路，使其通过标准 `request_settlement()` 触发链上结算
+- fix(scripts): 修正 `scripts/full_settlement_test.py` 中 DEV_KEY 常量 — 映射到正确的 Hardhat Account #2 地址
 ### 新增
 - feat(scripts): 创建 `scripts/deploy_agent_gateway.cjs` — 部署 AIMSAgentGateway（70/25/5）+ MockERC20 到 Hardhat 本地节点
 - feat(scripts): 创建 `scripts/fund_test_user.py` — 测试用户 MockUSDC 预充值脚本
 - feat(scripts): 创建 `scripts/e2e_web3_test.py` — E2E Web3 结算测试（run→claim→submit→on-chain）
+- feat(scripts): 创建 `scripts/full_settlement_test.py` — 完整结算生命周期测试（开发者注册 + 70/25/5 分账 + Worker/Developer PoT 领取）
 - feat(hardhat): 启用 `viaIR: true` 解决 Solidity `stack too deep` 编译错误
+### 验证
+- **Full Settlement Lifecycle 通过**: 开发者注册 → task-0005 → COMPLETED → 0.05 USDC 结算 → Worker 0.0125 USDC (25%) + Developer 0.0350 USDC (70%) + Treasury 0.0025 USDC (5%) 全部 PoT 领取成功
 ### 技术决策
-- 部署脚本使用 `--network localhost`（而非 `--network hardhat`）连接持久化 Hardhat 节点
+- 部署脚本使用 `--network localhost`（而非 `--network hardhat`）连接持久化 Hardhat 节点- DEV_KEY 需使用 Hardhat Account #2 实际私钥：`0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a`（非 `Account.from_key()` 推导的公钥对应私钥）
 
 ## [2026-06-09]
 ### 新增
