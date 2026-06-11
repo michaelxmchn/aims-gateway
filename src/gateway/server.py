@@ -450,10 +450,10 @@ async def admin_setup():
     ledger.seed_usdt(user_id, 10000.0)
     ledger.seed_dev_usdt(dev_id, 10000.0)
 
-    # Register a worker identity for the dev
-    from src.chain.settlement import ChainSettlement
-    chain = ChainSettlement("http://localhost")
-    chain.simulate_stripe_webhook(user_id, 10000.0, ledger)
+    if not _is_web3_mode:
+        from src.chain.settlement import ChainSettlement
+        chain = ChainSettlement("http://localhost")
+        chain.simulate_stripe_webhook(user_id, 10000.0, ledger)
 
     count = 0
     for i in range(100):
@@ -978,7 +978,10 @@ async def run_skill(req: RunRequest):
             raise HTTPException(status_code=400, detail=f"{prop_name}: expected boolean, got {type(val).__name__}")
 
     # ── 3. Check on-chain balance (early exit) ──────────────────────────
-    credit_balance = await _run_in_thread(billing.check_user_balance, req.user_id)
+    local_bal = _local_deposits.get(req.user_id, 0) if _is_web3_mode else 0
+    credit_balance = await _run_in_thread(
+        billing.check_user_balance, req.user_id, local_bal,
+    )
     if credit_balance < BillingEngine.COST_PER_TASK_USDC:
         required_str = f"{BillingEngine.COST_PER_TASK_USDC / 10**6:.6f}"
         balance_str = f"{credit_balance / 10**6:.6f}"
