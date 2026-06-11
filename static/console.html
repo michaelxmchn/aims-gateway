@@ -1,0 +1,960 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AIMS Console — Web3 Control Panel</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js">
+</script>
+<style>
+/* ── Reset & Theme ── */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{font-family:'SF Mono',SFMono-Regular,'JetBrains Mono','Fira Code',monospace;background:#0f172a;color:#cbd5e1;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh}
+
+/* ── Fluorescent green accent (Theme_4) ── */
+:root{--neon:#deff9a;--neon-dim:#a8c96a;--neon-glow:rgba(222,255,154,0.15);--bg-card:#1e293b;--bg-card-hover:#253349;--border:rgba(222,255,154,0.08);--text-dim:#94a3b8;--red:#ff6b6b;--blue:#60a5fa;--amber:#fbbf24}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:#0f172a}
+::-webkit-scrollbar-thumb{background:var(--neon-dim);border-radius:3px}
+
+/* ── Layout ── */
+.app{max-width:1280px;margin:0 auto;padding:1.5rem;display:flex;flex-direction:column;gap:1.25rem}
+
+/* ── Top bar ── */
+.topbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;padding:1rem 1.5rem;background:var(--bg-card);border:1px solid var(--border);border-radius:12px}
+.topbar .logo{font-size:1.25rem;font-weight:700;color:#fff}.topbar .logo span{color:var(--neon)}
+.topbar .wallet-area{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+.wallet-btn{background:transparent;border:1px solid var(--neon);color:var(--neon);padding:0.5rem 1.25rem;border-radius:8px;cursor:pointer;font-family:inherit;font-size:0.825rem;font-weight:600;transition:all 0.2s}
+.wallet-btn:hover{background:var(--neon-glow);box-shadow:0 0 20px var(--neon-glow)}
+.wallet-btn.connected{background:var(--neon);color:#0f172a}
+.wallet-addr{font-size:0.8rem;color:var(--text-dim)}
+.wallet-bal{display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0.75rem;background:rgba(222,255,154,0.06);border-radius:6px;font-size:0.8rem}
+.wallet-bal .num{color:var(--neon);font-weight:700}
+.network-badge{padding:0.25rem 0.6rem;border-radius:4px;font-size:0.7rem;font-weight:600}
+.network-badge.ok{background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.2)}
+.network-badge.warn{background:rgba(251,191,36,0.15);color:var(--amber);border:1px solid rgba(251,191,36,0.2)}
+
+/* ── Role tabs ── */
+.role-tabs{display:flex;gap:0.5rem;flex-wrap:wrap}
+.role-tab{padding:0.65rem 1.5rem;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:0.85rem;font-weight:600;transition:all 0.2s}
+.role-tab:hover{border-color:var(--neon-dim);color:#fff}
+.role-tab.active{background:var(--neon-glow);border-color:var(--neon);color:var(--neon);box-shadow:0 0 15px var(--neon-glow)}
+.role-tab .badge{display:inline-block;margin-left:0.5rem;padding:0.1rem 0.5rem;border-radius:10px;font-size:0.65rem;background:rgba(255,255,255,0.06);color:var(--text-dim)}
+
+/* ── Grid ── */
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem}
+.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem}
+@media(max-width:900px){.grid-2,.grid-3{grid-template-columns:1fr}}
+
+/* ── Cards ── */
+.card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:1.25rem}
+.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.card-title{font-size:0.85rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.05em}
+.card-title .icon{margin-right:0.5rem}
+.card-subtitle{font-size:0.75rem;color:var(--text-dim);margin-top:0.25rem}
+.stat{display:flex;flex-direction:column;gap:0.25rem}
+.stat-label{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim)}
+.stat-value{font-size:1.5rem;font-weight:700;color:#fff}
+.stat-value .unit{font-size:0.8rem;color:var(--text-dim);font-weight:400}
+.stat-value.neon{color:var(--neon)}
+
+/* ── Pipeline progress ── */
+.pipeline{display:flex;align-items:center;gap:0.5rem;padding:1rem;background:rgba(15,23,42,0.6);border-radius:8px;overflow-x:auto}
+.pipeline-step{display:flex;flex-direction:column;align-items:center;gap:0.35rem;min-width:80px;position:relative}
+.pipeline-step .circle{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;border:2px solid var(--border);color:var(--text-dim);background:transparent;transition:all 0.4s}
+.pipeline-step.done .circle{background:rgba(34,197,94,0.15);border-color:#22c55e;color:#22c55e}
+.pipeline-step.active .circle{background:var(--neon-glow);border-color:var(--neon);color:var(--neon);box-shadow:0 0 20px var(--neon-glow);animation:pulse 1.5s ease-in-out infinite}
+.pipeline-step .label{font-size:0.6rem;text-align:center;color:var(--text-dim);white-space:nowrap}
+.pipeline-step.done .label{color:#22c55e}
+.pipeline-step.active .label{color:var(--neon)}
+.pipeline-arrow{color:var(--border);font-size:0.8rem;flex-shrink:0}
+.pipeline-step.done + .pipeline-arrow{color:var(--neon-dim)}
+
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.7;transform:scale(1.05)}}
+
+/* ── Log / activity feed ── */
+.log-feed{max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:0.35rem}
+.log-entry{display:flex;gap:0.75rem;align-items:flex-start;padding:0.4rem 0.6rem;border-radius:4px;font-size:0.75rem;background:rgba(255,255,255,0.02)}
+.log-entry .time{color:var(--text-dim);white-space:nowrap;font-size:0.65rem;min-width:70px}
+.log-entry .msg{flex:1;color:#cbd5e1;word-break:break-all}
+.log-entry.info{border-left:2px solid var(--blue)}
+.log-entry.success{border-left:2px solid #22c55e}
+.log-entry.error{border-left:2px solid var(--red)}
+
+/* ── Buttons ── */
+.btn{display:inline-flex;align-items:center;gap:0.5rem;padding:0.55rem 1.25rem;border-radius:8px;font-family:inherit;font-size:0.8rem;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all 0.2s}
+.btn-neon{background:var(--neon);color:#0f172a;border-color:var(--neon)}
+.btn-neon:hover{box-shadow:0 0 25px var(--neon-glow);transform:translateY(-1px)}
+.btn-neon:disabled{opacity:0.4;cursor:not-allowed;transform:none}
+.btn-outline{background:transparent;color:var(--neon);border-color:var(--neon)}
+.btn-outline:hover{background:var(--neon-glow)}
+.btn-ghost{background:transparent;color:var(--text-dim);border-color:var(--border)}
+.btn-ghost:hover{color:#fff;border-color:var(--text-dim)}
+.btn-sm{padding:0.35rem 0.85rem;font-size:0.7rem}
+
+/* ── Input ── */
+.input{background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:6px;padding:0.55rem 0.75rem;color:#fff;font-family:inherit;font-size:0.8rem;width:100%;outline:none;transition:border-color 0.2s}
+.input:focus{border-color:var(--neon-dim)}
+.input::placeholder{color:var(--text-dim);opacity:0.5}
+
+/* ── Tables ── */
+table{width:100%;border-collapse:collapse;font-size:0.78rem}
+th{text-align:left;padding:0.55rem 0.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;font-size:0.65rem;border-bottom:1px solid var(--border)}
+td{padding:0.55rem 0.75rem;border-bottom:1px solid rgba(255,255,255,0.03);color:#cbd5e1}
+tr:hover td{background:rgba(255,255,255,0.02)}
+
+/* ── Status indicators ── */
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:0.5rem}
+.status-dot.online{background:#22c55e;box-shadow:0 0 8px rgba(34,197,94,0.5)}
+.status-dot.idle{background:var(--amber);box-shadow:0 0 8px rgba(251,191,36,0.5)}
+.status-dot.busy{background:var(--neon);box-shadow:0 0 8px var(--neon-glow)}
+.status-dot.offline{background:var(--text-dim)}
+
+/* ── Modal ── */
+.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:999}
+.modal-overlay.open{display:flex}
+.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:480px;width:90%;position:relative}
+.modal h3{margin-bottom:0.75rem;color:#fff}
+.modal p{font-size:0.85rem;color:var(--text-dim);margin-bottom:1.25rem;line-height:1.6}
+.modal-actions{display:flex;gap:0.75rem;justify-content:flex-end}
+
+/* ── Toast ── */
+.toast-container{position:fixed;top:1.5rem;right:1.5rem;z-index:1000;display:flex;flex-direction:column;gap:0.5rem}
+.toast{padding:0.75rem 1.25rem;border-radius:8px;font-size:0.8rem;font-weight:600;animation:slideIn 0.3s ease;max-width:400px}
+.toast.success{background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);color:#22c55e}
+.toast.error{background:rgba(255,107,107,0.15);border:1px solid rgba(255,107,107,0.3);color:var(--red)}
+.toast.info{background:rgba(96,165,250,0.15);border:1px solid rgba(96,165,250,0.3);color:var(--blue)}
+.toast.warn{background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.3);color:var(--amber)}
+@keyframes slideIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
+
+/* ── Tab content ── */
+.tab-content{display:none}
+.tab-content.active{display:block}
+
+/* ── Role header ── */
+.role-header{display:flex;align-items:center;gap:0.75rem;margin-bottom:1.25rem}
+.role-header .avatar{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem}
+.role-header .avatar.consumer{background:rgba(96,165,250,0.15);border:1px solid rgba(96,165,250,0.2)}
+.role-header .avatar.developer{background:rgba(222,255,154,0.15);border:1px solid rgba(222,255,154,0.2)}
+.role-header .avatar.worker{background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.2)}
+.role-header .info h3{color:#fff;font-size:0.95rem}
+.role-header .info p{font-size:0.75rem;color:var(--text-dim);margin:0}
+
+/* ── Skill cards ── */
+.skill-card{padding:0.75rem;background:rgba(15,23,42,0.4);border:1px solid var(--border);border-radius:8px;display:flex;justify-content:space-between;align-items:center}
+.skill-card .name{font-weight:600;color:#fff;font-size:0.85rem}
+.skill-card .desc{font-size:0.7rem;color:var(--text-dim);margin-top:0.15rem}
+.skill-card .caps{display:flex;gap:0.3rem;flex-wrap:wrap;margin-top:0.35rem}
+.skill-card .cap-tag{padding:0.1rem 0.35rem;border-radius:3px;font-size:0.6rem;background:rgba(222,255,154,0.06);color:var(--neon-dim)}
+
+/* ── Responsive ── */
+@media(max-width:600px){.app{padding:0.75rem}.topbar{padding:0.75rem}.grid-2,.grid-3{grid-template-columns:1fr}}
+
+/* ── Gas meter ── */
+.gas-meter{height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-top:0.5rem}
+.gas-meter .fill{height:100%;background:linear-gradient(90deg,var(--neon),#22c55e);border-radius:2px;transition:width 1s ease;width:0%}
+
+/* ── Empty state ── */
+.empty-state{text-align:center;padding:2rem;color:var(--text-dim);font-size:0.85rem}
+.empty-state .big-icon{font-size:2.5rem;margin-bottom:0.75rem;opacity:0.3}
+</style>
+</head>
+<body>
+
+<!-- ── Toast container ── -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- ── 402 Deposit Modal ── -->
+<div class="modal-overlay" id="depositModal">
+  <div class="modal">
+    <h3>⚠️ Insufficient Balance</h3>
+    <p id="modalBody">
+      Each skill invocation requires a minimum of <strong>0.05 USDC</strong>.
+      Your current available balance is <strong id="modalBalance">0.00 USDC</strong>.
+    </p>
+    <p style="font-size:0.8rem;color:var(--neon);background:var(--neon-glow);padding:0.75rem;border-radius:6px">
+      Deposit to contract: <code id="modalContractAddr" style="word-break:break-all">0x0000...0000</code>
+    </p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeDepositModal()">Dismiss</button>
+      <button class="btn btn-neon" onclick="handleDeposit()">Deposit 50 USDC</button>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+
+  <!-- ═══ Top Bar ═══ -->
+  <header class="topbar">
+    <div class="logo">AIMS <span>Console</span></div>
+    <div class="wallet-area">
+      <span class="network-badge ok" id="networkBadge">● Base L2</span>
+      <div class="wallet-bal" id="balanceDisplay" style="display:none">
+        Balance: <span class="num" id="walletBalance">0.00</span> <span style="font-size:0.65rem;color:var(--text-dim)">USDC</span>
+      </div>
+      <span class="wallet-addr" id="walletAddress"></span>
+      <button class="wallet-btn" id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
+    </div>
+  </header>
+
+  <!-- ═══ Pipeline Progress ═══ -->
+  <div class="card" style="padding:0.75rem 1.25rem">
+    <div class="card-header" style="margin-bottom:0.5rem">
+      <span class="card-title"><span class="icon">⛓️</span> AIMS Execution Pipeline</span>
+      <span id="pipelineStatus" style="font-size:0.7rem;color:var(--text-dim)">Idle</span>
+    </div>
+    <div class="pipeline" id="pipeline">
+      <div class="pipeline-step" data-step="0"><div class="circle">①</div><span class="label">Auth</span></div>
+      <span class="pipeline-arrow">▸</span>
+      <div class="pipeline-step" data-step="1"><div class="circle">②</div><span class="label">Balance<br/>Check</span></div>
+      <span class="pipeline-arrow">▸</span>
+      <div class="pipeline-step" data-step="2"><div class="circle">③</div><span class="label">Execute<br/>Task</span></div>
+      <span class="pipeline-arrow">▸</span>
+      <div class="pipeline-step" data-step="3"><div class="circle">④</div><span class="label">Proof of<br/>Task</span></div>
+      <span class="pipeline-arrow">▸</span>
+      <div class="pipeline-step" data-step="4"><div class="circle">⑤</div><span class="label">Settle<br/>70/25/5</span></div>
+    </div>
+  </div>
+
+  <!-- ═══ Role Tabs ═══ -->
+  <div class="role-tabs">
+    <button class="role-tab active" data-role="consumer" onclick="switchRole('consumer')">
+      🛒 Consumer <span class="badge">Run Skills</span>
+    </button>
+    <button class="role-tab" data-role="developer" onclick="switchRole('developer')">
+      🔧 Developer <span class="badge">70% Revenue</span>
+    </button>
+    <button class="role-tab" data-role="worker" onclick="switchRole('worker')">
+      ⚡ Worker <span class="badge">25% Commission</span>
+    </button>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!--  TAB: Consumer                                         -->
+  <!-- ════════════════════════════════════════════════════════ -->
+  <div class="tab-content active" id="tab-consumer">
+
+    <div class="role-header">
+      <div class="avatar consumer">🛒</div>
+      <div class="info"><h3>Consumer Dashboard</h3><p>Invoke AI skills with your wallet — EIP-191 signed, on-chain settled</p></div>
+    </div>
+
+    <div class="grid-2">
+      <!-- Quick stats -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">💰 Account</span>
+          <button class="btn btn-sm btn-outline" onclick="refreshBalance()">⟳ Refresh</button>
+        </div>
+        <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
+          <div class="stat"><span class="stat-label">Available Balance</span><span class="stat-value neon" id="consumerBalance">— <span class="unit">USDC</span></span></div>
+          <div class="stat"><span class="stat-label">Total Deposited</span><span class="stat-value" id="consumerDeposited">— <span class="unit">USDC</span></span></div>
+          <div class="stat"><span class="stat-label">Tasks Executed</span><span class="stat-value" id="consumerTasks">0</span></div>
+        </div>
+      </div>
+
+      <!-- Invoke form -->
+      <div class="card">
+        <div class="card-header"><span class="card-title">🚀 Invoke Skill</span></div>
+        <form onsubmit="invokeSkill(event)" style="display:flex;flex-direction:column;gap:0.75rem">
+          <select class="input" id="skillSelect" required>
+            <option value="">— Select a skill —</option>
+          </select>
+          <input class="input" id="skillParams" placeholder='Params JSON (e.g. {"url":"https://example.com"})' value='{"url":"https://example.com"}'>
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+            <input class="input" id="workerAddr" placeholder="Worker address (0x...)" style="flex:1" value="0x70997970C51812dc3A010C7d01b50e0d17dc79C8">
+            <input class="input" id="devAddr" placeholder="Developer address (0x...)" style="flex:1" value="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266">
+          </div>
+          <button class="btn btn-neon" id="invokeBtn" type="submit">▶ Execute &amp; Settle</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Activity log -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">📋 Activity Log</span>
+        <button class="btn btn-sm btn-ghost" onclick="clearLog()">Clear</button>
+      </div>
+      <div class="log-feed" id="consumerLog">
+        <div class="log-entry info"><span class="time">—</span><span class="msg">Connect your wallet to begin</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!--  TAB: Developer                                        -->
+  <!-- ════════════════════════════════════════════════════════ -->
+  <div class="tab-content" id="tab-developer">
+
+    <div class="role-header">
+      <div class="avatar developer">🔧</div>
+      <div class="info"><h3>Developer Dashboard</h3><p>Your skills, your 70% streaming revenue — settled on-chain every task</p></div>
+    </div>
+
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-header"><span class="card-title">📦 Your Skills</span></div>
+        <div class="stat"><span class="stat-label">Registered</span><span class="stat-value" id="devSkillCount">—</span></div>
+        <div style="margin-top:0.75rem" id="devSkillList"></div>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">💎 Streaming Revenue (70%)</span></div>
+        <div class="stat"><span class="stat-label">Cumulative Earnings</span><span class="stat-value neon" id="devRevenue">— <span class="unit">USDC</span></span></div>
+        <div class="gas-meter"><div class="fill" id="devRevenueMeter" style="width:0%"></div></div>
+        <p style="font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">Auto-distributed on each settled task via 70/25/5 split</p>
+      </div>
+      <div class="card">
+        <div class="card-header"><span class="card-title">📊 Last Settlements</span></div>
+        <div id="devSettlements"><div class="empty-state"><div class="big-icon">📭</div>No settlements yet — deploy a skill and await task execution</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════════════════════════ -->
+  <!--  TAB: Worker                                           -->
+  <!-- ════════════════════════════════════════════════════════ -->
+  <div class="tab-content" id="tab-worker">
+
+    <div class="role-header">
+      <div class="avatar worker">⚡</div>
+      <div class="info"><h3>Worker / Provider Dashboard</h3><p>Run an AIMS node — earn 25% commission selling residential bandwidth</p></div>
+    </div>
+
+    <div class="grid-3">
+      <div class="card">
+        <div class="card-header"><span class="card-title">🔌 Node Status</span></div>
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem">
+          <span class="status-dot idle" id="workerStatusDot"></span>
+          <span style="font-size:0.85rem;font-weight:600;color:#fff" id="workerStatusText">Disconnected</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:0.5rem;font-size:0.78rem">
+          <div><span style="color:var(--text-dim)">Node ID:</span> <span id="workerNodeId" style="color:#fff">—</span></div>
+          <div><span style="color:var(--text-dim)">Uptime:</span> <span id="workerUptime" style="color:#fff">0s</span></div>
+          <div><span style="color:var(--text-dim)">Tasks Claimed:</span> <span id="workerTasksClaimed" style="color:#fff">0</span></div>
+        </div>
+        <div style="margin-top:1rem;display:flex;gap:0.5rem">
+          <button class="btn btn-sm btn-neon" onclick="startWorkerSim()" id="workerStartBtn">▶ Start Node</button>
+          <button class="btn btn-sm btn-ghost" onclick="sendHeartbeat()">💓 Heartbeat</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">💰 Commission (25%)</span></div>
+        <div class="stat"><span class="stat-label">Total Earned</span><span class="stat-value neon" id="workerEarnings">— <span class="unit">USDC</span></span></div>
+        <div class="gas-meter"><div class="fill" id="workerEarningsMeter" style="width:0%"></div></div>
+        <p style="font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">25% of each task fee for providing residential IP bandwidth</p>
+      </div>
+
+      <div class="card">
+        <div class="card-header"><span class="card-title">📋 Last Payouts</span></div>
+        <div id="workerPayouts"><div class="empty-state"><div class="big-icon">📭</div>No payouts yet — start your node and claim tasks</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ System Stats (bottom) ═══ -->
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-header"><span class="card-title">🏥 Network Health</span></div>
+      <div id="healthContent">
+        <div style="display:flex;flex-direction:column;gap:0.5rem;font-size:0.78rem">
+          <div><span style="color:var(--text-dim)">Status:</span> <span id="healthStatus" style="color:#22c55e;font-weight:600">—</span></div>
+          <div><span style="color:var(--text-dim)">Block:</span> <span id="healthBlock">—</span></div>
+          <div><span style="color:var(--text-dim)">Pending Tasks:</span> <span id="healthPending">—</span></div>
+          <div><span style="color:var(--text-dim)">Succeeded:</span> <span id="healthSucceeded">—</span></div>
+          <div><span style="color:var(--text-dim)">Active Workers:</span> <span id="healthWorkers">—</span></div>
+          <div><span style="color:var(--text-dim)">Treasury:</span> <span id="healthTreasury">—</span></div>
+        </div>
+      </div>
+      <div style="margin-top:0.75rem"><button class="btn btn-sm btn-ghost" onclick="fetchHealth()">⟳ Refresh</button></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">🧩 Available Skills</span></div>
+      <div id="skillsContent" style="max-height:200px;overflow-y:auto"><div class="empty-state">Connect to load</div></div>
+      <div style="margin-top:0.5rem"><button class="btn btn-sm btn-ghost" onclick="fetchDiscovery()">⟳ Refresh</button></div>
+    </div>
+    <div class="card">
+      <div class="card-header"><span class="card-title">⚙️ Config</span></div>
+      <div style="display:flex;flex-direction:column;gap:0.5rem;font-size:0.78rem">
+        <div><span style="color:var(--text-dim)">API Base:</span> <span id="cfgApiBase" style="color:var(--neon)"></span></div>
+        <div><span style="color:var(--text-dim)">Wallet:</span> <span id="cfgWallet">Not connected</span></div>
+        <div><span style="color:var(--text-dim)">Network:</span> <span id="cfgNetwork">—</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ CORS / Config Doc ═══ -->
+  <div class="card" style="border-color:var(--neon-dim)">
+    <div class="card-header">
+      <span class="card-title" style="color:var(--neon)">🔌 CORS &amp; Local Dev Setup</span>
+    </div>
+    <div style="font-size:0.78rem;line-height:1.7;color:var(--text-dim)">
+      <p><strong style="color:#fff">API Base URL:</strong> <code id="corsApiBase" style="color:var(--neon);background:rgba(222,255,154,0.06);padding:0.15rem 0.4rem;border-radius:3px">http://127.0.0.1:8000</code></p>
+      <p><strong style="color:#fff">Backend CORS config</strong> — add to <code style="color:var(--neon)">src/gateway/server.py</code> before any routes:</p>
+      <pre style="background:#0a0f1a;padding:1rem;border-radius:6px;margin-top:0.5rem;overflow-x:auto;font-size:0.7rem;color:#cbd5e1">from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Dev only! Restrict in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)</pre>
+      <p style="margin-top:0.5rem"><strong style="color:#fff">Headers required</strong> for authenticated POST requests:</p>
+      <pre style="background:#0a0f1a;padding:0.75rem 1rem;border-radius:6px;margin-top:0.25rem;font-size:0.7rem;color:#cbd5e1">X-Wallet-Address: 0x...
+X-Signature: &lt;EIP-191 personal_sign hex&gt;
+X-Timestamp: &lt;UNIX seconds&gt;
+Content-Type: application/json</pre>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ════════════════════════════════════════════════════════════════
+//  Configuration
+// ════════════════════════════════════════════════════════════════
+const API_BASE = localStorage.getItem("aims_api_base") || "http://127.0.0.1:8000";
+document.getElementById("cfgApiBase").textContent = API_BASE;
+document.getElementById("corsApiBase").textContent = API_BASE;
+const CONTRACT_ADDRESS = localStorage.getItem("aims_contract_addr") || "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+
+let signer = null;
+let provider = null;
+let walletAddress = "";
+let currentRole = "consumer";
+let workerInterval = null;
+let workerStartTime = null;
+let workerTaskCount = 0;
+let workerEarnedUsdc = 0;
+let devRevenueUsdc = 0;
+let consumerTaskCount = 0;
+let consumerDepositedUsdc = 0;
+let skillsCache = [];
+
+// ════════════════════════════════════════════════════════════════
+//  Toast system
+// ════════════════════════════════════════════════════════════════
+function toast(msg, type = "info") {
+  const container = document.getElementById("toastContainer");
+  const el = document.createElement("div");
+  el.className = `toast ${type}`;
+  el.textContent = msg;
+  container.appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Pipeline progress
+// ════════════════════════════════════════════════════════════════
+function resetPipeline() {
+  document.querySelectorAll(".pipeline-step").forEach(s => { s.classList.remove("done", "active"); });
+  document.getElementById("pipelineStatus").textContent = "Idle";
+}
+
+function advancePipeline(step) {
+  const steps = document.querySelectorAll(".pipeline-step");
+  steps.forEach((s, i) => {
+    s.classList.remove("active");
+    if (i < step) s.classList.add("done");
+  });
+  if (step < steps.length) {
+    steps[step].classList.add("active");
+    const labels = ["Authenticating…","Checking on-chain balance…","Executing skill task…","Generating Proof-of-Task…","Settling 70/25/5 split…"];
+    document.getElementById("pipelineStatus").textContent = labels[step] || `Step ${step + 1}/5`;
+  } else {
+    document.getElementById("pipelineStatus").textContent = "✅ Complete";
+    document.getElementById("pipelineStatus").style.color = "var(--neon)";
+  }
+}
+
+function completePipeline() {
+  document.querySelectorAll(".pipeline-step").forEach(s => { s.classList.remove("active"); s.classList.add("done"); });
+  document.getElementById("pipelineStatus").textContent = "✅ Complete";
+  document.getElementById("pipelineStatus").style.color = "var(--neon)";
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Wallet connection
+// ════════════════════════════════════════════════════════════════
+async function connectWallet() {
+  resetPipeline();
+  if (typeof window.ethereum === "undefined") {
+    toast("MetaMask not found — install from metamask.io", "error");
+    return;
+  }
+  try {
+    advancePipeline(0);
+    provider = new ethers.BrowserProvider(window.ethereum);
+    const accounts = await provider.send("eth_requestAccounts", []);
+    signer = await provider.getSigner();
+    walletAddress = accounts[0].toLowerCase();
+
+    const btn = document.getElementById("connectBtn");
+    btn.textContent = `● ${walletAddress.slice(0,6)}…${walletAddress.slice(-4)}`;
+    btn.classList.add("connected");
+    document.getElementById("walletAddress").textContent = walletAddress;
+
+    document.getElementById("cfgWallet").textContent = walletAddress;
+    document.getElementById("cfgWallet").style.color = "var(--neon)";
+
+    // Check network
+    const net = await provider.getNetwork();
+    const netBadge = document.getElementById("networkBadge");
+    if (net.chainId === 31337n) {
+      netBadge.textContent = "● Anvil (31337)";
+      netBadge.className = "network-badge warn";
+    } else if (net.chainId === 8453n) {
+      netBadge.textContent = "● Base Mainnet";
+      netBadge.className = "network-badge ok";
+    } else if (net.chainId === 84532n) {
+      netBadge.textContent = "● Base Sepolia";
+      netBadge.className = "network-badge warn";
+    } else {
+      netBadge.textContent = `● Chain ${net.chainId}`;
+      netBadge.className = "network-badge warn";
+    }
+    document.getElementById("cfgNetwork").textContent = net.name || `Chain ${net.chainId}`;
+
+    toast(`Wallet connected: ${walletAddress}`, "success");
+    await refreshBalance();
+    await fetchDiscovery();
+    await fetchHealth();
+    return true;
+  } catch (err) {
+    toast(`Wallet connection failed: ${err.message}`, "error");
+    return false;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  EIP-191 signing (browser-compatible with python backend)
+// ════════════════════════════════════════════════════════════════
+async function eip191SignBody(bodyBytes) {
+  // ethers.Signer.signMessage() adds the \x19Ethereum Signed Message:\n
+  // prefix, which matches Python's encode_defunct(primitive=body)
+  const sig = await signer.signMessage(new Uint8Array(bodyBytes));
+  return sig; // return 132-char hex string with 0x prefix (stripped later)
+}
+
+function getAuthHeaders(bodyBytes, signature) {
+  const sigHex = signature.startsWith("0x") ? signature.slice(2) : signature;
+  return {
+    "X-Wallet-Address": walletAddress,
+    "X-Signature": sigHex,           // 130 hex chars, no 0x
+    "X-Timestamp": Math.floor(Date.now() / 1000).toString(),
+    "Content-Type": "application/json",
+  };
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Balance & Deposit
+// ════════════════════════════════════════════════════════════════
+async function refreshBalance() {
+  if (!walletAddress) return;
+  try {
+    const resp = await fetch(`${API_BASE}/api/wallet/balance?user_id=${walletAddress}`);
+    if (resp.ok) {
+      const data = await resp.json();
+      const balance = data.credits || 0;
+      document.getElementById("consumerBalance").innerHTML = `${balance.toFixed(2)} <span class="unit">USDC</span>`;
+      document.getElementById("balanceDisplay").style.display = "flex";
+      document.getElementById("walletBalance").textContent = balance.toFixed(2);
+    } else {
+      document.getElementById("consumerBalance").innerHTML = `— <span class="unit">USDC</span>`;
+    }
+  } catch (err) {
+    document.getElementById("consumerBalance").innerHTML = `⚠️ <span class="unit">offline</span>`;
+  }
+}
+
+function showDepositModal(balanceUsdc) {
+  document.getElementById("modalBody").innerHTML =
+    `Each skill invocation requires a minimum of <strong>0.05 USDC</strong>. ` +
+    `Your current available balance is <strong>${balanceUsdc.toFixed(2)} USDC</strong>.`;
+  document.getElementById("modalContractAddr").textContent = CONTRACT_ADDRESS;
+  document.getElementById("depositModal").classList.add("open");
+}
+
+function closeDepositModal() {
+  document.getElementById("depositModal").classList.remove("open");
+}
+
+async function handleDeposit() {
+  if (!walletAddress) { toast("Connect wallet first", "error"); return; }
+  closeDepositModal();
+  toast("Depositing 50 USDC…", "info");
+  try {
+    const body = JSON.stringify({ user_id: walletAddress, amount: 50.0 });
+    const sig = await eip191SignBody(new TextEncoder().encode(body));
+    const headers = getAuthHeaders(new TextEncoder().encode(body), sig);
+    const resp = await fetch(`${API_BASE}/api/wallet/deposit`, { method: "POST", headers, body });
+    if (resp.ok) {
+      const data = await resp.json();
+      consumerDepositedUsdc += 50;
+      document.getElementById("consumerDeposited").innerHTML = `${consumerDepositedUsdc.toFixed(2)} <span class="unit">USDC</span>`;
+      toast("Deposit successful! New balance: " + data.new_balance.toFixed(2) + " USDC", "success");
+      consumerLog("success", "Deposit 50 USDC → new balance " + data.new_balance.toFixed(2) + " USDC");
+      await refreshBalance();
+    } else {
+      const err = await resp.json();
+      toast("Deposit failed: " + (err.detail || resp.statusText), "error");
+    }
+  } catch (err) {
+    toast("Deposit error: " + err.message, "error");
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Skills (Consumer view — invoke)
+// ════════════════════════════════════════════════════════════════
+async function fetchDiscovery() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/discovery`);
+    if (!resp.ok) { document.getElementById("skillsContent").innerHTML = '<div class="empty-state">API unreachable</div>'; return; }
+    const data = await resp.json();
+    skillsCache = data.skills || [];
+
+    // Populate skill select
+    const sel = document.getElementById("skillSelect");
+    sel.innerHTML = '<option value="">— Select a skill —</option>';
+    skillsCache.forEach(s => {
+      const opt = document.createElement("option");
+      opt.value = s.id;
+      opt.textContent = `${s.id} — ${(s.description || "").slice(0,40)}`;
+      sel.appendChild(opt);
+    });
+
+    // Populate skills panel
+    const container = document.getElementById("skillsContent");
+    if (skillsCache.length === 0) {
+      container.innerHTML = '<div class="empty-state">No skills registered</div>';
+      return;
+    }
+    container.innerHTML = skillsCache.map(s => `
+      <div class="skill-card" style="margin-bottom:0.4rem">
+        <div>
+          <div class="name">${s.id}</div>
+          <div class="desc">${(s.description || "").slice(0,60)}</div>
+          <div class="caps">${(s.capabilities||[]).map(c => `<span class="cap-tag">${c}</span>`).join("")}</div>
+        </div>
+      </div>
+    `).join("");
+
+    // Update dev skill count
+    document.getElementById("devSkillCount").textContent = skillsCache.length;
+    document.getElementById("devSkillList").innerHTML = skillsCache.map(s =>
+      `<div style="display:flex;justify-content:space-between;padding:0.3rem 0;font-size:0.75rem;border-bottom:1px solid rgba(255,255,255,0.03)">
+        <span style="color:#fff">${s.id}</span>
+        <span style="color:var(--text-dim)">v${s.manifest?.version || "—"}</span>
+      </div>`
+    ).join("");
+
+    // Dev settlements: show available skills
+    const settlementsEl = document.getElementById("devSettlements");
+    if (skillsCache.length > 0) {
+      settlementsEl.innerHTML = `<div style="font-size:0.75rem;color:var(--text-dim)">${skillsCache.length} skills registered on network.<br/>Revenue will appear here after tasks are executed and settled.</div>`;
+    }
+
+    toast(`Discovered ${skillsCache.length} skills`, "info");
+  } catch (err) {
+    document.getElementById("skillsContent").innerHTML = '<div class="empty-state">⚠️ ' + err.message + '</div>';
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Invoke skill (Consumer)
+// ════════════════════════════════════════════════════════════════
+async function invokeSkill(event) {
+  event.preventDefault();
+  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
+
+  const skillId = document.getElementById("skillSelect").value;
+  if (!skillId) { toast("Select a skill", "error"); return; }
+
+  let params = {};
+  try { params = JSON.parse(document.getElementById("skillParams").value || "{}"); } catch(e) {
+    toast("Invalid params JSON", "error"); return;
+  }
+
+  const worker = document.getElementById("workerAddr").value.trim() || "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
+  const developer = document.getElementById("devAddr").value.trim() || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
+
+  const invokeBtn = document.getElementById("invokeBtn");
+  invokeBtn.disabled = true;
+  invokeBtn.textContent = "⏳ Executing…";
+
+  resetPipeline();
+
+  try {
+    // ── Step 0: Auth (already have wallet) ──
+    advancePipeline(0);
+    const bodyPayload = {
+      skill_id: skillId,
+      params: params,
+      user_id: walletAddress,
+      developer_premium: 0.01,
+      max_budget: 2.0,
+      compute_tier: 1,
+    };
+    const bodyBytes = new TextEncoder().encode(JSON.stringify(bodyPayload));
+
+    // ── Step 1: Sign & send — backend checks balance ──
+    advancePipeline(1);
+    const sig = await eip191SignBody(bodyBytes);
+    const headers = getAuthHeaders(bodyBytes, sig);
+
+    // ── Step 2: Execute ──
+    advancePipeline(2);
+    consumerLog("info", `POST /api/run → skill=${skillId} address=${walletAddress.slice(0,10)}…`);
+
+    const resp = await fetch(`${API_BASE}/api/run`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(bodyPayload),
+    });
+
+    // ── Handle 402 ──
+    if (resp.status === 402) {
+      const errData = await resp.json().catch(() => ({}));
+      const balanceMatch = errData.detail ? errData.detail.match(/balance:\s*([\d.]+)/) : null;
+      const bal = balanceMatch ? parseFloat(balanceMatch[1]) : 0;
+      consumerLog("error", `402 Insufficient balance: ${bal} USDC`);
+      resetPipeline();
+      showDepositModal(bal);
+      invokeBtn.disabled = false;
+      invokeBtn.textContent = "▶ Execute & Settle";
+      return;
+    }
+
+    // ── Handle 403 ──
+    if (resp.status === 403) {
+      const errData = await resp.json().catch(() => ({}));
+      consumerLog("error", `403 Auth failed: ${errData.detail || "signature mismatch"}`);
+      toast("Auth failed — signature rejected by gateway", "error");
+      resetPipeline();
+      invokeBtn.disabled = false;
+      invokeBtn.textContent = "▶ Execute & Settle";
+      return;
+    }
+
+    if (!resp.ok) {
+      const errData = await resp.json().catch(() => ({}));
+      consumerLog("error", `HTTP ${resp.status}: ${errData.detail || resp.statusText}`);
+      toast(`API error: ${errData.detail || resp.statusText}`, "error");
+      resetPipeline();
+      invokeBtn.disabled = false;
+      invokeBtn.textContent = "▶ Execute & Settle";
+      return;
+    }
+
+    const data = await resp.json();
+    const taskId = data.task_id;
+    consumerLog("success", `Task created: ${taskId}`);
+
+    // ── Step 3: Poll for completion — simulate PoT verification ──
+    advancePipeline(3);
+    let settled = false;
+    for (let i = 0; i < 30; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      try {
+        const statusResp = await fetch(`${API_BASE}/api/tasks/${taskId}/status`);
+        if (statusResp.ok) {
+          const statusData = await statusResp.json();
+          if (statusData.status === "SUCCESS" || statusData.pot) {
+            consumerLog("success", `Task completed — Pot: ${statusData.pot ? statusData.pot.slice(0,20) + "…" : "N/A"}`);
+            settled = true;
+            break;
+          }
+          if (statusData.status === "FAILED") {
+            consumerLog("error", `Task failed: ${statusData.outcome || "unknown"}`);
+            break;
+          }
+        }
+      } catch(e) {}
+    }
+
+    if (settled) {
+      // ── Step 4: Settlement complete ──
+      advancePipeline(4);
+      await new Promise(r => setTimeout(r, 600));
+      completePipeline();
+
+      consumerTaskCount++;
+      document.getElementById("consumerTasks").textContent = consumerTaskCount;
+
+      // Bump dev + worker simulated revenue
+      devRevenueUsdc += 0.035;  // 70% of 0.05
+      workerEarnedUsdc += 0.0125; // 25% of 0.05
+
+      document.getElementById("devRevenue").innerHTML = `${devRevenueUsdc.toFixed(4)} <span class="unit">USDC</span>`;
+      document.getElementById("devRevenueMeter").style.width = Math.min(devRevenueUsdc * 20, 100) + "%";
+      document.getElementById("workerEarnings").innerHTML = `${workerEarnedUsdc.toFixed(4)} <span class="unit">USDC</span>`;
+      document.getElementById("workerEarningsMeter").style.width = Math.min(workerEarnedUsdc * 20, 100) + "%";
+
+      consumerLog("success", `🎉 Task ${taskId} settled — 70/25/5 on-chain split complete`);
+      toast("Task settled on-chain! 70/25/5 split executed.", "success");
+    } else {
+      consumerLog("warn", `Task ${taskId} created but not yet settled (still PENDING)`);
+      toast("Task submitted, waiting for Worker to pick it up…", "warn");
+    }
+
+    await refreshBalance();
+  } catch (err) {
+    consumerLog("error", `Error: ${err.message}`);
+    toast("Execution error: " + err.message, "error");
+  }
+
+  invokeBtn.disabled = false;
+  invokeBtn.textContent = "▶ Execute & Settle";
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Consumer log
+// ════════════════════════════════════════════════════════════════
+function consumerLog(type, msg) {
+  const log = document.getElementById("consumerLog");
+  const entry = document.createElement("div");
+  entry.className = `log-entry ${type}`;
+  const now = new Date();
+  const time = now.toLocaleTimeString();
+  entry.innerHTML = `<span class="time">${time}</span><span class="msg">${msg}</span>`;
+  log.appendChild(entry);
+  log.scrollTop = log.scrollHeight;
+}
+
+function clearLog() {
+  document.getElementById("consumerLog").innerHTML = '';
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Worker simulation
+// ════════════════════════════════════════════════════════════════
+function startWorkerSim() {
+  const btn = document.getElementById("workerStartBtn");
+  if (workerInterval) {
+    // Stop
+    clearInterval(workerInterval);
+    workerInterval = null;
+    btn.textContent = "▶ Start Node";
+    btn.className = "btn btn-sm btn-neon";
+    document.getElementById("workerStatusDot").className = "status-dot offline";
+    document.getElementById("workerStatusText").textContent = "Offline";
+    document.getElementById("workerNodeId").textContent = "—";
+    toast("Worker node stopped", "info");
+    return;
+  }
+
+  workerStartTime = Date.now();
+  const nodeId = "node-" + Math.random().toString(36).slice(2, 8);
+  document.getElementById("workerNodeId").textContent = nodeId;
+  document.getElementById("workerStatusDot").className = "status-dot idle";
+  document.getElementById("workerStatusText").textContent = "Online (Idle)";
+  btn.textContent = "⏹ Stop Node";
+  btn.className = "btn btn-sm btn-outline";
+
+  // Update uptime
+  if (workerInterval) clearInterval(workerInterval);
+  workerInterval = setInterval(() => {
+    const uptime = Math.floor((Date.now() - workerStartTime) / 1000);
+    document.getElementById("workerUptime").textContent = `${uptime}s`;
+  }, 1000);
+
+  // Send heartbeat every 15s
+  const hbInterval = setInterval(() => sendHeartbeat(), 15000);
+  workerInterval._hbInterval = hbInterval;
+
+  // Override clear to also clear heartbeat
+  const origClear = clearInterval;
+  workerInterval._origClear = origClear;
+
+  sendHeartbeat();
+  toast("Worker node started — heartbeating every 15s", "success");
+}
+
+async function sendHeartbeat() {
+  if (!walletAddress) { toast("Connect wallet first", "error"); return; }
+  try {
+    const body = JSON.stringify({ worker_id: walletAddress });
+    const sig = await eip191SignBody(new TextEncoder().encode(body));
+    const headers = getAuthHeaders(new TextEncoder().encode(body), sig);
+    const resp = await fetch(`${API_BASE}/api/workers/heartbeat`, { method: "POST", headers, body });
+    if (resp.ok) {
+      document.getElementById("workerStatusDot").className = "status-dot online";
+      document.getElementById("workerStatusText").textContent = "Online (Active)";
+    }
+  } catch(err) {
+    // silent — network may be down
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Health check
+// ════════════════════════════════════════════════════════════════
+async function fetchHealth() {
+  try {
+    const resp = await fetch(`${API_BASE}/api/health`);
+    if (!resp.ok) {
+      document.getElementById("healthStatus").textContent = "⚠️ Unreachable";
+      document.getElementById("healthStatus").style.color = "var(--red)";
+      return;
+    }
+    const data = await resp.json();
+    document.getElementById("healthStatus").textContent = "● Healthy";
+    document.getElementById("healthStatus").style.color = "#22c55e";
+    document.getElementById("healthBlock").textContent = data.tasks_succeeded || "—";
+    document.getElementById("healthPending").textContent = data.tasks_pending ?? "—";
+    document.getElementById("healthSucceeded").textContent = data.tasks_succeeded ?? "—";
+    document.getElementById("healthWorkers").textContent = data.workers_active ?? "—";
+    document.getElementById("healthTreasury").textContent = (data.treasury_usdt || 0).toFixed(2) + " USDT";
+  } catch(err) {
+    document.getElementById("healthStatus").textContent = "⚠️ Offline";
+    document.getElementById("healthStatus").style.color = "var(--red)";
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Role switching
+// ════════════════════════════════════════════════════════════════
+function switchRole(role) {
+  currentRole = role;
+  document.querySelectorAll(".role-tab").forEach(t => t.classList.toggle("active", t.dataset.role === role));
+  document.querySelectorAll(".tab-content").forEach(t => t.classList.toggle("active", t.id === "tab-" + role));
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Init
+// ════════════════════════════════════════════════════════════════
+fetchHealth();
+fetchDiscovery();
+
+// Auto-connect if MetaMask already authorized
+if (typeof window.ethereum !== "undefined") {
+  window.ethereum.request({ method: "eth_accounts" }).then(accounts => {
+    if (accounts.length > 0) connectWallet();
+  }).catch(() => {});
+}
+
+// Listen for account changes
+if (typeof window.ethereum !== "undefined") {
+  window.ethereum.on("accountsChanged", (accounts) => {
+    if (accounts.length === 0) {
+      walletAddress = "";
+      document.getElementById("connectBtn").textContent = "Connect Wallet";
+      document.getElementById("connectBtn").classList.remove("connected");
+      document.getElementById("walletAddress").textContent = "";
+      document.getElementById("balanceDisplay").style.display = "none";
+      toast("Wallet disconnected", "warn");
+    } else {
+      connectWallet();
+    }
+  });
+}
+</script>
+
+</body>
+</html>

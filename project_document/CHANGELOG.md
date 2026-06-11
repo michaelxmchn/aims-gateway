@@ -259,6 +259,10 @@
 ### 重构
 - refactor(anvil/gateway): 生产级安全加固 — `_load_gateway_key()` 严格 env var 加载（AIMS_GATEWAY_PRIVATE_KEY），NonceManager 线程安全 + 可选 Redis 后端，GasEstimator EIP-1559 动态计费 + replace-by-fee 重试
 - fix(anvil/pipeline): 环境变量名对齐 — `GATEWAY_KEY` → `AIMS_GATEWAY_PRIVATE_KEY`，`_deploy_via_forge` 兼容双 key 读取
+### 新增
+- feat(console): 创建 static/console.html — Web3 前端控制面板，MetaMask 钱包直连，EIP-191 浏览器端签名，三角色视图（Consumer/Developer/Worker），AIMS Execution Pipeline 进度条，402 余额不足弹窗
+- feat(server): 添加 CORS 中间件（开发模式全放行） — `from fastapi.middleware.cors import CORSMiddleware`
+- feat(server): 添加 `GET /console` 路由 — 托管 Web3 控制面板
 
 ## [2026-06-10]
 ### 修复

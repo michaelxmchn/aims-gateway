@@ -432,8 +432,21 @@
   - **Gas 估算 + Replace-by-Fee**: `GasEstimator` EIP-1559 动态计费 + `_send_with_retry()` 120s 超时 → gas bump 20% → 最多 3 次重试
 - **兼容性修复**: `pipeline_e2e_test.py` 环境变量名对齐 `GATEWAY_KEY` → `AIMS_GATEWAY_PRIVATE_KEY`，`_deploy_via_forge` 双 key 兼容
 
+### AIMS Web3 控制面板（全栈前端）
+- **状态**: 已完成 (2026-06-11)
+- **文件**: `static/console.html` + `src/gateway/server.py`
+- **描述**: 全栈生产级 Web3 控制面板，MetaMask 钱包直连 AIMS 后端：
+  - **Web3 钱包原生接入**: `window.ethereum.request({ method: 'eth_requestAccounts' })` 连接 MetaMask，`ethers.BrowserProvider` 读取链 ID，实时渲染余额
+  - **EIP-191 浏览器端签名**: `signer.signMessage()` 生成兼容 Python `encode_defunct` 的签名，注入 `X-Wallet-Address`/`X-Signature`/`X-Timestamp` 三头部
+  - **三角色视图**: Consumer（invoke skill + 402 弹窗引导充值）、Developer（70% 流式分润）、Worker（25% 佣金 + 心跳模拟）
+  - **AIMS Execution Pipeline**: 5 阶段动画进度条（Auth → Balance Check → Execution → PoT → Settlement 70/25/5）
+  - **CORS 中间件**: `server.py` 增加 `CORSMiddleware` 及 `GET /console` 路由
+- **验证**: 178/178 测试通过 ✓
+
 ### 当前任务更新
 - [x] Phase 3: 生产安全 — Gas 重试、Nonce+UUID 复合防重放
 - [x] Phase 4: E2E 测试 — Anvil/Hardhat 三方余额差验证
 - [x] 全部 178/178 单元测试通过 ✓
+- [x] 全栈 Web3 前端控制面板（static/console.html）— MetaMask 直连 + 三角色视图 + EIP-191 浏览器签名
+- [x] CORS 中间件 + GET /console 路由
 - [ ] Foundry Anvil E2E 全管道验证（需安装 Foundry）

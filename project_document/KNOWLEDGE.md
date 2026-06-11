@@ -357,3 +357,11 @@ A: 待补充
 - **Gas bump 策略**：`bump_fees()` 将 `maxFeePerGas`/`maxPriorityFeePerGas`/`gasPrice` 按 `GAS_BUMP_PERCENT`（默认 20%）等比增加，用于 replace-by-fee
 - **`_send_with_retry()` 全生命周期**：build → attach fees + nonce → sign → broadcast → poll 120s → timeout → bump gas → re-broadcast，最多 `MAX_TX_RETRIES`（默认 3）次
 - **失败重同步**：每次 retry 前调用 `nonce_mgr.sync_nonce()` 修复 stuck nonce，确保 bump tx 使用正确 nonce
+
+### 前端 EIP-191 签名模式（浏览器 ↔ Python 后端兼容）
+- **浏览器端签名**：`ethers.Signer.signMessage(new Uint8Array(bodyBytes))` — ethers v6 自动添加 `\x19Ethereum Signed Message:\n` 前缀，与 Python `encode_defunct(primitive=body)` 完全兼容
+- **三头部注入**：`X-Wallet-Address`（0x + 40 hex）、`X-Signature`（130 hex chars，移除 0x 前缀）、`X-Timestamp`（UNIX 秒）
+- **402 拦截**：`POST /api/run` 返回 402 → 前端弹窗显示当前余额 + 合约地址 + 充值引导
+- **三角色路由**：Consumer（Skill 调用 + 链上结算）、Developer（70% 流式分润）、Worker（25% 佣金 + 心跳 + 节点模拟）
+- **AIMS Execution Pipeline**：Auth → Balance Check → Execution → PoT → Settlement 五阶段动画进度条，反映从签名到链上分账的完整资金流
+- **CORS 配置**：`server.py` 使用 `CORSMiddleware(allow_origins=["*"])` 开放跨域；前端通过 `localStorage.setItem("aims_api_base", url)` 配置 API 地址

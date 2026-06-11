@@ -17,6 +17,7 @@ from typing import Any
 
 from eth_account import Account
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
@@ -97,6 +98,16 @@ app = FastAPI(
     description="AIMS DePIN Network — Task Dispatch & Settlement Gateway",
 )
 
+# ── CORS (allow frontend dev servers to connect) ────────────────────────────
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Dev only — restrict in production
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ── Static frontend ─────────────────────────────────────────────────────────
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -106,6 +117,13 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 async def index():
     """Serve the AIMS Network landing page."""
     with open("static/index.html", "r") as f:
+        return HTMLResponse(content=f.read())
+
+
+@app.get("/console")
+async def console():
+    """Serve the AIMS Web3 Console — wallet-connected dashboard."""
+    with open("static/console.html", "r") as f:
         return HTMLResponse(content=f.read())
 
 
