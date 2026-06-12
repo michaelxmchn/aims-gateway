@@ -36,12 +36,16 @@ def _print_validation_errors(exc) -> None:
 
 REVENUE_MATRIX_HELP = """
 Revenue Split Matrix
-  Q1  worker_collab + pay_per_task    →  70% Developer / 25% Worker / 5% Platform
-  Q2  worker_collab + subscription     →  95% Developer /  0% Worker / 5% Platform
-  Q3  direct_skill   + pay_per_task    →  95% Developer /  0% Worker / 5% Platform
-  Q4  direct_skill   + subscription    →  95% Developer /  0% Worker / 5% Platform
+  Q1  worker_collab + pay_per_task    →  70% Developer / 25% Worker /  5% Platform
+  Q2  worker_collab + subscription     →  95% Developer /  0% Worker /  5% Platform
+  Q3  direct_skill   + pay_per_task    →  95% Developer /  0% Worker /  5% Platform
+  Q4  direct_skill   + subscription    →  95% Developer /  0% Worker /  5% Platform
+  Q5  direct_skill   + buyout          →  95% Developer /  0% Worker /  5% Platform
+                                       (Perpetual license, no rate limits)
 
 Platform Treasury always takes a strict 5%% cut across all quadrants.
+⚠  Worker Collaboration (worker_collab) + Buyout is FORBIDDEN — the circuit breaker
+   will reject this combination with a hard error.
 """
 
 
@@ -52,7 +56,7 @@ Platform Treasury always takes a strict 5%% cut across all quadrants.
     help="Overwrite existing aims.config.json without prompting.",
 )
 def init(force: bool) -> None:
-    """Interactive wizard — create aims.config.json based on the 2×2 matrix.
+    """Interactive wizard — create aims.config.json based on the 2×3 matrix.
 
     Guides you through function type, billing mode, and 7 configuration
     fields, then validates and writes a prettified JSON file.
@@ -64,7 +68,7 @@ def init(force: bool) -> None:
         return
 
     click.echo(click.style("✦ AIMS Config Initialization", bold=True))
-    click.echo(click.style("✦ Revenue Matrix (2×2)", bold=True))
+    click.echo(click.style("✦ Revenue Matrix (2×3)", bold=True))
     click.echo(REVENUE_MATRIX_HELP.strip())
     click.echo("─" * 50)
 
@@ -76,7 +80,7 @@ def init(force: bool) -> None:
     )
     billing_mode = click.prompt(
         "Billing mode",
-        type=click.Choice(["pay_per_task", "subscription"], case_sensitive=False),
+        type=click.Choice(["pay_per_task", "subscription", "buyout"], case_sensitive=False),
         show_choices=True,
     )
 
@@ -86,6 +90,10 @@ def init(force: bool) -> None:
             "rate_limit_per_day (required for subscription)",
             type=int,
             default=1000,
+        )
+    elif billing_mode == "buyout":
+        click.echo(
+            click.style("  ℹ  Buyout mode: perpetual license, no rate limits.", fg="cyan")
         )
 
     monetization = MonetizationConfig(

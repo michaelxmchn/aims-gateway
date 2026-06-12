@@ -1,8 +1,9 @@
 """AIMS Config Schema — strict Pydantic models for aims.config.json.
 
 Provides:
-- MonetizationConfig with 2x2 matrix (function_type × billing_mode)
+- MonetizationConfig with 2x3 matrix (function_type × billing_mode, incl. buyout)
 - AIMSConfig with 7+ fields and file I/O helpers
+- Circuit breaker: worker_collab + buyout is forbidden
 - EIP-55 hex address validation via regex
 - Semantic version enforcement
 """
@@ -21,11 +22,11 @@ class MonetizationConfig(BaseModel):
 
     Revenue matrix::
 
-                    pay_per_task          subscription
-        worker_collab  70/25/5  (Q1)      95/0/5  (Q2)
-        direct_skill   95/0/5   (Q3)      95/0/5  (Q4)
+                        pay_per_task     subscription       buyout
+        worker_collab    70/25/5 (Q1)     95/0/5 (Q2)       ✖ 风控熔断
+        direct_skill     95/0/5  (Q3)     95/0/5 (Q4)      95/0/5 (Q5)
 
-    Platform Treasury always takes 5% across all quadrants.
+    Platform Treasury always takes 5% across all validated quadrants.
     """
 
     function_type: Literal["worker_collab", "direct_skill"] = Field(
@@ -33,18 +34,30 @@ class MonetizationConfig(BaseModel):
         description="worker_collab = network worker nodes required; "
         "direct_skill = runs on user's local machine.",
     )
-    billing_mode: Literal["pay_per_task", "subscription"] = Field(
+    billing_mode: Literal["pay_per_task", "subscription", "buyout"] = Field(
         ...,
         description="pay_per_task = metered per-execution; "
-        "subscription = flat monthly fee with daily rate limits.",
+        "subscription = flat monthly fee with daily rate limits; "
+        "buyout = perpetual/lifetime license (direct_skill only).",
     )
     rate_limit_per_day: int | None = Field(
         default=None,
         ge=1,
         le=1000000,
-        description="Daily execution cap — MANDATORY when billing_mode is 'subscription'.",
+        description="Daily execution cap — MANDATORY when billing_mode is 'subscription'; "
+        "must be None when billing_mode is 'buyout'.",
     )
 
+    # ── Circuit breaker: worker_collab + buyout ──────────────────────────
+    @model_validator(mode="after")
+    def _circuit_breaker_worker_buyout(self) -> "MonetizationConfig":
+        if self.function_type == "worker_collab" and self.billing_mode == "buyout":
+            raise ValueError(
+                "【风控熔断】Worker协作模式依赖网络算力清算，禁止采用买断制！"
+            )
+        return self
+
+    # ── Subscription must have rate_limit_per_day ────────────────────────
     @model_validator(mode="after")
     def _subscription_must_have_rate_limit(self) -> "MonetizationConfig":
         if self.billing_mode == "subscription" and self.rate_limit_per_day is None:
@@ -53,18 +66,33 @@ class MonetizationConfig(BaseModel):
             )
         return self
 
+    # ── Buyout must NOT have rate_limit_per_day ──────────────────────────
+    @model_validator(mode="after")
+    def _buyout_forbids_rate_limit(self) -> "MonetizationConfig":
+        if self.billing_mode == "buyout" and self.rate_limit_per_day is not None:
+            raise ValueError(
+                "rate_limit_per_day must be None when billing_mode is 'buyout'."
+            )
+        return self
+
     def quadrant_label(self) -> str:
-        """Return the Q1–Q4 label for this config."""
+        """Return the Q1–Q5 label for this config."""
         if self.function_type == "worker_collab" and self.billing_mode == "pay_per_task":
             return "Q1"
         if self.function_type == "worker_collab" and self.billing_mode == "subscription":
             return "Q2"
         if self.function_type == "direct_skill" and self.billing_mode == "pay_per_task":
             return "Q3"
-        return "Q4"  # direct_skill + subscription
+        if self.function_type == "direct_skill" and self.billing_mode == "subscription":
+            return "Q4"
+        return "Q5"  # direct_skill + buyout
 
     def revenue_split(self) -> dict[str, float]:
-        """Return the revenue split percentages as ``{developer, worker, platform}``."""
+        """Return the revenue split percentages as ``{developer, worker, platform}``.
+
+        Q1 (worker_collab + pay_per_task):  70% Developer / 25% Worker / 5% Platform
+        Q2–Q5:                              95% Developer /  0% Worker / 5% Platform
+        """
         if self.function_type == "worker_collab" and self.billing_mode == "pay_per_task":
             return {"developer": 70.0, "worker": 25.0, "platform": 5.0}
         return {"developer": 95.0, "worker": 0.0, "platform": 5.0}

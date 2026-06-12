@@ -19,6 +19,7 @@
 - [x] **金丝雀（Canary）反盗版水印系统** — `CanaryManager` 三层防御：ECDSA 签名 `_canary_token` 注入 → submit 时验签 + 重放检测 → `FORBIDDEN_PIRACY` 熔断 + Worker 黑名单
 - [x] **AIMS 2.0 轻量化路由与动态授权网关** — `LicensingManager`（`src/gateway/licensing.py`）单次随机种子密钥发放 + `POST /api/skills/register-metadata` 轻量化路由表（skill_id/contributor_address/encrypted_source） + `POST /api/licensing/request-key` 三道强制校验（Task 锁仓态/EIP-191 钱包归属/防重放）
 - [x] **aims-cli SDK 骨架与标准 Schema 契约** — `AIMSConfig(BaseModel)` 7 字段强校验 + `init`（交互式生成配置）+ `login`（keystore v3 加密存储）+ `publish`（Schema 熔断验证）
+- [x] **aims-cli 2×3 商业矩阵升级** — 新增 `buyout` 买断制模式（Q5），`worker_collab+buyout` 风控熔断电路，CLI init 引导 buyout 选项，publisher 审计表展示 Perpetual license
 
 ## 已完成任务清单
 

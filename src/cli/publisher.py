@@ -213,7 +213,7 @@ def _print_audit_table(
     click.echo(f"  │  Artifact:     {str(dist_zip):<43s}  │")
     click.echo(f"  │  Storage:      {storage_url:<43s}  │")
     click.echo(f"  │  Gateway:      {config.gateway_url:<43s}  │")
-    click.echo(f"  │  Rate Limit:   {'N/A' if config.monetization.rate_limit_per_day is None else str(config.monetization.rate_limit_per_day) + ' tasks/day':<43s}  │")
+    click.echo(f"  │  Rate Limit:   {_rate_limit_display(config):<43s}  │")
     click.echo(click.style("  └─────────────────────────────────────────────────────┘", bold=True))
 
 
@@ -302,3 +302,12 @@ def _human_size(bytes_: int) -> str:
             return f"{bytes_:.1f} {unit}"
         bytes_ /= 1024
     return f"{bytes_:.1f} TB"
+
+
+def _rate_limit_display(config: "AIMSConfig") -> str:  # noqa: F821
+    """Return a human-readable rate-limit string for the audit table."""
+    if config.monetization.billing_mode == "buyout":
+        return "Perpetual (buyout)"
+    if config.monetization.rate_limit_per_day is None:
+        return "N/A"
+    return f"{config.monetization.rate_limit_per_day} tasks/day"

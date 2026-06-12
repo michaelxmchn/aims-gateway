@@ -25,6 +25,10 @@
 - feat(cli): 创建 `src/cli/publisher.py` — 8 步发布管道 + ASCII 审计表（5% Platform Treasury 分账明细）
 - feat(cli): `main.py` init 命令重写为 2×2 矩阵交互，publish 命令新增 `--gateway-url`/`--entry-point`
 - chore(deps): `requirements.txt` 添加 `cryptography>=42.0,<44.0`
+- feat(cli): schema `MonetizationConfig` 2×2 → 2×3 矩阵升级，新增 `buyout` 模式 + 风控熔断断路器（worker_collab+buyout 禁止）+ Q5 `quadrant_label`
+- feat(cli): `main.py` init 命令 billing_mode 新增 `buyout` 选项，买断制跳过 rate_limit_per_day 提示
+- feat(cli): `publisher.py` 审计表新增 `_rate_limit_display()` 辅助函数，buyout 模式显示 "Perpetual (buyout)"
+- fix(cli): obfuscator.py ELF 桩 struct.pack 数量不匹配修复 — 简化 raw bytes 实现
 ### 验证
 - **正常流程**: 携带 `_canary_token` 提交 → ECDSA 验签通过 → `COMPLETED` + PoT 生成 ✓
 - **盗版检测**: 无 `_canary_token` 提交 → `FORBIDDEN_PIRACY` + Worker 拉黑 + 0 审计条目 ✓

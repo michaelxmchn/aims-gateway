@@ -32,6 +32,14 @@
 - **部署脚本硬编码 PLATFORM_OWNER**：`scripts/deploy_settlement.js` 中 `PLATFORM_OWNER = "0x08c9fd0a915f2b0856353850b8adea943f226bcf"`（Solidity `immutable`，烧入合约字节码，永久不可更改）
 - **Base 网络配置**：`hardhat.config.js` 包含 mainnet（chainId 8453）和 baseSepolia（chainId 84532）双网络，`DEPLOYER_PRIVATE_KEY` 环境变量注入
 
+### AIMS CLI Schema 2×3 商业矩阵模式
+- **MonetizationConfig 2×3 矩阵**：`function_type`（worker_collab/direct_skill）× `billing_mode`（pay_per_task/subscription/buyout），映射 Q1–Q5 象限
+  - **Q1**（worker_collab + pay_per_task）：70% Developer / 25% Worker / 5% Platform
+  - **Q2–Q5**（其他已验证组合）：95% Developer / 0% Worker / 5% Platform
+- **风控熔断（Circuit Breaker）**：`MonetizationConfig._circuit_breaker_worker_buyout()` 使用 `@model_validator(mode="after")` 检测 `worker_collab + buyout` 组合，触发 `ValueError("【风控熔断】Worker协作模式依赖网络算力清算，禁止采用买断制！")`
+- **三层校验链**：Pydantic v2 `mode="after"` 校验器按定义顺序执行 — (1) 熔断断路器 → (2) subscription 强制 rate_limit → (3) buyout 禁止 rate_limit
+- **buyout（买断制）**：仅限 `direct_skill` 使用，无需 rate_limit_per_day，代表永久/终身许可证，publisher 审计表显示 "Perpetual (buyout)"
+
 ### Hardhat 测试账户映射（关键）
 - **Account #0 (Gateway EOA)**: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` — 私钥: `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
 - **Account #1 (User)**: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` — 私钥: `0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d`
