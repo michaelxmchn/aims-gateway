@@ -216,6 +216,29 @@ def _print_audit_table(
     click.echo(f"  │  Rate Limit:   {_rate_limit_display(config):<43s}  │")
     click.echo(click.style("  └─────────────────────────────────────────────────────┘", bold=True))
 
+    # ── Free trial routing logic ────────────────────────────────────────────
+    click.echo()
+    click.echo(click.style("  ┌─────────────────────────────────────────────────────┐", bold=True))
+    click.echo(click.style("  │  Universal First-Task-Free Routing                 │", bold=True))
+    click.echo(click.style("  ├─────────────────────────────────────────────────────┤", bold=True))
+    click.echo(click.style("  │  Every wallet → 1 free call per Skill ID           │", bold=True))
+    click.echo(click.style("  │  ─────────────────────────────────────────────      │", bold=True))
+    click.echo(f"  │  Mode:         {config.monetization.billing_mode:<35s}  │")
+    click.echo(click.style("  │  Routing:                                           │", bold=True))
+    if config.monetization.billing_mode == "pay_per_task":
+        click.echo(click.style("  │  1st call  → FREE (trial)                            │", fg="green"))
+        click.echo(click.style("  │  2nd+ call → PAY_PER_TASK (balance check enforced)   │", fg="yellow"))
+    elif config.monetization.billing_mode == "subscription":
+        click.echo(click.style("  │  1st call  → FREE (trial)                            │", fg="green"))
+        click.echo(click.style("  │  2nd+ call → SUBSCRIPTION_REQUIRED (rate-limited)    │", fg="yellow"))
+    elif config.monetization.billing_mode == "buyout":
+        click.echo(click.style("  │  1st call  → FREE (trial)                            │", fg="green"))
+        click.echo(click.style("  │  2nd+ call → BUYOUT_REQUIRED (perpetual license)     │", fg="yellow"))
+    click.echo(click.style("  │                                                   │"))
+    click.echo(click.style("  │  Hard lockout: 2nd call aborts with 402 + billing │", bold=True))
+    click.echo(click.style("  │  prompt if no active payment proof detected.     │"))
+    click.echo(click.style("  └─────────────────────────────────────────────────────┘", bold=True))
+
 
 # ── Internal helpers ────────────────────────────────────────────────────────
 
@@ -261,6 +284,11 @@ def _register_metadata(
         "skill_id": config.skill_id,
         "contributor_address": config.developer_wallet,
         "encrypted_source": storage_url,
+        "monetization": {
+            "function_type": config.monetization.function_type,
+            "billing_mode": config.monetization.billing_mode,
+            "rate_limit_per_day": config.monetization.rate_limit_per_day,
+        },
     }
     body_bytes = json.dumps(body, separators=(",", ":")).encode()
 

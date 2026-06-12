@@ -40,6 +40,18 @@
 - **三层校验链**：Pydantic v2 `mode="after"` 校验器按定义顺序执行 — (1) 熔断断路器 → (2) subscription 强制 rate_limit → (3) buyout 禁止 rate_limit
 - **buyout（买断制）**：仅限 `direct_skill` 使用，无需 rate_limit_per_day，代表永久/终身许可证，publisher 审计表显示 "Perpetual (buyout)"
 
+### Universal First-Task-Free PLG 协议
+- **硬编码协议标准**：`AIMSConfig.enable_universal_free_trial` 通过 `@field_validator("enable_universal_free_trial")` 强制为 `True`，拒绝任何设置 `False` 的尝试
+- **FreeTrialManager**（`src/gateway/trial.py`）：按 `(wallet_lower, skill_id)` 存储 `trial:{wallet}:{skill_id}` → int 使用计数器
+  - `is_trial_eligible()`：使用量 < 1 返回 True
+  - `consume_trial()`：原子递增，首次调用后在 `/api/run` 中触发
+  - `enforce()`：统一入口 — 首次免费 → 计次；二次 → 按 billing_mode 验证支付证明；未通过 → `FreeTrialError` → HTTP 402
+- **三种解锁模式**：
+  - `pay_per_task`：二次之后由 `BillingEngine` 余额检查进行支付验证
+  - `subscription`：`subscription:{wallet}:{skill_id}` → `{expires_at, ts}`，`time.time() < expires_at` 为有效
+  - `buyout`：`buyout:{wallet}:{skill_id}` → `{purchased: True, ts}`，永久有效
+- **网关集成**：`/api/run` 在 manifest 查找之后、余额检查之前插入 `_trial_manager.enforce()`，首次调用跳过余额检查（日志记录 `Free trial granted`）；`register_skill_metadata` 接受可选的 `monetization` 字典，持久化到 `skill:metadata:{skill_id}`；新增 `_get_skill_billing_mode()` 从存储中读取 billingMode，缺失时默认 `pay_per_task`
+
 ### Hardhat 测试账户映射（关键）
 - **Account #0 (Gateway EOA)**: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` — 私钥: `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
 - **Account #1 (User)**: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` — 私钥: `0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d`

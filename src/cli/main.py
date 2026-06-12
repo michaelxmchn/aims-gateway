@@ -72,6 +72,18 @@ def init(force: bool) -> None:
     click.echo(REVENUE_MATRIX_HELP.strip())
     click.echo("─" * 50)
 
+    # ── 0. Universal free trial policy notice ─────────────────────────
+    click.echo()
+    click.echo(click.style("✦ Universal First-Task-Free Policy", bold=True, fg="cyan"))
+    click.echo(
+        "  Every unique consumer wallet receives exactly ONE (1) free execution\n"
+        "  per Skill ID, regardless of function_type or billing_mode. On the 2nd\n"
+        "  call, the gateway enforces hard lockout until payment proof is detected.\n"
+        "  This is a hardcoded AIMS Protocol standard — it cannot be disabled."
+    )
+    click.echo("─" * 50)
+    click.echo()
+
     # ── 1. Monetization matrix ──────────────────────────────────────────
     function_type = click.prompt(
         "Function type",

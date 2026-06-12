@@ -28,6 +28,7 @@ from src.chain.nonce_manager import NonceManager
 from src.chain.pot import POTManager
 from src.gateway.canary import CanaryManager
 from src.gateway.licensing import LicensingManager
+from src.gateway.trial import FreeTrialManager
 from src.gateway.broker import TaskBroker
 from src.gateway.skill_store import SkillStore, SkillStoreError
 from src.gateway.storage import Storage
@@ -89,6 +90,9 @@ if AIMS_GATEWAY_PRIVATE_KEY:
 _licensing_manager = None
 if AIMS_GATEWAY_PRIVATE_KEY:
     _licensing_manager = LicensingManager(storage, AIMS_GATEWAY_PRIVATE_KEY)
+
+# Universal First-Task-Free trial enforcement
+_trial_manager = FreeTrialManager(storage)
 
 # Lazy-init contract via ChainSettlement (InMemory or Web3 based on env)
 from src.chain.contract_client import Web3SettlementContract
@@ -437,6 +441,10 @@ class RegisterMetadataRequest(BaseModel):
         ..., min_length=1, max_length=2048,
         description="Encrypted download URL or IPFS CID for the skill source",
     )
+    monetization: dict[str, Any] | None = Field(
+        default=None,
+        description="Optional monetization config: {function_type, billing_mode, rate_limit_per_day}",
+    )
 
 
 class RegisterMetadataResponse(BaseModel):
@@ -473,6 +481,22 @@ async def _run_in_thread(fn, *args, **kwargs):
     """Run a synchronous function in a thread pool so we don't block the event loop."""
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, lambda: fn(*args, **kwargs))
+
+
+def _get_skill_billing_mode(skill_id: str) -> str:
+    """Look up the billing mode from registered skill metadata.
+
+    Returns ``"pay_per_task"`` as the default if no monetization info has
+    been stored (backwards-compatible fallback).
+    """
+    meta_key = f"skill:metadata:{skill_id}"
+    meta = storage.get(meta_key)
+    if meta is None:
+        return "pay_per_task"
+    monetization = meta.get("monetization")
+    if not isinstance(monetization, dict):
+        return "pay_per_task"
+    return monetization.get("billing_mode", "pay_per_task")
 
 
 # ── Admin / test-only endpoints (no signature required) ────────────────────
@@ -1069,13 +1093,20 @@ async def register_skill_metadata(req: RegisterMetadataRequest):
             status_code=409,
             detail=f"Metadata for skill '{req.skill_id}' already registered",
         )
-    storage.set(meta_key, {
+    meta = {
         "skill_id": req.skill_id,
         "contributor_address": req.contributor_address,
         "encrypted_source": req.encrypted_source,
         "ts": time.time(),
-    })
-    logger.info("Metadata registered: skill=%s contributor=%s", req.skill_id, req.contributor_address)
+    }
+    if req.monetization:
+        meta["monetization"] = req.monetization
+    storage.set(meta_key, meta)
+    logger.info(
+        "Metadata registered: skill=%s contributor=%s billing_mode=%s",
+        req.skill_id, req.contributor_address,
+        (req.monetization or {}).get("billing_mode", "unknown"),
+    )
     return RegisterMetadataResponse(status="ok", skill_id=req.skill_id)
 
 
@@ -1198,23 +1229,43 @@ async def run_skill(req: RunRequest):
         elif expected_type == "boolean" and not isinstance(val, bool):
             raise HTTPException(status_code=400, detail=f"{prop_name}: expected boolean, got {type(val).__name__}")
 
-    # ── 3. Check on-chain balance (early exit) ──────────────────────────
-    local_bal = _local_deposits.get(req.user_id, 0) if _is_web3_mode else 0
-    credit_balance = await _run_in_thread(
-        billing.check_user_balance, req.user_id, local_bal,
-    )
-    if credit_balance < BillingEngine.COST_PER_TASK_USDC:
-        required_str = f"{BillingEngine.COST_PER_TASK_USDC / 10**6:.6f}"
-        balance_str = f"{credit_balance / 10**6:.6f}"
-        raise HTTPException(
-            status_code=402,
-            detail=(
-                f"Insufficient USDC balance. Required: {required_str}, "
-                f"balance: {balance_str}"
-            ),
+    # ── 3. Universal First-Task-Free trial enforcement (before balance) ──
+    billing_mode = _get_skill_billing_mode(req.skill_id)
+    try:
+        _trial_manager.enforce(
+            wallet=req.user_id,
+            skill_id=req.skill_id,
+            billing_mode=billing_mode,
+        )
+    except FreeTrialError as exc:
+        raise HTTPException(status_code=402, detail=str(exc))
+
+    # ── 4. Check on-chain balance (skip for first free trial) ───────────
+    trial_count = _trial_manager.get_usage_count(req.user_id, req.skill_id)
+    on_free_trial = (trial_count == 1)  # just consumed the trial above
+
+    if not on_free_trial:
+        local_bal = _local_deposits.get(req.user_id, 0) if _is_web3_mode else 0
+        credit_balance = await _run_in_thread(
+            billing.check_user_balance, req.user_id, local_bal,
+        )
+        if credit_balance < BillingEngine.COST_PER_TASK_USDC:
+            required_str = f"{BillingEngine.COST_PER_TASK_USDC / 10**6:.6f}"
+            balance_str = f"{credit_balance / 10**6:.6f}"
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    f"Insufficient USDC balance. Required: {required_str}, "
+                    f"balance: {balance_str}"
+                ),
+            )
+    else:
+        logger.info(
+            "Free trial granted: wallet=%s skill=%s (1st call, billing_mode=%s)",
+            req.user_id, req.skill_id, billing_mode,
         )
 
-    # ── 3b. Budget control: max_fee vs minimum pipeline cost ────────────
+    # ── 5. Budget control: max_fee vs minimum pipeline cost ────────────
     num_steps = len(req.pipeline) if req.pipeline else 1
     min_cost_atomic = BillingEngine.COST_PER_TASK_USDC * num_steps
     max_budget_atomic = int(round(req.max_budget * 10**6))
@@ -1228,18 +1279,18 @@ async def run_skill(req: RunRequest):
             ),
         )
 
-    # ── 4. Auto-seed MockLedger if new wallet (dev/test mode) ────────────────
+    # ── 6. Auto-seed MockLedger if new wallet (dev/test mode) ────────────────
     usdt_balance = await _run_in_thread(ledger.get_user_usdt, req.user_id)
     if usdt_balance < 1.0:
         await _run_in_thread(ledger.seed_usdt, req.user_id, 50.0)
         logger.info("Auto-seeded MockLedger %s with 50.0 USDT (dev mode)", req.user_id)
 
-    # ── 5. Inject canary watermark into task params ──────────────────────────
+    # ── 7. Inject canary watermark into task params ──────────────────────────
     if _canary_manager is not None:
         _canary_token = _canary_manager.generate_token()
         req.params["_canary_token"] = _canary_token
 
-    # ── 6. Create escrow & publish task ──────────────────────────────────────
+    # ── 8. Create escrow & publish task ──────────────────────────────────────
     task_id = await _run_in_thread(
         broker.publish_task,
         user_id=req.user_id,

@@ -20,6 +20,7 @@
 - [x] **AIMS 2.0 轻量化路由与动态授权网关** — `LicensingManager`（`src/gateway/licensing.py`）单次随机种子密钥发放 + `POST /api/skills/register-metadata` 轻量化路由表（skill_id/contributor_address/encrypted_source） + `POST /api/licensing/request-key` 三道强制校验（Task 锁仓态/EIP-191 钱包归属/防重放）
 - [x] **aims-cli SDK 骨架与标准 Schema 契约** — `AIMSConfig(BaseModel)` 7 字段强校验 + `init`（交互式生成配置）+ `login`（keystore v3 加密存储）+ `publish`（Schema 熔断验证）
 - [x] **aims-cli 2×3 商业矩阵升级** — 新增 `buyout` 买断制模式（Q5），`worker_collab+buyout` 风控熔断电路，CLI init 引导 buyout 选项，publisher 审计表展示 Perpetual license
+- [x] **Universal First-Task-Free PLG 协议** — `AIMSConfig.enable_universal_free_trial` 硬编码 True 强制执行，`FreeTrialManager` 按 (wallet, skill_id) 追踪使用量 + 硬锁 402，`/api/run` 首次免费跳过余额检查，二次按模式（pay_per_task/subscription/buyout）验证支付证明，publisher 审计表展示路由逻辑
 
 ## 已完成任务清单
 

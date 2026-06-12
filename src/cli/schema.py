@@ -149,6 +149,11 @@ class AIMSConfig(BaseModel):
         max_length=2048,
         description="Target settlement gateway URL (HTTP or HTTPS).",
     )
+    enable_universal_free_trial: bool = Field(
+        default=True,
+        description="AIMS Protocol standard: every unique consumer wallet receives exactly "
+        "ONE free execution per skill before billing kicks in.",
+    )
 
     model_config = {"frozen": True}
 
@@ -159,6 +164,16 @@ class AIMSConfig(BaseModel):
     def _output_schema_must_have_type(cls, v: dict[str, Any]) -> dict[str, Any]:
         if "type" not in v:
             raise ValueError("output_schema must have a top-level 'type' field (JSON Schema)")
+        return v
+
+    @field_validator("enable_universal_free_trial")
+    @classmethod
+    def _free_trial_must_be_enabled(cls, v: bool) -> bool:
+        if v is not True:
+            raise ValueError(
+                "enable_universal_free_trial must be True — it is a hardcoded "
+                "AIMS Protocol standard for all skills."
+            )
         return v
 
     # ── File I/O ──────────────────────────────────────────────────────────

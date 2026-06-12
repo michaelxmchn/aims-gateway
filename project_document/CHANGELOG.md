@@ -29,6 +29,11 @@
 - feat(cli): `main.py` init 命令 billing_mode 新增 `buyout` 选项，买断制跳过 rate_limit_per_day 提示
 - feat(cli): `publisher.py` 审计表新增 `_rate_limit_display()` 辅助函数，buyout 模式显示 "Perpetual (buyout)"
 - fix(cli): obfuscator.py ELF 桩 struct.pack 数量不匹配修复 — 简化 raw bytes 实现
+- feat(cli): schema `AIMSConfig` 新增 `enable_universal_free_trial` 字段，强制 validator 锁定为 True
+- feat(cli): `main.py` init 新增 "Universal First-Task-Free Policy" 协议展示
+- feat(cli): `publisher.py` 审计表新增 "Universal First-Task-Free Routing" 路由逻辑面板，register-metadata body 带 monetization 字段
+- feat(gateway): 创建 `src/gateway/trial.py` — `FreeTrialManager` 按 (wallet, skill_id) 追踪使用量，支持 trial/subscription/buyout 三种模式支付证明验证，FreeTrialError 异常抛出 402 锁断
+- feat(gateway): `server.py` `/api/run` 集成 trial 检查 — 第 1 次调用免费跳过余额验证，第 2+ 次按 billing_mode 验证支付证明；`register_skill_metadata` 接受并持久化 monetization 配置；新增 `_get_skill_billing_mode()` 辅助函数
 ### 验证
 - **正常流程**: 携带 `_canary_token` 提交 → ECDSA 验签通过 → `COMPLETED` + PoT 生成 ✓
 - **盗版检测**: 无 `_canary_token` 提交 → `FORBIDDEN_PIRACY` + Worker 拉黑 + 0 审计条目 ✓
