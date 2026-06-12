@@ -28,13 +28,13 @@ from src.chain.nonce_manager import NonceManager
 from src.chain.pot import POTManager
 from src.gateway.canary import CanaryManager
 from src.gateway.licensing import LicensingManager
-from src.gateway.trial import FreeTrialManager
+from src.gateway.trial import FreeTrialManager, FreeTrialError
 from src.gateway.broker import TaskBroker
 from src.gateway.skill_store import SkillStore, SkillStoreError
 from src.gateway.storage import Storage
 from src.ledger.mock_counter import MockLedger
 from src.skills.registry import SkillRegistry
-from src.gateway.billing import BillingEngine
+from src.gateway.billing import BillingEngine, CommerceEngine, BillingMode, RevenuePhase, USDC_UNIT
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +111,14 @@ billing = BillingEngine(
     gateway_address=os.getenv("AIMS_GATEWAY_ADDRESS", ""),
     gateway_signing_key=AIMS_GATEWAY_PRIVATE_KEY,
     contract_client=_contract,
+    pot_manager=pot_manager,
+)
+
+# AIMS 2.0 Commerce Engine — multi-mode billing orchestration
+commerce = CommerceEngine(
+    storage=storage,
+    trial_manager=_trial_manager,
+    billing=billing,
     pot_manager=pot_manager,
 )
 
@@ -460,6 +468,61 @@ class LicenseKeyResponse(BaseModel):
     task_id: str
     seed: str
     status: str
+
+
+# ── AIMS 2.0 Commerce Matrix models ─────────────────────────────────────
+
+
+class PurchaseSubscriptionRequest(BaseModel):
+    skill_id: str = Field(..., min_length=1, max_length=64)
+
+
+class PurchaseBuyoutRequest(BaseModel):
+    skill_id: str = Field(..., min_length=1, max_length=64)
+
+
+class PurchaseResponse(BaseModel):
+    status: str
+    amount_atomic: int = 0
+    amount_usdc: float = 0.0
+    expires_at: float | None = None
+    error: str = ""
+
+
+class SetPricingRequest(BaseModel):
+    skill_id: str = Field(..., min_length=1, max_length=64)
+    per_task_atomic: int | None = None
+    subscription_monthly_atomic: int | None = None
+    buyout_license_atomic: int | None = None
+
+
+class SetRevenuePhaseRequest(BaseModel):
+    phase: str = Field(..., pattern=r"^(q1|q2_q5)$")
+
+
+class SeedPlgPoolRequest(BaseModel):
+    amount_atomic: int = Field(..., gt=0)
+
+
+class CommercePricingResponse(BaseModel):
+    skill_id: str
+    billing_mode: str
+    per_task_atomic: int
+    per_task_usdc: float
+    subscription_monthly_atomic: int
+    subscription_monthly_usdc: float
+    buyout_license_atomic: int
+    buyout_license_usdc: float
+
+
+class PoolStatusResponse(BaseModel):
+    subscription_pool_atomic: int
+    subscription_pool_usdc: float
+    buyout_pool_atomic: int
+    buyout_pool_usdc: float
+    plg_subsidy_pool_atomic: int
+    plg_subsidy_pool_usdc: float
+    revenue_phase: str
 
 
 # ── Static capability definitions (for discovery endpoint) ───────────────
@@ -846,23 +909,37 @@ async def submit_task(req: SubmitRequest):
 
     await _run_in_thread(broker.complete_task, req.task_id, "SUCCESS", detail)
 
-    # ── 6. On-chain settlement & PoT generation ───────────────────────
+    # ── 6. Mode-aware settlement via Commerce Engine ──────────────────
     pot_sig: str | None = None
-    # Use the locked worker address from broker storage (not self-reported)
-    # to prevent worker-address tampering in the settlement flow.
     locked_worker = claimed_worker
+    billing_mode = _get_skill_billing_mode(skill_id)
+    trial_count = _trial_manager.get_usage_count(task_meta.user_id, skill_id)
+    is_free_trial = (trial_count == 1)
+
     settlement = await _run_in_thread(
-        billing.request_settlement,
+        commerce.charge_and_settle,
         req.task_id,
         task_meta.user_id,
         locked_worker,
         skill_id,
+        billing_mode=billing_mode,
+        is_free_trial=is_free_trial,
     )
     if settlement.get("status") == "COMPLETED":
         pot = settlement.get("pot")
         if pot is not None:
-            pot_sig = pot.signature
+            if hasattr(pot, "signature"):
+                pot_sig = pot.signature
+            elif isinstance(pot, dict):
+                pot_sig = pot.get("signature", "")
+            else:
+                pot_sig = str(pot)
             await _run_in_thread(broker.set_pot_signature, req.task_id, pot_sig)
+
+        # Track consumer spend for metered mode
+        if billing_mode == BillingMode.PAY_PER_TASK and not is_free_trial:
+            amount = settlement.get("amount", billing.COST_PER_TASK_USDC)
+            await _run_in_thread(commerce.record_consumer_spend, task_meta.user_id, skill_id, amount)
 
     return SubmitResponse(
         task_id=req.task_id,
@@ -1180,7 +1257,177 @@ async def request_license_key(req: LicenseKeyRequest, request: Request):
     )
 
 
-@app.get("/api/skills/{skill_id}/logic")
+# ═══════════════════════════════════════════════════════════════════════════════
+# AIMS 2.0 Commerce Matrix Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@app.post("/api/commerce/subscription", response_model=PurchaseResponse)
+async def purchase_subscription(req: PurchaseSubscriptionRequest, request: Request):
+    """Purchase a monthly subscription pass for a skill.
+
+    Deducts the subscription price from the consumer's on-chain balance
+    and activates a 30-day pass.  Subsequent invocations within the
+    subscription period draw from the subscription pool rather than the
+    consumer's individual balance.
+    """
+    wallet_address = (
+        request.headers.get("X-Wallet-Address")
+        or request.headers.get("X-User-ID")
+        or ""
+    )
+    if not wallet_address:
+        raise HTTPException(status_code=403, detail="Missing wallet address header")
+
+    result = await _run_in_thread(
+        commerce.purchase_subscription, wallet_address, req.skill_id, _contract,
+    )
+    if result["status"] == "FAILED":
+        raise HTTPException(status_code=402, detail=result["error"])
+
+    return PurchaseResponse(
+        status=result["status"],
+        amount_atomic=result["amount_atomic"],
+        amount_usdc=result["amount_atomic"] / USDC_UNIT,
+        expires_at=result.get("expires_at"),
+    )
+
+
+@app.post("/api/commerce/buyout", response_model=PurchaseResponse)
+async def purchase_buyout(req: PurchaseBuyoutRequest, request: Request):
+    """Purchase a perpetual buyout license for a skill.
+
+    One-time USDC payment grants unlimited lifetime access to the skill.
+    Subsequent invocations draw from the buyout pool (only worker bandwidth
+    and platform tax apply).
+    """
+    wallet_address = (
+        request.headers.get("X-Wallet-Address")
+        or request.headers.get("X-User-ID")
+        or ""
+    )
+    if not wallet_address:
+        raise HTTPException(status_code=403, detail="Missing wallet address header")
+
+    result = await _run_in_thread(
+        commerce.purchase_buyout, wallet_address, req.skill_id, _contract,
+    )
+    if result["status"] == "FAILED":
+        raise HTTPException(status_code=402, detail=result["error"])
+
+    return PurchaseResponse(
+        status=result["status"],
+        amount_atomic=result["amount_atomic"],
+        amount_usdc=result["amount_atomic"] / USDC_UNIT,
+    )
+
+
+@app.get("/api/commerce/pricing/{skill_id}", response_model=CommercePricingResponse)
+async def skill_pricing(skill_id: str):
+    """Return pricing for all three billing modes for a skill."""
+    pricing = commerce.get_skill_pricing(skill_id)
+    billing_mode = _get_skill_billing_mode(skill_id)
+    return CommercePricingResponse(
+        skill_id=skill_id,
+        billing_mode=billing_mode,
+        per_task_atomic=pricing["per_task_atomic"],
+        per_task_usdc=pricing["per_task_atomic"] / USDC_UNIT,
+        subscription_monthly_atomic=pricing["subscription_monthly_atomic"],
+        subscription_monthly_usdc=pricing["subscription_monthly_atomic"] / USDC_UNIT,
+        buyout_license_atomic=pricing["buyout_license_atomic"],
+        buyout_license_usdc=pricing["buyout_license_atomic"] / USDC_UNIT,
+    )
+
+
+@app.get("/api/commerce/pools", response_model=PoolStatusResponse)
+async def pool_status():
+    """Return current pool balances for subscription, buyout, and PLG subsidy."""
+    phase = commerce.get_revenue_phase().value
+    return PoolStatusResponse(
+        subscription_pool_atomic=commerce._subscription_pool(),
+        subscription_pool_usdc=commerce._subscription_pool() / USDC_UNIT,
+        buyout_pool_atomic=commerce._buyout_pool(),
+        buyout_pool_usdc=commerce._buyout_pool() / USDC_UNIT,
+        plg_subsidy_pool_atomic=commerce._plg_pool(),
+        plg_subsidy_pool_usdc=commerce._plg_pool() / USDC_UNIT,
+        revenue_phase=phase,
+    )
+
+
+@app.get("/api/commerce/phase")
+async def revenue_phase():
+    """Return the current revenue split phase (q1 = 70/25/5, q2_q5 = 95/0/5)."""
+    phase = commerce.get_revenue_phase()
+    dev_bps, worker_bps, treasury_bps = commerce._split_bps()
+    return {
+        "phase": phase.value,
+        "developer_pct": dev_bps / 100,
+        "worker_pct": worker_bps / 100,
+        "treasury_pct": treasury_bps / 100,
+    }
+
+
+@app.post("/api/commerce/phase")
+async def set_revenue_phase(req: SetRevenuePhaseRequest):
+    """Switch revenue split phase (admin)."""
+    commerce.set_revenue_phase(req.phase)
+    dev_bps, worker_bps, treasury_bps = commerce._split_bps()
+    logger.info("Revenue phase set to %s", req.phase)
+    return {
+        "status": "ok",
+        "phase": req.phase,
+        "developer_pct": dev_bps / 100,
+        "worker_pct": worker_bps / 100,
+        "treasury_pct": treasury_bps / 100,
+    }
+
+
+@app.post("/api/commerce/pricing", response_model=CommercePricingResponse)
+async def set_skill_pricing(req: SetPricingRequest):
+    """Set custom pricing for a skill (admin)."""
+    commerce.set_skill_pricing(
+        req.skill_id,
+        per_task_atomic=req.per_task_atomic,
+        subscription_monthly_atomic=req.subscription_monthly_atomic,
+        buyout_license_atomic=req.buyout_license_atomic,
+    )
+    pricing = commerce.get_skill_pricing(req.skill_id)
+    billing_mode = _get_skill_billing_mode(req.skill_id)
+    return CommercePricingResponse(
+        skill_id=req.skill_id,
+        billing_mode=billing_mode,
+        per_task_atomic=pricing["per_task_atomic"],
+        per_task_usdc=pricing["per_task_atomic"] / USDC_UNIT,
+        subscription_monthly_atomic=pricing["subscription_monthly_atomic"],
+        subscription_monthly_usdc=pricing["subscription_monthly_atomic"] / USDC_UNIT,
+        buyout_license_atomic=pricing["buyout_license_atomic"],
+        buyout_license_usdc=pricing["buyout_license_atomic"] / USDC_UNIT,
+    )
+
+
+@app.post("/api/commerce/seed-plg", response_model=dict)
+async def seed_plg_pool(req: SeedPlgPoolRequest):
+    """Seed the PLG subsidy pool from treasury (admin)."""
+    new_balance = commerce.seed_plg_pool(req.amount_atomic)
+    return {
+        "status": "ok",
+        "added_atomic": req.amount_atomic,
+        "added_usdc": req.amount_atomic / USDC_UNIT,
+        "new_pool_balance_atomic": new_balance,
+        "new_pool_balance_usdc": new_balance / USDC_UNIT,
+    }
+
+
+@app.get("/api/commerce/spend/{wallet}/{skill_id}")
+async def consumer_spend(wallet: str, skill_id: str):
+    """Return cumulative consumer spend for (wallet, skill_id)."""
+    total_atomic = commerce.get_consumer_spend(wallet, skill_id)
+    return {
+        "wallet": wallet,
+        "skill_id": skill_id,
+        "total_spent_atomic": total_atomic,
+        "total_spent_usdc": total_atomic / USDC_UNIT,
+    }
 async def serve_logic(skill_id: str):
     """Serve the ``logic.py`` source for a dynamically uploaded skill.
 

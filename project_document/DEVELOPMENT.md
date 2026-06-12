@@ -23,6 +23,7 @@
 - [x] **Universal First-Task-Free PLG 协议** — `AIMSConfig.enable_universal_free_trial` 硬编码 True 强制执行，`FreeTrialManager` 按 (wallet, skill_id) 追踪使用量 + 硬锁 402，`/api/run` 首次免费跳过余额检查，二次按模式（pay_per_task/subscription/buyout）验证支付证明，publisher 审计表展示路由逻辑
 - [x] **前端 AIMS 2.0 全量重写 — 4 文件**：`static/index.html`（着陆页，70/25/5 分账 + PLG + 3 角色 + Commerce Matrix）、`static/docs.html`（开发者文档，aims-cli 工具链 + 8 步 DRM 管道）、`static/console.html`（Web3 面板，6 步管道 + 计费模式选择器 + 试用追踪）、`project_document/WEBSITE_COPY.md`（文案同步 11 节）
 - [x] **前端 Phase 2 三大功能升级**：`static/index.html` 新增全球实时结算大屏（高频滚动 Settlement Feed + AI Judge 评分 + 70/25/5 分账实时流）、Google/Apple 社交登录入口、SLA 争议仲裁保障（80/100 阈值 + 自动 100% 退款）；`static/console.html` 新增结算流面板 + 社交登录 + SLA 强化文案
+- [x] **Phase 5: Commerce Matrix 多维计费契约** — `src/gateway/billing.py` 重构：新增 `CommerceEngine` 多模式结算路由（pay_per_task/subscription/buyout），`RevenuePhase` 收入分配合约切换（Q1 70/25/5 ↔ Q2-Q5 95/0/5），PLG 国库补贴池，定价系统；`src/gateway/server.py` 新增 8 个 `/api/commerce/*` 端点（Subscription/Buyout 购买、定价查询、收入阶段切换、Pool 状态、PLG Seed）
 
 ## 已完成任务清单
 

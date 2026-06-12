@@ -182,6 +182,18 @@ A: 待补充
 - **`skills/uploaded/{skill_id}/logic.py`**：`SkillStore` 从 `skills/uploaded/` 目录读取逻辑脚本，通过 `GET /api/skills/{skill_id}/logic` 分发给 Worker
 - **`get_logic_source()`** 查找 `UPLOAD_BASE / skill_id / logic.py`（`skills/uploaded/{skill_id}/logic.py`），不存在则返回 404
 - **内置 skill 补充**：`test_skill` 等内置 skill 默认无 `logic.py`，需在 `skills/uploaded/test_skill/` 手动创建并注册 manifest 到 Storage。`logic.py` 只需实现 `run(params, user_id, task_id) → dict` 接口，Worker 运行时动态加载调用
+
+### AIMS 2.0 Commerce Matrix 多维计费模式
+- **三种计费契约映射**：`CommerceEngine`（`src/gateway/billing.py`）实现 Mode-aware 结算路由
+  - **Metered (pay_per_task)**：每次调用扣除消费者链上余额（默认 0.05 USDC），走原 `BillingEngine.request_settlement()` 路径 → `InMemorySettlementContract.settle_task()` 70/25/5 分账
+  - **Subscription (订阅)**：`purchase_subscription()` 从消费者余额扣月费（默认 2.0 USDC），入 `pool:subscription` 池，每次调用从池中支付 Worker 带宽费（0.005 USDC）和开发者分成
+  - **Buyout (买断)**：`purchase_buyout()` 从消费者余额扣终身授权费（默认 50.0 USDC），入 `pool:buyout` 池，每次调用仅支付 Worker 带宽费 + 平台税
+- **RevenuePhase 收入分配合约**：`RevenuePhase` 枚举 `Q1`(70/25/5) / `Q2_Q5`(95/0/5)，通过 `POST /api/commerce/phase` 切换，`_split_bps()` 返回对应 BPS 三元组
+- **PLG 首单免费补贴池**：`pool:plg` 命名空间，首次调用由国库种子基金（`POST /api/commerce/seed-plg` 注入）支付 70/25/5 全部分账；池耗尽时 fallback 到 Treasury
+- **Pool 风险管理**：Subscription/Buyout 池余额不足时返回 `InsufficientPoolBalance` 错误 + 审计记录 `pool_shortfall`，防止负余额扣划
+- **定价系统**：`skill:pricing:{skill_id}` 存储每种计费模式的单价（atomic units），未配置时使用 `DEFAULT_*` 默认值
+- **消费者支出追踪**：`consumer:spend:{wallet}:{skill_id}` 记录累计消费 USDC 原子单位，通过 `GET /api/commerce/spend/{wallet}/{skill_id}` 查询
+- **API 端点布局**：`/api/commerce/subscription`(POST)、`/api/commerce/buyout`(POST)、`/api/commerce/pricing/{skill_id}`(GET)、`/api/commerce/pricing`(POST)、`/api/commerce/pools`(GET)、`/api/commerce/phase`(GET/POST)、`/api/commerce/seed-plg`(POST)、`/api/commerce/spend/{wallet}/{skill_id}`(GET)
 - **`SkillStore.register()`**：通过 `storage.dict_set(MANIFEST_NS, skill_id, manifest)` 注册 manifest，路径存在即可被 `serve_logic` 端点发现
 
 ### InMemoryContract 模块级单例模式

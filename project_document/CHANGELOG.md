@@ -11,6 +11,11 @@
 - feat(frontend): `static/docs.html` — 全量重写开发者文档，增加 aims-cli 工具链 3 节（init/login/publish 8 步 DRM）、Revenue Split 表 Q1/Q2-Q5、Billing Modes 表、API 端点表新增 register-metadata/request-key、FAQ 更新
 - feat(frontend): `static/console.html` — PLG 全功能升级，Auth→Free Trial Check→Balance Check→Execution→PoT→Settlement 6 步管道、Billing Mode 选择器（Metered/Subscription/Buyout/Free Trial）、Trial 追踪（usedTrials + 402 弹窗 "Use Free Trial"）、PLG Badge `★ 1 Free Trial / Skill`
 - feat(docs): `project_document/WEBSITE_COPY.md` — 全量重写同步 HTML 文案，11 节覆盖 Hero、价值主张、3 角色、4 优势、How It Works、PLG、Commerce Matrix、Agent 集成、Policy、aims-cli 工具链、技术规格
+### 重构
+- refactor(gateway): `src/gateway/billing.py` — 全量重构，新增 `CommerceEngine` 类实现多维计费结算路由（Metered/Subscription/Buyout 三种模式），`RevenuePhase` 收入分配合约枚举（Q1 70/25/5 ↔ Q2-Q5 95/0/5），PLG 国库补贴池（`pool:plg`），按 skill 定价系统，Subscription/Buyout Pool 资金池管理，消费者支出追踪
+### 新增
+- feat(gateway): `server.py` — 新增 8 个 `/api/commerce/*` 端点：`POST /api/commerce/subscription`（订阅购买）、`POST /api/commerce/buyout`（买断购买）、`GET /api/commerce/pricing/{skill_id}`（定价查询）、`POST /api/commerce/pricing`（定价设置）、`GET /api/commerce/pools`（池余额）、`GET/POST /api/commerce/phase`（收入阶段查询/切换）、`POST /api/commerce/seed-plg`（PLG 国库种子）、`GET /api/commerce/spend/{wallet}/{skill_id}`（消费追踪）
+- feat(gateway): `server.py` — `submit_task` 结算路径迁移至 `commerce.charge_and_settle()`，支持模式感知的 PoT 生成；`FreeTrialError` 导入补全
 ### 修改
 - feat(frontend): `static/index.html` — 新增全球实时结算大屏（高频滚动 Bloomberg 风格 Settlement Feed，AI Judge 评分 + 70/25/5 分账实时流）、Google/Apple 社交登录按钮（Coming Soon）、SLA 争议仲裁保障（80/100 LLM-as-a-Judge 阈值 + 自动全额退款）、Advantage 04 重命名为 Cryptographic SLA Dispute Escrow
 - feat(frontend): `static/console.html` — 新增控制台实时结算流面板、Google/Apple Web2 登录按钮（钱包区域）、SLA 保障文案强化、结算 Mock 数据流动态推送
