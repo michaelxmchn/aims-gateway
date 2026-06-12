@@ -69,6 +69,49 @@
 - **Developer PoT**：显式传入 `?party=0xDeveloperAddress` 获取 70% 份额的 Developer PoT
 - **PoT 存储 key**：`chain:pot:{task_id}:{party_address_lower}`，首次无参数调用会回退到 legacy key `chain:pot:{task_id}`（已弃用）
 
+### 金丝雀（Canary）反盗版水印模式
+- **`CanaryManager`**（`src/gateway/canary.py`）：ECDSA 签名水印系统，用于检测和阻止盗版 Worker 骗取结算
+- **Token 生成**：`generate_token()` 产生 `canary:<timestamp_ms>:<random_hex>:<hex_signature>` 格式的 ECDSA 签名令牌，使用网关私钥签署 `keccak256()` 哈希
+- **注入时机**：`POST /api/run` 在调用 `broker.publish_task()` 前将 `_canary_token` 注入 `req.params`，发布后调用 `record_task()` 持久化
+- **Worker 透传**：Skill `logic.py` 需从 `params` 读取 `_canary_token` 并写入 `result_data`，以确保合法 Worker 携带水印返回
+- **验证门**：`POST /api/tasks/submit` 在 JSON Schema 验证前调用 `verify_token()`，执行 ECDSA 签名恢复比对 + 重放检查
+- **盗版熔断流程**：`MISSING_CANARY_TOKEN` / `CANARY_TOKEN_MISMATCH` / `CANARY_BAD_SIGNATURE` / `CANARY_REPLAY_ATTACK` → `FORBIDDEN_PIRACY` 阻止 70/25/5 分润 → `blacklist_worker()` 永久拉黑 → `complete_task("FAILED")`
+- **Schema 剥离**：`_canary_token` 在 JSON Schema 验证前从 `result_data` 中剥离（`schema_input`），确保 stealth 字段不干扰 `output_schema` 校验
+- **地址自动推导**：若 `gateway_address` 未显式提供，`CanaryManager` 构造时从 `gateway_signing_key` 通过 `Account.from_key()` 自动推导，消除 env 配置遗漏
+- **存储 key**：`canary:token:{task_id}`（令牌记录）、`canary:used:{task_id}`（重放标记）、`canary:blacklist:{worker_id}`（黑名单）
+
+### AIMS 2.0 轻量化路由与动态授权放钥模式
+- **`LicensingManager`**（`src/gateway/licensing.py`）：基于网关私钥的单次随机种子密钥发放引擎
+- **种子推导**：`keccak256(gateway_signing_key ++ task_id ++ user_address ++ os.urandom(32))` — 混合网关熵 + Task/User 绑定，确保种子既不可预测又可溯源
+- **状态追踪**：`license:key:{task_id}` 存储记录含 `seed`/`task_id`/`user_address`/`status`/`ts`，`status` 为 `ACTIVATED_ONCE`（单次有效）
+- **轻量化路由表**：`POST /api/skills/register-metadata` 记录 `skill_id`/`contributor_address`/`encrypted_source` 到 `skill:metadata:{skill_id}`，已注册时 409
+- **请钥接口**：`POST /api/licensing/request-key` 三道强制校验：
+  - **① Task 锁仓态**：通过 `broker.get_task_status()` 校验状态为 `CLAIMED` 或 `SUCCESS`（锁仓支付中）
+  - **② EIP-191 钱包归属**：`X-Wallet-Address`（中间件已验签）与 `task_meta.user_id` 比较，不匹配 403
+  - **③ 防重放**：`is_license_issued()` 检查 `license:key:{task_id}` 是否已存在，已发放 409
+- **Discovery 集成**：新增 "Licensing & Routing" API 类别，暴露 `/api/skills/register-metadata` 和 `/api/licensing/request-key`
+
+### aims-cli SDK 骨架模式（aims.config.json + 加密凭据）
+- **`MonetizationConfig(BaseModel)`**（`src/cli/schema.py`）：2×2 收入矩阵引擎：
+  - `function_type`：`Literal["worker_collab", "direct_skill"]` — Worker 协作网络 vs 本地直接执行
+  - `billing_mode`：`Literal["pay_per_task", "subscription"]` — 按次计费 vs 订阅月费
+  - `rate_limit_per_day`：`int | None` — 订阅模式下**强制必需**，`@model_validator` 检验
+  - `quadrant_label()` 返回 Q1–Q4，`revenue_split()` 返回 `{developer, worker, platform}` 百分比
+  - **收入矩阵**：Q1 (worker_collab+pay_per_task) = 70/25/5，Q2–Q4 = 95/0/5，Platform Treasury 恒 5%
+- **`AIMSConfig(BaseModel)`**（`src/cli/schema.py`）：Pydantic v2 强类型 schema，8 个字段 + 嵌套 `MonetizationConfig`：
+  - `skill_id` — 正则 `^[a-zA-Z][a-zA-Z0-9_-]*$`，1-64 字符
+  - `version` — SemVer 正则 `^([0-9]+)\.([0-9]+)\.([0-9]+)$`
+  - `developer_wallet` — EIP-55 格式 `^0x[a-fA-F0-9]{40}$`
+  - `price_per_task_usdc` — float，`gt=0.0`，`le=1_000_000.0`
+  - `monetization` — 嵌套 `MonetizationConfig`
+  - `entry_point` — 默认 `"main.py"`
+  - `output_schema` — JSON Schema 必须有顶层 `"type"` 字段
+  - `gateway_url` — 正则 `^https?://`
+- **文件 I/O**：`from_json_file()` 捕获 `FileNotFoundError`/`JSONDecodeError`，`to_json_file()` 输出缩进 JSON
+- **加密凭据存储**（`src/cli/credentials.py`）：`~/.aims/` 目录 `0o700`，`~/.aims/credentials` 文件 `0o600`，使用 `Account.encrypt()` 生成以太坊 keystore v3 标准 JSON，`Account.decrypt()` 解密
+- **Click CLI 骨架**（`src/cli/main.py`）：三个命令 — `init`（2×2 矩阵交互引导 + 收入分配预览）+ `login --private-key`（`Account.from_key` 预校验）+ `publish`（8 步管道 + ASCII 审计表）
+- **入口点**：`bin/aims-cli` shell 脚本（`sys.path.insert` + `from src.cli.main import main`），与既有 `aims` 脚本一致
+
 ### 自定义 Skill 上传模式
 - **zip 结构要求**：`manifest.json` + `logic.py` 必须位于 **zip 根目录**（非子目录内），且使用 `zip -j` 扁平压缩
 - **`output_schema` 验证**：submit 时自动按 `output_schema` 验证 `result_data`，不匹配返回 `REJECTED`。`additionalProperties: false` 时拒绝任何未知字段
@@ -364,6 +407,15 @@ A: 待补充
 - **Idempotent Receipt** — `settle_task()` 第二次调用时 reservation 已删除，自动查找 `billing:reserved:receipt:{task_id}` 返回已有收据，防止双花
 - **TransactionLedger**（`src/gateway/ledger.py`）— 追加式交易历史，支持四类交易（deposit/task_deduction/worker_payout/owner_revenue），每用户索引最近 200 条，`get_all()` 全局排序查询
 - **Wallet API** — `POST /api/wallet/deposit`（HMAC 保护）+ `GET /api/wallet/balance`（HMAC 保护），通过现有 `/api/` 中间件自动认证
+
+### aims-cli DRM 发布管道模式
+- **四模块工具链**：Obfuscator（`src/cli/obfuscator.py`）+ Encryptor（`src/cli/encryptor.py`）+ Signer（`src/cli/signer.py`）+ Publisher（`src/cli/publisher.py`），由 `main.py publish` 命令编排
+- **Obfuscator 三级降级**：优先 PyArmor（`pyarmor obfuscate` → `wrapper.so`）→ Cython（`cythonize -3 -i` → `gcc -shared` → `.so`）→ bytecode 复制 + 警告。120s 子进程超时防止挂死
+- **Encryptor AES-256-GCM**：`cryptography.hazmat.primitives.ciphers.aead.AESGCM`，随机 12B nonce 前置 + ciphertext 写入 `logic.enc`。`encrypt_directory()` 递归收集 `.py` 文件 tar 后加密。返回 SHA-256 key hash 供签名阶段锁定
+- **Signer EIP-191 格式**：消息 `AIMS-SKILL:{skill_id}:{key_hash}:{price}`，`encode_defunct(primitive=message.encode())` → `Account.sign_message()`，返回 `{signature, message, signer}`。签名不可伪造，版权归属锁死于开发者钱包
+- **Publisher 8 步管道**：`publish_skill()` 依次执行 validate config → load credentials（`prompt_password()`）→ obfuscate → encrypt → sign → package `dist.zip` → upload（`requests.post` multipart）→ register metadata（EIP-191 签名 POST）。每步 click.echo 进度汇报，上传失败保留 `dist.zip` 手动重试
+- **Metadata 注册签名**：`_register_metadata()` 构建 JSON body → `json.dumps(..., separators=(",", ":"))` 字节化 → EIP-191 签名原始 body 字节 → 注入 `X-Wallet-Address`/`X-Signature`/`X-Timestamp` 三头部 → POST 到网关
+- **分发构件**：`dist.zip` 包含 `wrapper.so`（混淆壳）+ `logic.enc`（加密内核），Worker 运行时需对应解密和加载协议
 
 ## 学习资源
 - 待补充

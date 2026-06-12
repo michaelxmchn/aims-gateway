@@ -32,3 +32,9 @@ pytesseract>=0.3,<1.0
 web3>=7.0,<8.0
 eth-account>=0.12,<1.0
 eth-hash[pycryptodome]>=0.7,<1.0
+
+# CLI framework (aims-cli)
+click>=8.1,<9.0
+
+# AES-256-GCM encryption (aims-cli publish)
+cryptography>=42.0,<44.0

@@ -26,6 +26,8 @@ from eth_account.messages import encode_defunct
 
 from src.chain.nonce_manager import NonceManager
 from src.chain.pot import POTManager
+from src.gateway.canary import CanaryManager
+from src.gateway.licensing import LicensingManager
 from src.gateway.broker import TaskBroker
 from src.gateway.skill_store import SkillStore, SkillStoreError
 from src.gateway.storage import Storage
@@ -73,6 +75,20 @@ skill_store.load_into_registry(registry)
 # Web3 billing singletons
 nonce_manager = NonceManager(storage)
 pot_manager = POTManager(storage, AIMS_GATEWAY_PRIVATE_KEY) if AIMS_GATEWAY_PRIVATE_KEY else None
+
+# Canary watermark — anti-piracy ECDSA-signed token per task
+_canary_manager = None
+if AIMS_GATEWAY_PRIVATE_KEY:
+    _canary_manager = CanaryManager(
+        storage,
+        AIMS_GATEWAY_PRIVATE_KEY,
+        os.getenv("AIMS_GATEWAY_ADDRESS", ""),
+    )
+
+# AIMS 2.0 Licensing — single-use random seed key issuance
+_licensing_manager = None
+if AIMS_GATEWAY_PRIVATE_KEY:
+    _licensing_manager = LicensingManager(storage, AIMS_GATEWAY_PRIVATE_KEY)
 
 # Lazy-init contract via ChainSettlement (InMemory or Web3 based on env)
 from src.chain.contract_client import Web3SettlementContract
@@ -408,6 +424,36 @@ class PotResponse(BaseModel):
     signature: str
 
 
+# ── AIMS 2.0 Licensing models ────────────────────────────────────────────
+
+
+class RegisterMetadataRequest(BaseModel):
+    skill_id: str = Field(..., min_length=1, max_length=64)
+    contributor_address: str = Field(
+        ..., min_length=42, max_length=42,
+        description="EVM wallet address (0x + 40 hex) of the contributor",
+    )
+    encrypted_source: str = Field(
+        ..., min_length=1, max_length=2048,
+        description="Encrypted download URL or IPFS CID for the skill source",
+    )
+
+
+class RegisterMetadataResponse(BaseModel):
+    status: str
+    skill_id: str
+
+
+class LicenseKeyRequest(BaseModel):
+    task_id: str = Field(..., min_length=1, max_length=64)
+
+
+class LicenseKeyResponse(BaseModel):
+    task_id: str
+    seed: str
+    status: str
+
+
 # ── Static capability definitions (for discovery endpoint) ───────────────
 
 SKILL_CAPABILITIES: dict[str, list[str]] = {
@@ -558,9 +604,11 @@ async def discovery():
             },
             {
                 "category": "Skill Management",
-                "description": "Upload, inspect, and execute skills.",
+                "description": "Upload, inspect, execute, and register skills.",
                 "operations": [
                     {"method": "POST", "path": "/api/skills/upload", "summary": "Upload skill zip.", "auth_required": False},
+                    {"method": "POST", "path": "/api/skills/register-metadata", "summary": "Register lightweight routing metadata for a skill.", "auth_required": True},
+                    {"method": "POST", "path": "/api/skills/register-developer", "summary": "Register developer wallet for 70% settlement.", "auth_required": True},
                     {"method": "GET", "path": "/api/skills/{skill_id}/logic", "summary": "Fetch skill logic.py.", "auth_required": False},
                     {"method": "POST", "path": "/api/run", "summary": "Execute a skill.", "auth_required": True},
                 ],
@@ -586,6 +634,14 @@ async def discovery():
                 "operations": [
                     {"method": "POST", "path": "/api/wallet/deposit", "summary": "Deposit USDC (proxy).", "auth_required": True},
                     {"method": "GET", "path": "/api/wallet/balance", "summary": "Check USDC balance.", "auth_required": True},
+                ],
+            },
+            {
+                "category": "Licensing & Routing",
+                "description": "AIMS 2.0 lightweight routing and dynamic key issuance.",
+                "operations": [
+                    {"method": "POST", "path": "/api/skills/register-metadata", "summary": "Register skill routing metadata.", "auth_required": True},
+                    {"method": "POST", "path": "/api/licensing/request-key", "summary": "Request single-use license key for a task.", "auth_required": True},
                 ],
             },
         ],
@@ -681,14 +737,30 @@ async def submit_task(req: SubmitRequest):
     skill_id = task_meta.skill_id
     manifest = await _run_in_thread(registry.get, skill_id) if skill_id else None
 
-    # ── 3. JSON Schema validation ─────────────────────────────────────
+    # ── 3. Canary watermark verification (before schema, to strip stealth field) ─
+    canary_piracy = False
+    canary_reason = ""
+    if _canary_manager is not None:
+        canary_result = _canary_manager.verify_token(req.task_id, req.result_data)
+        if not canary_result["valid"]:
+            canary_piracy = True
+            canary_reason = canary_result["reason"]
+
+    # Strip _canary_token before schema validation (stealth watermark field)
+    schema_input = (
+        {k: v for k, v in req.result_data.items() if k != "_canary_token"}
+        if "_canary_token" in req.result_data
+        else req.result_data
+    )
+
+    # ── 4. JSON Schema validation ─────────────────────────────────────
     schema = (manifest.output_schema or {}) if manifest else {}
     if schema:
         valid = await _run_in_thread(
-            broker.validate_result_generic, req.result_data, schema, req.worker_id,
+            broker.validate_result_generic, schema_input, schema, req.worker_id,
         )
     else:
-        valid = isinstance(req.result_data, dict)
+        valid = isinstance(schema_input, dict)
 
     if not valid:
         await _run_in_thread(broker.complete_task, req.task_id, "FAILED")
@@ -699,7 +771,22 @@ async def submit_task(req: SubmitRequest):
             error="Result failed JSON Schema validation",
         )
 
-    # ── 4. Complete task (may re-queue for pipeline intermediate step) ─
+    # ── 4b. Canary gate — block settlement if piracy detected ─────────
+    if canary_piracy:
+        logger.warning(
+            "CANARY_PIRACY_DETECTED: task=%s worker=%s reason=%s",
+            req.task_id, req.worker_id, canary_reason,
+        )
+        _canary_manager.blacklist_worker(req.worker_id)
+        await _run_in_thread(broker.complete_task, req.task_id, "FAILED")
+        return SubmitResponse(
+            task_id=req.task_id,
+            worker_id=req.worker_id,
+            outcome="FORBIDDEN_PIRACY",
+            error=f"SKILL_PIRACY_DETECTED: {canary_reason}",
+        )
+
+    # ── 5. Complete task (may re-queue for pipeline intermediate step) ─
     completion = await _run_in_thread(broker.complete_task, req.task_id, "SUCCESS")
 
     if not completion.get("settle", True):
@@ -967,6 +1054,101 @@ async def register_developer(req: RegisterDeveloperRequest):
     }
 
 
+@app.post("/api/skills/register-metadata", response_model=RegisterMetadataResponse)
+async def register_skill_metadata(req: RegisterMetadataRequest):
+    """Register lightweight routing metadata for a skill.
+
+    Records the skill_id, contributor wallet address, and encrypted
+    download source.  Storage is limited to a few KB per entry.
+    """
+    ns = "skill:metadata"
+    meta_key = f"{ns}:{req.skill_id}"
+    existing = storage.get(meta_key)
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Metadata for skill '{req.skill_id}' already registered",
+        )
+    storage.set(meta_key, {
+        "skill_id": req.skill_id,
+        "contributor_address": req.contributor_address,
+        "encrypted_source": req.encrypted_source,
+        "ts": time.time(),
+    })
+    logger.info("Metadata registered: skill=%s contributor=%s", req.skill_id, req.contributor_address)
+    return RegisterMetadataResponse(status="ok", skill_id=req.skill_id)
+
+
+@app.post("/api/licensing/request-key", response_model=LicenseKeyResponse)
+async def request_license_key(req: LicenseKeyRequest, request: Request):
+    """Request a single-use random seed key for a task.
+
+    **Three mandatory checks before issuance:**
+
+    1. **Task state** — Task must be in CLAIMED or SUCCESS state (locked escrow).
+    2. **Wallet ownership** — ``X-Wallet-Address`` must match the task's
+       ``user_id`` (EIP-191 signature already verified by middleware).
+    3. **Replay guard** — Each ``Task_ID`` can only receive one key.
+
+    On success, returns the derived random seed and marks the task as
+    ``ACTIVATED_ONCE``.
+    """
+    if _licensing_manager is None:
+        raise HTTPException(status_code=503, detail="Licensing manager not available (no gateway key configured)")
+
+    wallet_address = (
+        request.headers.get("X-Wallet-Address")
+        or request.headers.get("X-User-ID")
+        or ""
+    )
+
+    # ── 1. Task state validation ────────────────────────────────────────
+    status = await _run_in_thread(broker.get_task_status, req.task_id)
+    if status is None:
+        raise HTTPException(status_code=404, detail=f"Task {req.task_id} not found")
+
+    task_state = status.get("status", "")
+    if task_state not in ("CLAIMED", "SUCCESS"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Task {req.task_id} is in state '{task_state}', expected CLAIMED or SUCCESS",
+        )
+
+    # ── 2. Wallet ownership validation ──────────────────────────────────
+    task_meta = await _run_in_thread(broker.get_task_meta, req.task_id)
+    if task_meta is None:
+        raise HTTPException(status_code=404, detail=f"Metadata for {req.task_id} not found")
+
+    if wallet_address.lower() != task_meta.user_id.lower():
+        raise HTTPException(
+            status_code=403,
+            detail=(
+                f"Wallet {wallet_address} does not match task owner "
+                f"{task_meta.user_id}"
+            ),
+        )
+
+    # ── 3. Replay guard — single-use per Task_ID ────────────────────────
+    if _licensing_manager.is_license_issued(req.task_id):
+        current_status = _licensing_manager.get_license_status(req.task_id)
+        raise HTTPException(
+            status_code=409,
+            detail=f"License already issued for task {req.task_id} (status={current_status})",
+        )
+
+    # ── 4. Issue key ────────────────────────────────────────────────────
+    record = _licensing_manager.issue_key(req.task_id, wallet_address)
+    logger.info(
+        "License key issued: task=%s user=%s status=%s",
+        req.task_id, wallet_address, record["status"],
+    )
+    return LicenseKeyResponse(
+        task_id=req.task_id,
+        seed=record["seed"],
+        status=record["status"],
+    )
+
+
 @app.get("/api/skills/{skill_id}/logic")
 async def serve_logic(skill_id: str):
     """Serve the ``logic.py`` source for a dynamically uploaded skill.
@@ -1052,7 +1234,12 @@ async def run_skill(req: RunRequest):
         await _run_in_thread(ledger.seed_usdt, req.user_id, 50.0)
         logger.info("Auto-seeded MockLedger %s with 50.0 USDT (dev mode)", req.user_id)
 
-    # ── 5. Create escrow & publish task ──────────────────────────────────────
+    # ── 5. Inject canary watermark into task params ──────────────────────────
+    if _canary_manager is not None:
+        _canary_token = _canary_manager.generate_token()
+        req.params["_canary_token"] = _canary_token
+
+    # ── 6. Create escrow & publish task ──────────────────────────────────────
     task_id = await _run_in_thread(
         broker.publish_task,
         user_id=req.user_id,
@@ -1066,6 +1253,10 @@ async def run_skill(req: RunRequest):
     )
     if task_id is None:
         raise HTTPException(status_code=402, detail="Insufficient balance for escrow hold")
+
+    # Record canary token against the published task_id
+    if task_id and _canary_manager is not None:
+        _canary_manager.record_task(task_id, _canary_token)
 
     return RunResponse(task_id=task_id)
 

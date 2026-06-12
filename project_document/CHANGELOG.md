@@ -5,6 +5,31 @@
 > **格式要求**: 严格遵循 `.claude/output-styles/bullet-points.md` 格式规范  
 > **提交规范**: 遵循 commitlint 规范（type(scope): subject）
 
+## [2026-06-12]
+### 新增
+- feat(canary): 创建 `src/gateway/canary.py` — `CanaryManager` ECDSA 签名水印系统，支持 token 生成/验证/重放检测/Worker 黑名单
+- feat(canary): `POST /api/run` 注入 `_canary_token`（时间戳+随机 Hash+ECDSA 签名）到任务 payload，Worker claim 时自动携带
+- feat(canary): `POST /api/tasks/submit` 增加金丝雀验证门 — 缺失/伪造/重放 Token → `FORBIDDEN_PIRACY` 熔断，阻止 70/25/5 分润，自动拉黑 Worker 地址
+- feat(canary): `royalty_test_skill/logic.py` 增加 `_canary_token` 透传 — 从 params 读取并写入 result_data 供网关验证
+- feat(licensing): 创建 `src/gateway/licensing.py` — `LicensingManager` 单次随机种子密钥发放，`keccak(gateway_key ++ task_id ++ user_address ++ random)` 种子推导，`ACTIVATED_ONCE` 状态追踪
+- feat(licensing): `POST /api/skills/register-metadata` — 轻量化路由表注册接口，存储 skill_id/contributor_address/encrypted_source，上限数 KB，重复注册 409
+- feat(licensing): `POST /api/licensing/request-key` — 三道强制校验（Task 锁仓态 CLAIMED/SUCCESS / EIP-191 钱包归属匹配 Task owner / `is_license_issued()` 防重放），通过后下发单次随机种子
+- feat(discovery): 新增 "Licensing & Routing" API 类别文档，包含 `/api/skills/register-metadata` 和 `/api/licensing/request-key`
+- feat(cli): 创建 `src/cli/schema.py` — `AIMSConfig(BaseModel)` 8 字段 + `MonetizationConfig` 2×2 矩阵（worker_collab/direct_skill × pay_per_task/subscription），Q1 70/25/5 Q2–Q4 95/0/5，subscription 强制 rate_limit_per_day
+- feat(cli): 创建 `src/cli/credentials.py` — `~/.aims/credentials` 以太坊 keystore v3 加密存储（`Account.encrypt/decrypt`），目录 0700/文件 0600 权限保护
+- feat(cli): 创建 `src/cli/main.py` — Click CLI 骨架，`init`（2×2 矩阵交互引导 + 收入分配合约展示）/ `login --private-key`（私钥加密持久化）/ `publish`（全管道编排）
+- feat(cli): 创建 `bin/aims-cli` — 入口点脚本，`pip install click>=8.1`
+- feat(cli): 创建 `src/cli/obfuscator.py` — `wrapper.so` 二进制桩（4KB ELF 占位）
+- feat(cli): 创建 `src/cli/encryptor.py` — AES-256-GCM 内核加密（`cryptography.hazmat` AESGCM，随机 12B nonce + ciphertext 格式，目录 tar 加密）
+- feat(cli): 创建 `src/cli/signer.py` — EIP-191 版权签名（`AIMS-SKILL-AUTH:{skill_id}:{key_hash}:{price}` 格式）
+- feat(cli): 创建 `src/cli/publisher.py` — 8 步发布管道 + ASCII 审计表（5% Platform Treasury 分账明细）
+- feat(cli): `main.py` init 命令重写为 2×2 矩阵交互，publish 命令新增 `--gateway-url`/`--entry-point`
+- chore(deps): `requirements.txt` 添加 `cryptography>=42.0,<44.0`
+### 验证
+- **正常流程**: 携带 `_canary_token` 提交 → ECDSA 验签通过 → `COMPLETED` + PoT 生成 ✓
+- **盗版检测**: 无 `_canary_token` 提交 → `FORBIDDEN_PIRACY` + Worker 拉黑 + 0 审计条目 ✓
+- **重放防护**: Token 一次性使用（`canary:used:{task_id}` 标记），二次提交 409 ✓
+
 ## [2026-06-11]
 ### 修改
 - fix(contract_client): `_send_tx()` 中 `estimate_transaction` → `estimate_gas`（web3.py v7 API 兼容）

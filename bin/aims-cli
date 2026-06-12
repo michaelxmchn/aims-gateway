@@ -1,0 +1,6 @@
+#!/usr/bin/env python3
+"""AIMS Contributor CLI entry point — aims-cli init|login|publish."""
+import sys
+sys.path.insert(0, "/home/michael/web3-community")
+from src.cli.main import main
+main()

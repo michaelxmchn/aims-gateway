@@ -16,6 +16,9 @@
 - [x] **可逆审计追踪** — `BillingEngine._audit_ledger` 内存账本，记录每笔 settlement/refund 的 [ts, action, roles, amounts]；`GET /api/admin/audit` 端点支持按 task_id 回溯和全局聚合
 - [x] **自定义 Skill 上传 + 动态 70/25/5 分润** — `royalty_test_skill` zip 上传，注册开发者地址后全流程自动 70/25/5 链上分账 + PoT 生成
 - [x] **PoT API 修复** — `GET /api/tasks/{id}/pot` 支持 `?party=` 参数，无参数时自动回退到 task worker_id
+- [x] **金丝雀（Canary）反盗版水印系统** — `CanaryManager` 三层防御：ECDSA 签名 `_canary_token` 注入 → submit 时验签 + 重放检测 → `FORBIDDEN_PIRACY` 熔断 + Worker 黑名单
+- [x] **AIMS 2.0 轻量化路由与动态授权网关** — `LicensingManager`（`src/gateway/licensing.py`）单次随机种子密钥发放 + `POST /api/skills/register-metadata` 轻量化路由表（skill_id/contributor_address/encrypted_source） + `POST /api/licensing/request-key` 三道强制校验（Task 锁仓态/EIP-191 钱包归属/防重放）
+- [x] **aims-cli SDK 骨架与标准 Schema 契约** — `AIMSConfig(BaseModel)` 7 字段强校验 + `init`（交互式生成配置）+ `login`（keystore v3 加密存储）+ `publish`（Schema 熔断验证）
 
 ## 已完成任务清单
 
@@ -457,3 +460,8 @@
 - [x] 全栈 Web3 前端控制面板（static/console.html）— MetaMask 直连 + 三角色视图 + EIP-191 浏览器签名
 - [x] CORS 中间件 + GET /console 路由
 - [ ] Foundry Anvil E2E 全管道验证（需安装 Foundry）
+- [x] **金丝雀（Canary）反盗版水印系统** — ECDSA 签名 `_canary_token` 注入任务 payload，submit 时验证指纹 + 重放检测 + 盗版熔断 FORBIDDEN_PIRACY
+- [x] **aims-cli DRM 发布管道（Phase 2）** — 四模块完整工具链：Obfuscator（`wrapper.so` 二进制桩）、Encryptor（AES-256-GCM 内核加密）、Signer（EIP-191 版权签名 `AIMS-SKILL-AUTH:...`）、Publisher（8 步管道 + ASCII 审计表）
+  - schema.py: `MonetizationConfig` 2×2 矩阵（Q1 70/25/5, Q2–Q4 95/0/5）+ `AIMSConfig` 8 字段
+  - init: 2×2 矩阵交互引导，展示收入分配合约
+  - publisher: ASCII 审计表详细列出 5% Platform Treasury 分账明细
