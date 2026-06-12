@@ -440,6 +440,15 @@ A: 待补充
 - **TransactionLedger**（`src/gateway/ledger.py`）— 追加式交易历史，支持四类交易（deposit/task_deduction/worker_payout/owner_revenue），每用户索引最近 200 条，`get_all()` 全局排序查询
 - **Wallet API** — `POST /api/wallet/deposit`（HMAC 保护）+ `GET /api/wallet/balance`（HMAC 保护），通过现有 `/api/` 中间件自动认证
 
+### TikTok Shop 竞品情报 Skill 模式
+- **`src/skills/tiktok_competitive_intel.py`**：马来西亚/东南亚 TikTok Shop 竞品情报监控智能体，面向 Shopee/Lazada/TikTok Shop 三个平台
+- **确定性 Mock 架构**：`random.Random(keyword + market)` 种子化 RNG，确保同一查询返回可复现的合成数据，适合 Schema 演示和管道测试
+- **六类产品模板**：`PRODUCT_TEMPLATES` 包含护肤品（Vitamin C Serum）、美容仪器（LED Mask）、电子配件（Magnetic Cable）、厨房用品（Air Fryer Liners）、保健品（Collagen Gummies）、家电（Stand Mixer），覆盖 SEA 跨境电商热门品类
+- **多维度输出**：`competitor_metrics`（价格/销量/评分/卖家维度）、`fraud_risk_score`（5 种欺诈信号启发式检测：评论时间异常/价格偏离/新店高增长/库存不匹配/图片复用）、`market_insights`（品类趋势/广告主分析/推荐定价区间）
+- **Fraud Screening 启发式**：价格 < 均价 40% → `price_anomaly_detected`；评论/销量比 < 0.3 且评论 > 500 → `review_manipulation_flag`；随机 12% 新店检测 → `seller_account_age_lt_30_days`。aggregation 按可疑数量分级：>5 → `critical` / >3 → `high` / >1 → `medium`
+- **`execute(params)` 单一入口**：遵循 AIMS Skill 标准接口，接收 `params` dict 返回严格匹配 `output_schema` 的 JSON，`fraud_screening` 默认开启
+- **`manifest.json` Commerce Matrix 定价**：`price_points: 5`（Metered 等价 0.05 USDC）、`staked_points: 20.0`（冷启动推广）、tags 含 10 个分类标签（tiktok/shopee/lazada/ecommerce/competitive_intel/sea/malaysia/ad_intelligence/fraud_detection），`agent_hint` 提供中文 AI Agent 指引
+
 ### aims-cli DRM 发布管道模式
 - **四模块工具链**：Obfuscator（`src/cli/obfuscator.py`）+ Encryptor（`src/cli/encryptor.py`）+ Signer（`src/cli/signer.py`）+ Publisher（`src/cli/publisher.py`），由 `main.py publish` 命令编排
 - **Obfuscator 三级降级**：优先 PyArmor（`pyarmor obfuscate` → `wrapper.so`）→ Cython（`cythonize -3 -i` → `gcc -shared` → `.so`）→ bytecode 复制 + 警告。120s 子进程超时防止挂死

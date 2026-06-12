@@ -7,6 +7,10 @@
 
 ## [2026-06-12]
 ### 修改
+### 新增
+- feat(skills): `src/skills/tiktok_competitive_intel.py` — TikTok Shop 竞品情报 Skill，马来西亚/东南亚跨境电商价格/销量/广告/欺诈多维度监控，确定性 Mock + 6 类模板产品 + Fraud Screening 启发式检测
+- feat(skills): `src/skills/manifests/tiktok_competitive_intel/manifest.json` — 完整 manifest 含 Commerce Matrix 定价（Metered: 0.05 USDC / Sub: 19.99 USDC / Buyout: 199 USDC）、SEA 10 标签分类、中文 agent_hint
+- feat(docs): `project_document/DRM_PUBLISH_GUIDE.md` — aims-cli 8 步 DRM 加壳发布指南（init/login/PyArmor/Cython/AES-256-GCM/EIP-191 签名/发布/链上验证），含 3 种计费场景和 Base Sepolia/Mainnet 迁移附录
 - feat(frontend): `static/index.html` — 全量重写 AIMS 2.0 着陆页，70/25/5 + 95/0/5 双分账表、PLG First-Task-Free 横幅、3 角色专区（Contributor/Consumer/Worker）、Commerce Matrix 3 模式对比表、4 大优势重写、How It Works 双象限分账
 - feat(frontend): `static/docs.html` — 全量重写开发者文档，增加 aims-cli 工具链 3 节（init/login/publish 8 步 DRM）、Revenue Split 表 Q1/Q2-Q5、Billing Modes 表、API 端点表新增 register-metadata/request-key、FAQ 更新
 - feat(frontend): `static/console.html` — PLG 全功能升级，Auth→Free Trial Check→Balance Check→Execution→PoT→Settlement 6 步管道、Billing Mode 选择器（Metered/Subscription/Buyout/Free Trial）、Trial 追踪（usedTrials + 402 弹窗 "Use Free Trial"）、PLG Badge `★ 1 Free Trial / Skill`
