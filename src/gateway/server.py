@@ -203,6 +203,7 @@ async def verify_wallet_middleware(request: Request, call_next):
         path.startswith("/api/tasks/")
         or path.startswith("/api/skills/")
         or path.startswith("/api/wallet/balance")
+        or path.startswith("/api/commerce/")
     ):
         return await call_next(request)
 
