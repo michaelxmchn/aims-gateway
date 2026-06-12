@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AIMS Network — Unified Decentralized AI Agent Skill & DePIN Network</title>
-<meta name="description" content="One Entrance. Every Switch. AIMS is a unified decentralized AI Agent Skill & DePIN network — consume, create, and earn through a single Web3 wallet.">
+<meta name="description" content="One Entrance. Every Switch. AIMS is a unified decentralized AI Agent Skill & DePIN network — consume, create, and earn through a single Web3 wallet. First-task-free for every new user.">
 <style>
 /* ── Reset & Base ── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -40,6 +40,7 @@ nav .nav-links a:hover{color:#fff;text-decoration:none}
 .hero::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 30% 50%,rgba(34,211,238,0.06) 0%,transparent 60%),radial-gradient(ellipse at 70% 50%,rgba(167,139,250,0.06) 0%,transparent 60%);pointer-events:none}
 .hero .container{position:relative;z-index:1}
 .hero .badge{display:inline-block;background:rgba(34,211,238,0.1);border:1px solid rgba(34,211,238,0.2);color:#22d3ee;padding:.35rem 1rem;border-radius:100px;font-size:.8rem;font-weight:600;margin-bottom:1.5rem;letter-spacing:.02em}
+.hero .badge .plg{background:rgba(52,211,153,0.15);color:#34d399;padding:.15rem .6rem;border-radius:100px;margin-left:.4rem;font-size:.7rem;border:1px solid rgba(52,211,153,0.25)}
 .hero h1{max-width:800px;margin-bottom:1.5rem}
 .hero .subtitle{font-size:clamp(1rem,2vw,1.25rem);color:#a1a1aa;max-width:650px;margin-bottom:2.5rem;line-height:1.7}
 .hero-ctas{display:flex;gap:1rem;flex-wrap:wrap}
@@ -65,6 +66,27 @@ section{padding:6rem 0}
 .value-card:nth-child(2) .icon{background:rgba(167,139,250,0.1);color:#a78bfa}
 .value-card:nth-child(3) .icon{background:rgba(52,211,153,0.1);color:#34d399}
 
+/* ── Role Cards ── */
+.role-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:1.5rem}
+.role-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:2rem;transition:border-color .3s,transform .3s}
+.role-card:hover{border-color:rgba(167,139,250,0.2);transform:translateY(-4px)}
+.role-card .role-icon{width:52px;height:52px;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:1.6rem;margin-bottom:1.25rem}
+.role-card .role-icon.contributor{background:rgba(167,139,250,0.12);color:#a78bfa}
+.role-card .role-icon.consumer{background:rgba(34,211,238,0.12);color:#22d3ee}
+.role-card .role-icon.worker{background:rgba(52,211,153,0.12);color:#34d399}
+.role-card .role-tag{display:inline-block;font-size:.7rem;font-weight:600;padding:.2rem .7rem;border-radius:100px;margin-bottom:.75rem;letter-spacing:.03em}
+.role-card .role-tag.contributor{background:rgba(167,139,250,0.1);color:#a78bfa;border:1px solid rgba(167,139,250,0.15)}
+.role-card .role-tag.consumer{background:rgba(34,211,238,0.1);color:#22d3ee;border:1px solid rgba(34,211,238,0.15)}
+.role-card .role-tag.worker{background:rgba(52,211,153,0.1);color:#34d399;border:1px solid rgba(52,211,153,0.15)}
+.role-card h3{color:#fff;margin-bottom:.4rem}
+.role-card .revenue-highlight{font-size:1.4rem;font-weight:700;color:#fff;margin:.6rem 0}
+.role-card .revenue-highlight .accent-1{color:#a78bfa}
+.role-card .revenue-highlight .accent-2{color:#22d3ee}
+.role-card .revenue-highlight .accent-3{color:#34d399}
+.role-card ul{list-style:none;padding:0;margin-top:.75rem}
+.role-card ul li{color:#a1a1aa;font-size:.88rem;padding:.3rem 0;padding-left:1.25rem;position:relative}
+.role-card ul li::before{content:'→';position:absolute;left:0;color:#22d3ee}
+
 /* ── 4 Advantages ── */
 .advantages{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.5rem}
 .advantage-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:1.75rem;transition:border-color .3s}
@@ -79,11 +101,32 @@ section{padding:6rem 0}
 .step h3{color:#fff;margin-bottom:.25rem}
 .step p{font-size:.9rem;color:#a1a1aa}
 
-/* ── Split Table (Flow) ── */
-.split-table{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:16px;overflow:hidden;max-width:700px;margin:2rem 0}
+/* ── Split / Billing Tables ── */
+.split-table{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:16px;overflow:hidden;max-width:750px;margin:2rem 0}
 .split-table table{width:100%;border-collapse:collapse}
 .split-table th,.split-table td{padding:1rem 1.5rem;text-align:left;border-bottom:1px solid rgba(255,255,255,0.06);font-size:.9rem}
 .split-table th{background:rgba(255,255,255,0.03);color:#22d3ee;font-weight:600;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em}
+.split-table .q1-row td{color:#e4e4e7}
+.split-table .q2-row td{color:#a1a1aa;font-size:.85rem}
+.split-table .highlight-cell{color:#22d3ee;font-weight:600}
+.split-table .highlight-cell.dev{color:#a78bfa}
+.split-table .highlight-cell.treasury{color:#34d399}
+.table-caption{font-size:.8rem;color:#71717a;margin-top:.75rem;padding:.5rem 1rem;background:rgba(255,255,255,0.02);border-radius:8px;display:inline-block}
+
+/* ── Commerce Matrix ── */
+.commerce-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem}
+.commerce-card{background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:16px;padding:2rem;text-align:center;transition:border-color .3s,transform .3s}
+.commerce-card:hover{border-color:rgba(34,211,238,0.2);transform:translateY(-4px)}
+.commerce-card .mode-icon{font-size:2rem;margin-bottom:.75rem}
+.commerce-card .mode-name{font-size:1.1rem;font-weight:700;color:#fff;margin-bottom:.25rem}
+.commerce-card .mode-name .en{font-size:.75rem;color:#71717a;font-weight:400}
+.commerce-card .mode-desc{font-size:.85rem;color:#a1a1aa;margin:.75rem 0}
+.commerce-card .mode-tag{display:inline-block;font-size:.7rem;padding:.2rem .7rem;border-radius:100px;font-weight:600}
+.commerce-card .mode-tag.metered{background:rgba(34,211,238,0.1);color:#22d3ee;border:1px solid rgba(34,211,238,0.15)}
+.commerce-card .mode-tag.subscription{background:rgba(167,139,250,0.1);color:#a78bfa;border:1px solid rgba(167,139,250,0.15)}
+.commerce-card .mode-tag.buyout{background:rgba(52,211,153,0.1);color:#34d399;border:1px solid rgba(52,211,153,0.15)}
+.commerce-card .mode-price{font-size:1.5rem;font-weight:700;color:#fff;margin-top:.75rem}
+.commerce-card .mode-price .sub{font-size:.8rem;font-weight:400;color:#71717a}
 
 /* ── Ecosystem Policy ── */
 .policy-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:1.5rem}
@@ -93,7 +136,7 @@ section{padding:6rem 0}
 .policy-card ul li{color:#a1a1aa;font-size:.9rem;padding:.4rem 0;padding-left:1.25rem;position:relative}
 .policy-card ul li::before{content:'→';position:absolute;left:0;color:#22d3ee}
 
-/* ── Guide Section (new integration page) ── */
+/* ── Guide Section ── */
 .guide-hero{background:rgba(34,211,238,0.03);border:1px solid rgba(34,211,238,0.08);border-radius:20px;padding:3rem;margin-bottom:3rem}
 .guide-hero h2{font-size:1.75rem;margin-bottom:.75rem}
 .guide-hero .badge-row{display:flex;gap:.75rem;flex-wrap:wrap;margin-top:1rem}
@@ -120,6 +163,14 @@ th{color:#22d3ee;font-weight:600;font-size:.8rem;text-transform:uppercase;letter
 td{color:#a1a1aa}
 table.compact{max-width:700px}
 
+/* ── PLG Banner ── */
+.plg-banner{background:linear-gradient(135deg,rgba(52,211,153,0.06),rgba(34,211,238,0.06));border:1px solid rgba(52,211,153,0.12);border-radius:16px;padding:2rem 2.5rem;margin:2rem 0;display:flex;align-items:center;gap:2rem;flex-wrap:wrap}
+.plg-banner .plg-icon{font-size:2.5rem;flex-shrink:0}
+.plg-banner .plg-content{flex:1}
+.plg-banner .plg-content h4{color:#34d399;font-size:1.1rem;margin-bottom:.3rem}
+.plg-banner .plg-content p{font-size:.9rem;margin-bottom:0}
+.plg-banner .plg-badge{background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.2);color:#34d399;padding:.4rem 1rem;border-radius:100px;font-size:.8rem;font-weight:600;white-space:nowrap}
+
 /* ── Provider/Access Table ── */
 .access-table{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:12px;overflow:hidden;margin:1rem 0}
 .access-table td{padding:.75rem 1rem;vertical-align:top}
@@ -142,6 +193,7 @@ footer .copy{color:#71717a;font-size:.85rem}
   .hero{padding-top:80px}
   .matrix-grid{grid-template-columns:1fr}
   .guide-hero{padding:1.5rem}
+  .plg-banner{flex-direction:column;text-align:center;padding:1.5rem}
 }
 </style>
 </head>
@@ -152,8 +204,10 @@ footer .copy{color:#71717a;font-size:.85rem}
   <div class="container">
     <div class="logo">AIMS<span>.</span></div>
     <div class="nav-links" id="navLinks">
+      <a href="#roles">Roles</a>
       <a href="#advantages">Why AIMS</a>
       <a href="#how-it-works">How It Works</a>
+      <a href="#commerce">Pricing</a>
       <a href="#guide">Agent Guide</a>
       <a href="#policy">Policy</a>
       <a href="https://aims-gateway.fly.dev/api/discovery" target="_blank">API</a>
@@ -165,19 +219,19 @@ footer .copy{color:#71717a;font-size:.85rem}
 <!-- ── Hero ── -->
 <section class="hero" id="home">
   <div class="container">
-    <div class="badge">&#9670; Mainnet Live &middot; EIP-191 Secured</div>
+    <div class="badge">&#9670; Mainnet Live &middot; EIP-191 Secured <span class="plg">&#9733; First-Task-Free</span></div>
     <h1>The Unified Gateway for <span class="gradient-text">AI Agents, Developers, and Infrastructure.</span></h1>
-    <p class="subtitle">AIMS breaks down the silos between Users, Developers, and Hardware Providers through a single Web3 wallet gateway. One protocol to consume, create, and earn — no forms, no middlemen, no friction.</p>
+    <p class="subtitle">AIMS breaks down the silos between Contributors, Consumers, and Infrastructure Providers through a single Web3 wallet gateway. One protocol to build, use, and earn — no forms, no middlemen, no friction. <strong style="color:#34d399">Your first task is always free.</strong></p>
     <div class="hero-ctas">
       <a href="#cta" class="btn-primary">Launch App</a>
       <a href="https://aims-gateway.fly.dev/api/discovery" target="_blank" class="btn-secondary">Read the Docs</a>
-      <a href="#guide" class="btn-secondary">Developer Guide</a>
+      <a href="#roles" class="btn-secondary">Explore Roles</a>
     </div>
     <div class="hero-stats">
-      <div class="stat"><div class="number">6</div><div class="label">Seed Skills</div></div>
+      <div class="stat"><div class="number">6+</div><div class="label">Seed Skills</div></div>
       <div class="stat"><div class="number">0.05</div><div class="label">USDC per Task</div></div>
-      <div class="stat"><div class="number">80/20</div><div class="label">Worker Split</div></div>
-      <div class="stat"><div class="number">Base</div><div class="label">Settlement L2</div></div>
+      <div class="stat"><div class="number">70/25/5</div><div class="label">Q1 Revenue Split</div></div>
+      <div class="stat"><div class="number">3</div><div class="label">Commerce Modes</div></div>
     </div>
   </div>
 </section>
@@ -187,22 +241,78 @@ footer .copy{color:#71717a;font-size:.85rem}
   <div class="container">
     <span class="section-label">The Ecosystem</span>
     <h2>One Entrance. <span class="gradient-text">Every Switch.</span></h2>
-    <p class="section-desc">Connect once. Your wallet unlocks consumption, creation, and earnings simultaneously.</p>
+    <p class="section-desc">Connect once. Your wallet unlocks contribution, consumption, and infrastructure operation simultaneously.</p>
     <div class="value-grid">
       <div class="value-card">
         <div class="icon">&#9889;</div>
         <h3>Use Skills to Complete Work</h3>
-        <p>Instantly execute world-class automation and AI logic on demand. From scraping e-commerce competitors to auditing Solidity smart contracts — invoke specialized Skills directly from your wallet with zero setup. Pay per successful execution, nothing more.</p>
+        <p>Instantly execute world-class automation and AI logic on demand. From scraping e-commerce competitors to auditing Solidity smart contracts — invoke specialized Skills directly from your wallet with zero setup. <strong style="color:#34d399">Your first invocation is on us.</strong> Pay per successful execution, nothing more.</p>
       </div>
       <div class="value-card">
         <div class="icon">&#8593;</div>
         <h3>Upload Skills to Earn Passive Income</h3>
-        <p>Turn your Python scripts into permanent, money-making global APIs. Package your logic with a simple manifest, upload it to the network, and earn USDC every time a user invokes it. Your code, your pricing, your terms — automated at the protocol layer.</p>
+        <p>Turn your Python scripts into permanent, money-making global APIs. Package your logic with a simple manifest, upload it to the network, and earn up to <strong style="color:#a78bfa">95%</strong> of every task fee in USDC. Your code, your pricing, your terms — protected by DRM-grade obfuscation and automated at the protocol layer.</p>
       </div>
       <div class="value-card">
         <div class="icon">&#9881;</div>
         <h3>Sell Idle Tokens &amp; Resources</h3>
-        <p>Monetize spare bandwidth, underutilized compute, or idle token holdings. Route traffic through your node, contribute to the DePIN execution mesh, and get paid in real-time micropayments. Your infrastructure becomes an asset, not a cost center.</p>
+        <p>Monetize spare bandwidth, underutilized compute, or idle token holdings. Route traffic through your node, contribute to the DePIN execution mesh, and earn <strong style="color:#34d399">25% commission</strong> in real-time micropayments. Your infrastructure becomes an asset, not a cost center.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Three Roles ── -->
+<section id="roles" style="background:rgba(255,255,255,0.01)">
+  <div class="container">
+    <span class="section-label">Three Roles, One Protocol</span>
+    <h2>Your Wallet is Your <span class="gradient-text">Unified Identity.</span></h2>
+    <p class="section-desc">One EIP-191 signature unlocks every role. No re-registration, no separate accounts — just a single cryptographic handshake.</p>
+
+    <div class="role-grid">
+      <!-- Contributor -->
+      <div class="role-card">
+        <div class="role-icon contributor">&#128295;</div>
+        <span class="role-tag contributor">Contributor / Developer</span>
+        <h3>Build &amp; Earn</h3>
+        <p>Package your Python logic into DRM-protected Skills and publish them to the global mesh. Every invocation generates automated revenue — no manual billing, no chasing payments.</p>
+        <div class="revenue-highlight">Earn up to <span class="accent-1">95%</span> per task</div>
+        <ul>
+          <li>AES-256-GCM encrypted source — your IP stays yours</li>
+          <li>Choose Metered, Subscription, or Buyout pricing</li>
+          <li>On-chain 70/25/5 or 95/0/5 instant settlement</li>
+          <li>DRM obfuscation via PyArmor + Cython binary compilation</li>
+        </ul>
+      </div>
+
+      <!-- Consumer -->
+      <div class="role-card">
+        <div class="role-icon consumer">&#127760;</div>
+        <span class="role-tag consumer">Consumer / Enterprise</span>
+        <h3>Use &amp; Scale</h3>
+        <p>Browse the Skill registry and invoke any automation with a single signed POST request. Pay only for what succeeds — failed tasks auto-refund.</p>
+        <div class="revenue-highlight"><span class="accent-2">First task free</span> — then pay as you grow</div>
+        <ul>
+          <li>Universal First-Task-Free — zero USDC required to start</li>
+          <li>LLM-as-a-Judge SLA: automatic quality arbitration + refunds</li>
+          <li>3 billing modes: Metered / Subscription / Buyout</li>
+          <li>402 safeguard: escrow protects your balance</li>
+        </ul>
+      </div>
+
+      <!-- Worker -->
+      <div class="role-card">
+        <div class="role-icon worker">&#9889;</div>
+        <span class="role-tag worker">Worker / Node Operator</span>
+        <h3>Run &amp; Earn</h3>
+        <p>Turn your residential bandwidth and compute into a 24/7 USDC faucet. Route encrypted traffic, execute tasks, and collect on-chain rewards.</p>
+        <div class="revenue-highlight">Earn <span class="accent-3">25% commission</span> on every task</div>
+        <ul>
+          <li>Real residential IP routing — no datacenter blacklists</li>
+          <li>ECDSA Proof-of-Task: cryptographic payout guarantee</li>
+          <li>3-strike collateral system ensures network integrity</li>
+          <li>Geographic routing with region declaration</li>
+        </ul>
       </div>
     </div>
   </div>
@@ -236,7 +346,7 @@ footer .copy{color:#71717a;font-size:.85rem}
       <div class="advantage-card">
         <div class="num">Advantage 04</div>
         <h3>Cryptographic PoT Guarantees</h3>
-        <p>Funds lock in escrow at submission. The gateway validates results against the Skill's output schema, then signs a Proof-of-Task: <code style="color:#22d3ee">ECDSA(keccak256(taskId ++ worker ++ amount))</code>. The 80/20 split is immutable bytecode. No dispute desk, no trust required.</p>
+        <p>Funds lock in escrow at submission. The gateway validates results against the Skill's output schema, then signs a Proof-of-Task: <code style="color:#22d3ee">ECDSA(keccak256(taskId ++ worker ++ amount))</code>. The 70/25/5 split (Q1) or 95/0/5 split (Q2-Q5) is immutable bytecode. No dispute desk, no trust required.</p>
         <div class="tagline">Escrow-enforced. Code-audited. Math-verified.</div>
       </div>
     </div>
@@ -252,7 +362,7 @@ footer .copy{color:#71717a;font-size:.85rem}
     <div class="steps">
       <div class="step">
         <h3>Sign &amp; Command</h3>
-        <p>Connect any EVM wallet and sign an EIP-191 payload. The gateway recovers your address, checks your USDC balance, and you're live. Choose a Skill from the registry and invoke it with a single signed POST request.</p>
+        <p>Connect any EVM wallet and sign an EIP-191 payload. The gateway recovers your address, checks your trial eligibility or USDC balance, and you're live. Choose a Skill from the registry and invoke it with a single signed POST request.</p>
       </div>
       <div class="step">
         <h3>Mesh Execution</h3>
@@ -264,17 +374,93 @@ footer .copy{color:#71717a;font-size:.85rem}
       </div>
       <div class="step">
         <h3>Instant Settlement</h3>
-        <p>USDC splits atomically: 80% to the worker, 20% to the protocol, plus developer premium. Settlement is final on Base L2 at ~$0.0002 per transaction. The worker claims their PoT on-chain immediately.</p>
+        <p>USDC splits atomically by quadrant: <strong style="color:#22d3ee">Q1</strong> Worker-Collab tasks settle <strong style="color:#a78bfa">70/25/5</strong> (Contributor / Worker / Treasury); <strong style="color:#22d3ee">Q2-Q5</strong> Direct-Skill tasks settle <strong style="color:#a78bfa">95/0/5</strong> (Contributor / Treasury). Settlement is final on Base L2 at ~$0.0002 per transaction.</p>
       </div>
     </div>
 
-    <div class="split-table" style="margin-top:3rem">
+    <!-- Split Table -->
+    <div style="margin-top:3rem;display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+      <div class="split-table" style="margin:0">
+        <div style="padding:.75rem 1.5rem;background:rgba(34,211,238,0.04);border-bottom:1px solid rgba(255,255,255,0.06);font-size:.8rem;font-weight:600;color:#22d3ee">QUADRANT Q1 — Worker Collaboration (70/25/5)</div>
+        <table>
+          <thead><tr><th>Destination</th><th>Share</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr class="q1-row"><td>Skill Contributor</td><td class="highlight-cell dev">70%</td><td>Developer royalty</td></tr>
+            <tr class="q1-row"><td>Network Worker</td><td class="highlight-cell">25%</td><td>Compute &amp; residential IP</td></tr>
+            <tr class="q1-row"><td>Platform Treasury</td><td class="highlight-cell treasury">5%</td><td>Protocol sustainability</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="split-table" style="margin:0">
+        <div style="padding:.75rem 1.5rem;background:rgba(167,139,250,0.04);border-bottom:1px solid rgba(255,255,255,0.06);font-size:.8rem;font-weight:600;color:#a78bfa">QUADRANT Q2-Q5 — Direct Skill (95/0/5)</div>
+        <table>
+          <thead><tr><th>Destination</th><th>Share</th><th>Role</th></tr></thead>
+          <tbody>
+            <tr class="q2-row"><td>Skill Contributor</td><td class="highlight-cell dev">95%</td><td>Developer royalty</td></tr>
+            <tr class="q2-row"><td>Network Worker</td><td class="highlight-cell" style="color:#71717a">0%</td><td>No compute layer needed</td></tr>
+            <tr class="q2-row"><td>Platform Treasury</td><td class="highlight-cell treasury">5%</td><td>Protocol sustainability</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="table-caption">&#9432; Split is determined by the Skill's <code>function_type</code> at registration time. Both enforced as immutable bytecode on the settlement contract.</div>
+  </div>
+</section>
+
+<!-- ── PLG Banner ── -->
+<section style="padding-top:0">
+  <div class="container">
+    <div class="plg-banner">
+      <div class="plg-icon">&#9733;</div>
+      <div class="plg-content">
+        <h4>Universal First-Task-Free — Zero Risk, Zero Deposit</h4>
+        <p>Every unique wallet receives <strong style="color:#34d399">one free invocation</strong> per Skill — regardless of billing mode. No USDC required, no gas, no approval. On the second call, the gateway checks your payment proof per the Skill's pricing model. <strong>LLM-as-a-Judge</strong> automatically arbitrates quality disputes; if the result fails schema validation, the trial is not consumed. Risk-free evaluation, guaranteed by code.</p>
+      </div>
+      <span class="plg-badge">&#9733; PLG Enabled</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── Commerce Matrix ── -->
+<section id="commerce" style="background:rgba(255,255,255,0.01)">
+  <div class="container">
+    <span class="section-label">Commerce Matrix 2.0</span>
+    <h2>Metered &middot; Subscription &middot; <span class="gradient-text">Buyout</span></h2>
+    <p class="section-desc">AIMS 2.0 introduces a three-dimensional pricing fabric. Every Skill author chooses their commercial strategy; every consumer picks the plan that fits their scale.</p>
+
+    <div class="commerce-grid">
+      <div class="commerce-card">
+        <div class="mode-icon">&#9889;</div>
+        <div class="mode-name">按次计费 <span class="en">Metered</span></div>
+        <span class="mode-tag metered">Pay-per-task</span>
+        <div class="mode-desc">Pay fractional USDC per successful invocation. No commitments, no expiration. Best for occasional use, experimentation, and low-volume automation.</div>
+        <div class="mode-price">0.05 <span class="sub">USDC / task</span></div>
+      </div>
+      <div class="commerce-card">
+        <div class="mode-icon">&#128176;</div>
+        <div class="mode-name">动态订阅 <span class="en">Subscription</span></div>
+        <span class="mode-tag subscription">Recurring</span>
+        <div class="mode-desc">Monthly pass with guaranteed rate limits and priority routing. Cancel anytime. Best for regular power users, teams, and production pipelines.</div>
+        <div class="mode-price">Variable <span class="sub">USDC / month</span></div>
+      </div>
+      <div class="commerce-card">
+        <div class="mode-icon">&#128274;</div>
+        <div class="mode-name">终身买断 <span class="en">Buyout</span></div>
+        <span class="mode-tag buyout">Perpetual</span>
+        <div class="mode-desc">One-time payment for a perpetual license. No recurring fees, no rate limits, no expiration. Best for enterprises embedding AIMS Skills into their infrastructure.</div>
+        <div class="mode-price">One-time <span class="sub">perpetual license</span></div>
+      </div>
+    </div>
+
+    <div class="split-table" style="margin:2rem auto;max-width:700px">
       <table>
-        <thead><tr><th>Destination</th><th>Share</th><th>Purpose</th></tr></thead>
+        <thead><tr><th>Feature</th><th style="color:#22d3ee">Metered</th><th style="color:#a78bfa">Subscription</th><th style="color:#34d399">Buyout</th></tr></thead>
         <tbody>
-          <tr><td>Worker (executor)</td><td>80% (0.04 USDC)</td><td>Compute &amp; residential IP routing</td></tr>
-          <tr><td>Platform Owner</td><td>20% (0.01 USDC)</td><td>Protocol development &amp; governance</td></tr>
-          <tr><td>Skill Developer</td><td>Variable (premium)</td><td>Per-invocation royalty</td></tr>
+          <tr><td>First task free</td><td style="color:#34d399">&#10003;</td><td style="color:#34d399">&#10003;</td><td style="color:#34d399">&#10003;</td></tr>
+          <tr><td>Pay per invocation</td><td style="color:#34d399">&#10003;</td><td>&mdash;</td><td>&mdash;</td></tr>
+          <tr><td>Monthly rate limit</td><td>&mdash;</td><td style="color:#34d399">&#10003;</td><td style="color:#71717a">Unlimited</td></tr>
+          <tr><td>Perpetual access</td><td>&mdash;</td><td>&mdash;</td><td style="color:#34d399">&#10003;</td></tr>
+          <tr><td>Priority routing</td><td>&mdash;</td><td style="color:#34d399">&#10003;</td><td style="color:#34d399">&#10003;</td></tr>
         </tbody>
       </table>
     </div>
@@ -355,21 +541,21 @@ provider.<span class="function">start</span>()</code>
     <!-- Earnings -->
     <h3 style="margin-top:2rem;color:#a78bfa">&#36; Earnings &amp; Micro-billing</h3>
 
-    <div class="split-table">
+    <div class="split-table" style="max-width:700px">
       <table>
-        <thead><tr><th>Component</th><th>Cost</th><th>Recipient</th></tr></thead>
+        <thead><tr><th>Component</th><th>Cost</th><th>Split (Q1)</th></tr></thead>
         <tbody>
-          <tr><td>Base execution</td><td>0.05 USDC</td><td>80% worker / 20% protocol</td></tr>
+          <tr><td>Base execution</td><td>0.05 USDC</td><td><strong style="color:#a78bfa">70%</strong> Contributor / <strong style="color:#22d3ee">25%</strong> Worker / <strong style="color:#34d399">5%</strong> Treasury</td></tr>
           <tr><td>Gas (Tier-1)</td><td>$0.01/second compute</td><td>Worker (via escrow release)</td></tr>
-          <tr><td>Developer premium</td><td>Skill-author-defined</td><td>Skill developer</td></tr>
-          <tr><td>Platform tax</td><td>1% of total</td><td>Protocol treasury</td></tr>
+          <tr><td>Developer premium</td><td>Skill-author-defined</td><td>Skill contributor</td></tr>
+          <tr><td>Platform fee</td><td><strong style="color:#34d399">5%</strong> of base</td><td>Protocol treasury</td></tr>
         </tbody>
       </table>
     </div>
 
     <div style="background:rgba(167,139,250,0.06);border:1px solid rgba(167,139,250,0.12);border-radius:12px;padding:1.25rem;margin:1rem 0">
-      <p style="color:#fff;font-weight:600;margin-bottom:.25rem">&#9889; InMemory Test Mode — Free USDC</p>
-      <p style="font-size:.9rem;margin-bottom:0">Every new wallet that authenticates via EIP-191 is automatically seeded with <strong style="color:#a78bfa">10.0 USDC</strong> — approximately 200 free Skill invocations. No deposit, no approval, no gas. Connect, sign, and ship.</p>
+      <p style="color:#fff;font-weight:600;margin-bottom:.25rem">&#9889; First-Task-Free + Free USDC Dev Mode</p>
+      <p style="font-size:.9rem;margin-bottom:0">Every wallet gets <strong style="color:#34d399">1 free invocation per Skill</strong> — no USDC required. After the trial, authenticated dev wallets are auto-seeded with <strong style="color:#a78bfa">10.0 USDC</strong> (~200 invocations). No deposit, no approval, no gas. Connect, sign, and ship.</p>
     </div>
 
     <!-- Security -->
@@ -405,12 +591,13 @@ provider.<span class="function">start</span>()</code>
     <p class="section-desc">Permissionless does not mean lawless. The protocol enforces deterministic, code-level rules for all participants.</p>
     <div class="policy-grid">
       <div class="policy-card">
-        <h3>Skill Developers</h3>
+        <h3>Skill Contributors</h3>
         <ul>
           <li>Any Python module with <code>execute(payload) &#8594; dict</code></li>
           <li>Sandboxed: no os, subprocess, shutil</li>
           <li>No infinite loops (30s timeout, 120s max)</li>
           <li>Zip-slip protected upload</li>
+          <li>DRM-obfuscated via aims-cli publish pipeline</li>
           <li>Reputation slashing: score &lt; 2.0 = quarantine</li>
         </ul>
       </div>
@@ -427,11 +614,12 @@ provider.<span class="function">start</span>()</code>
       <div class="policy-card">
         <h3>Consumers</h3>
         <ul>
+          <li>First-task-free: 1 free invocation per Skill per wallet</li>
           <li>402 safeguard: balance check before execution</li>
           <li>Escrow hold frozen at submission, only actual cost deducted</li>
           <li>Auto-refund on FAILURE or REJECTED</li>
           <li>100 req/60s sliding window rate limit</li>
-          <li>No subscription, no recurring billing</li>
+          <li>3 billing modes: Metered &middot; Subscription &middot; Buyout</li>
         </ul>
       </div>
     </div>
@@ -441,9 +629,9 @@ provider.<span class="function">start</span>()</code>
 <!-- ── CTA ── -->
 <section class="cta-section" id="cta">
   <div class="container">
-    <div class="badge" style="margin-bottom:1rem">&#9670; Mainnet Live</div>
+    <div class="badge" style="margin-bottom:1rem">&#9670; Mainnet Live &middot; First-Task-Free</div>
     <h2>Ready to <span class="gradient-text">Flip the Switch?</span></h2>
-    <p>Connect your wallet, sign your first message, and start using Skills in under 60 seconds. No email, no credit card, no approval needed.</p>
+    <p>Connect your wallet, sign your first message, and start using Skills in under 60 seconds. No email, no credit card, no approval needed. Your first invocation is always free.</p>
     <div class="hero-ctas" style="justify-content:center">
       <a href="https://aims-gateway.fly.dev/api/discovery" target="_blank" class="btn-primary">Explore the API</a>
       <a href="https://aims-gateway.fly.dev/api/health" target="_blank" class="btn-secondary">Check Health</a>

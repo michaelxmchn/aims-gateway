@@ -6,6 +6,11 @@
 > **提交规范**: 遵循 commitlint 规范（type(scope): subject）
 
 ## [2026-06-12]
+### 修改
+- feat(frontend): `static/index.html` — 全量重写 AIMS 2.0 着陆页，70/25/5 + 95/0/5 双分账表、PLG First-Task-Free 横幅、3 角色专区（Contributor/Consumer/Worker）、Commerce Matrix 3 模式对比表、4 大优势重写、How It Works 双象限分账
+- feat(frontend): `static/docs.html` — 全量重写开发者文档，增加 aims-cli 工具链 3 节（init/login/publish 8 步 DRM）、Revenue Split 表 Q1/Q2-Q5、Billing Modes 表、API 端点表新增 register-metadata/request-key、FAQ 更新
+- feat(frontend): `static/console.html` — PLG 全功能升级，Auth→Free Trial Check→Balance Check→Execution→PoT→Settlement 6 步管道、Billing Mode 选择器（Metered/Subscription/Buyout/Free Trial）、Trial 追踪（usedTrials + 402 弹窗 "Use Free Trial"）、PLG Badge `★ 1 Free Trial / Skill`
+- feat(docs): `project_document/WEBSITE_COPY.md` — 全量重写同步 HTML 文案，11 节覆盖 Hero、价值主张、3 角色、4 优势、How It Works、PLG、Commerce Matrix、Agent 集成、Policy、aims-cli 工具链、技术规格
 ### 新增
 - feat(canary): 创建 `src/gateway/canary.py` — `CanaryManager` ECDSA 签名水印系统，支持 token 生成/验证/重放检测/Worker 黑名单
 - feat(canary): `POST /api/run` 注入 `_canary_token`（时间戳+随机 Hash+ECDSA 签名）到任务 payload，Worker claim 时自动携带

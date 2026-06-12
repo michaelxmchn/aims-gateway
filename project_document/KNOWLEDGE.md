@@ -501,5 +501,20 @@ A: 待补充
 - **三头部注入**：`X-Wallet-Address`（0x + 40 hex）、`X-Signature`（130 hex chars，移除 0x 前缀）、`X-Timestamp`（UNIX 秒）
 - **402 拦截**：`POST /api/run` 返回 402 → 前端弹窗显示当前余额 + 合约地址 + 充值引导
 - **三角色路由**：Consumer（Skill 调用 + 链上结算）、Developer（70% 流式分润）、Worker（25% 佣金 + 心跳 + 节点模拟）
-- **AIMS Execution Pipeline**：Auth → Balance Check → Execution → PoT → Settlement 五阶段动画进度条，反映从签名到链上分账的完整资金流
+- **AIMS Execution Pipeline**：Auth → Free Trial Check → Balance Check → Execution → PoT → Settlement 六阶段动画进度条，反映从签名到链上分账的完整资金流
+
+### 前端 PLG UI 模式（6 步管道 + 试用追踪）
+- **6 步管道**：Auth → Free Trial Check → Balance Check → Execution → PoT → Settlement，第 2 步（Free Trial Check）为 PLG 新增，仅在 `trialsLeft[skill_id] > 0` 时显示绿色 "Free Trial" 标签
+- **Billing Mode 选择器**：下拉菜单（Metered / Subscription / Buyout / Free Trial），Free Trial 选项仅在有剩余试用次数时显示，选择后自动跳过余额检查
+- **Trial 状态追踪**：`usedTrials: Record<string, boolean>` 本地对象跟踪每个 skill 是否已消耗试用，`updateTrialDisplay()` 计算 `trialsLeft`，`setTrialStep()` 动态切换管道显示
+- **PLG Badge**：顶部栏 `★ 1 Free Trial / Skill` 徽章，单击展开剩余试用列表
+- **Trial 生命周期**：SUCCESS 时 `usedTrials[skill_id] = true`（消耗），FAILURE 时恢复（`usedTrials[skill_id] = false`），匹配后端 `FreeTrialManager` 的 `consume_trial()` / 失败不回滚语义
+- **402 弹窗增强**：余额不足时显示 "Use Free Trial Instead" 按钮（skill 有剩余试用时），引导用户零成本体验
+- **EIP-191 浏览器签名**：`ethers.Signer.signMessage(new Uint8Array(bodyBytes))` 生成兼容 Python `encode_defunct` 的签名，三头部（X-Wallet-Address / X-Signature / X-Timestamp）注入 API 请求
+
+### 前端页面架构
+- **index.html**（着陆页）：暗色 Cyberpunk 风格，Hero + 3 价值主张 + 3 角色卡片 + 4 大优势 + How It Works（双分账表 Q1/Q2-Q5）+ PLG 横幅 + Commerce Matrix 3 模式对比表 + 技术规格附录
+- **docs.html**（开发者文档）：Quickstart + PLG 说明框 + Revenue Split 表 + Billing Modes 表 + aims-cli 工具链 3 节（init/login/publish 8 阶段 DRM）+ API 端点表 + FAQ
+- **console.html**（Web3 控制面板）：三角色视图（Consumer/Developer/Worker）+ MetaMask 直连 + 6 步管道 + Billing Mode 选择器 + Trial 追踪 + Worker 佣金显示 + 配置面板
+
 - **CORS 配置**：`server.py` 使用 `CORSMiddleware(allow_origins=["*"])` 开放跨域；前端通过 `localStorage.setItem("aims_api_base", url)` 配置 API 地址

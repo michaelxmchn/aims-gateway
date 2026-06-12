@@ -37,6 +37,10 @@ body{font-family:'SF Mono',SFMono-Regular,'JetBrains Mono','Fira Code',monospace
 .network-badge.ok{background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.2)}
 .network-badge.warn{background:rgba(251,191,36,0.15);color:var(--amber);border:1px solid rgba(251,191,36,0.2)}
 
+/* PLG badge */
+.plg-badge{display:inline-flex;align-items:center;gap:0.35rem;padding:0.3rem 0.7rem;border-radius:6px;font-size:0.7rem;font-weight:600;background:rgba(52,211,153,0.1);color:#34d399;border:1px solid rgba(52,211,153,0.15)}
+.plg-badge.active{background:rgba(52,211,153,0.15);border-color:rgba(52,211,153,0.3);box-shadow:0 0 12px rgba(52,211,153,0.1)}
+
 /* ── Role tabs ── */
 .role-tabs{display:flex;gap:0.5rem;flex-wrap:wrap}
 .role-tab{padding:0.65rem 1.5rem;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:0.85rem;font-weight:600;transition:all 0.2s}
@@ -70,6 +74,9 @@ body{font-family:'SF Mono',SFMono-Regular,'JetBrains Mono','Fira Code',monospace
 .pipeline-step .label{font-size:0.6rem;text-align:center;color:var(--text-dim);white-space:nowrap}
 .pipeline-step.done .label{color:#22c55e}
 .pipeline-step.active .label{color:var(--neon)}
+.pipeline-step.trial .circle{border-color:#34d399;color:#34d399}
+.pipeline-step.trial .label{color:#34d399}
+.pipeline-step.done.trial .circle{background:rgba(52,211,153,0.15);border-color:#34d399;color:#34d399}
 .pipeline-arrow{color:var(--border);font-size:0.8rem;flex-shrink:0}
 .pipeline-step.done + .pipeline-arrow{color:var(--neon-dim)}
 
@@ -83,6 +90,7 @@ body{font-family:'SF Mono',SFMono-Regular,'JetBrains Mono','Fira Code',monospace
 .log-entry.info{border-left:2px solid var(--blue)}
 .log-entry.success{border-left:2px solid #22c55e}
 .log-entry.error{border-left:2px solid var(--red)}
+.log-entry.trial{border-left:2px solid #34d399}
 
 /* ── Buttons ── */
 .btn{display:inline-flex;align-items:center;gap:0.5rem;padding:0.55rem 1.25rem;border-radius:8px;font-family:inherit;font-size:0.8rem;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all 0.2s}
@@ -94,11 +102,14 @@ body{font-family:'SF Mono',SFMono-Regular,'JetBrains Mono','Fira Code',monospace
 .btn-ghost{background:transparent;color:var(--text-dim);border-color:var(--border)}
 .btn-ghost:hover{color:#fff;border-color:var(--text-dim)}
 .btn-sm{padding:0.35rem 0.85rem;font-size:0.7rem}
+.btn-plg{background:rgba(52,211,153,0.1);color:#34d399;border-color:rgba(52,211,153,0.2)}
+.btn-plg:hover{background:rgba(52,211,153,0.2);box-shadow:0 0 15px rgba(52,211,153,0.1)}
 
 /* ── Input ── */
 .input{background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:6px;padding:0.55rem 0.75rem;color:#fff;font-family:inherit;font-size:0.8rem;width:100%;outline:none;transition:border-color 0.2s}
 .input:focus{border-color:var(--neon-dim)}
 .input::placeholder{color:var(--text-dim);opacity:0.5}
+select.input option{background:#1e293b;color:#fff}
 
 /* ── Tables ── */
 table{width:100%;border-collapse:collapse;font-size:0.78rem}
@@ -128,6 +139,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .toast.error{background:rgba(255,107,107,0.15);border:1px solid rgba(255,107,107,0.3);color:var(--red)}
 .toast.info{background:rgba(96,165,250,0.15);border:1px solid rgba(96,165,250,0.3);color:var(--blue)}
 .toast.warn{background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.3);color:var(--amber)}
+.toast.trial{background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.2);color:#34d399}
 @keyframes slideIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
 
 /* ── Tab content ── */
@@ -175,6 +187,9 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       Each skill invocation requires a minimum of <strong>0.05 USDC</strong>.
       Your current available balance is <strong id="modalBalance">0.00 USDC</strong>.
     </p>
+    <p id="modalTrialNotice" style="font-size:0.8rem;color:#34d399;background:rgba(52,211,153,0.06);padding:0.75rem;border-radius:6px;display:none">
+      &#9733; <strong>First-Task-Free available!</strong> You haven't used your free trial for this Skill yet. <button class="btn btn-sm btn-plg" onclick="closeDepositModal();document.getElementById('billingMode').value='trial'">Use Free Trial Instead</button>
+    </p>
     <p style="font-size:0.8rem;color:var(--neon);background:var(--neon-glow);padding:0.75rem;border-radius:6px">
       Deposit to contract: <code id="modalContractAddr" style="word-break:break-all">0x0000...0000</code>
     </p>
@@ -191,6 +206,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   <header class="topbar">
     <div class="logo">AIMS <span>Console</span></div>
     <div class="wallet-area">
+      <span class="plg-badge" id="trialBadge" style="display:none">&#9733; 1 Free Trial / Skill</span>
       <span class="network-badge ok" id="networkBadge">● Base L2</span>
       <div class="wallet-bal" id="balanceDisplay" style="display:none">
         Balance: <span class="num" id="walletBalance">0.00</span> <span style="font-size:0.65rem;color:var(--text-dim)">USDC</span>
@@ -209,13 +225,15 @@ tr:hover td{background:rgba(255,255,255,0.02)}
     <div class="pipeline" id="pipeline">
       <div class="pipeline-step" data-step="0"><div class="circle">①</div><span class="label">Auth</span></div>
       <span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="1"><div class="circle">②</div><span class="label">Balance<br/>Check</span></div>
+      <div class="pipeline-step" data-step="1"><div class="circle">②</div><span class="label">Free Trial<br/>Check</span></div>
       <span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="2"><div class="circle">③</div><span class="label">Execute<br/>Task</span></div>
+      <div class="pipeline-step" data-step="2"><div class="circle">③</div><span class="label">Balance<br/>Check</span></div>
       <span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="3"><div class="circle">④</div><span class="label">Proof of<br/>Task</span></div>
+      <div class="pipeline-step" data-step="3"><div class="circle">④</div><span class="label">Execute<br/>Task</span></div>
       <span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="4"><div class="circle">⑤</div><span class="label">Settle<br/>70/25/5</span></div>
+      <div class="pipeline-step" data-step="4"><div class="circle">⑤</div><span class="label">Proof of<br/>Task</span></div>
+      <span class="pipeline-arrow">▸</span>
+      <div class="pipeline-step" data-step="5"><div class="circle">⑥</div><span class="label">Settle<br/>70/25/5</span></div>
     </div>
   </div>
 
@@ -239,7 +257,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 
     <div class="role-header">
       <div class="avatar consumer">🛒</div>
-      <div class="info"><h3>Consumer Dashboard</h3><p>Invoke AI skills with your wallet — EIP-191 signed, on-chain settled</p></div>
+      <div class="info"><h3>Consumer Dashboard</h3><p>Invoke AI skills with your wallet — EIP-191 signed, on-chain settled. <strong style="color:#34d399">First task free per Skill.</strong></p></div>
     </div>
 
     <div class="grid-2">
@@ -253,6 +271,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
           <div class="stat"><span class="stat-label">Available Balance</span><span class="stat-value neon" id="consumerBalance">— <span class="unit">USDC</span></span></div>
           <div class="stat"><span class="stat-label">Total Deposited</span><span class="stat-value" id="consumerDeposited">— <span class="unit">USDC</span></span></div>
           <div class="stat"><span class="stat-label">Tasks Executed</span><span class="stat-value" id="consumerTasks">0</span></div>
+          <div class="stat"><span class="stat-label">Free Trials Left</span><span class="stat-value" style="color:#34d399" id="trialsLeft">1 <span class="unit">per Skill</span></span></div>
         </div>
       </div>
 
@@ -260,15 +279,26 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <div class="card">
         <div class="card-header"><span class="card-title">🚀 Invoke Skill</span></div>
         <form onsubmit="invokeSkill(event)" style="display:flex;flex-direction:column;gap:0.75rem">
-          <select class="input" id="skillSelect" required>
-            <option value="">— Select a skill —</option>
-          </select>
+          <div style="display:flex;gap:0.75rem">
+            <select class="input" id="skillSelect" required style="flex:1">
+              <option value="">— Select a skill —</option>
+            </select>
+            <select class="input" id="billingMode" style="width:160px;flex-shrink:0">
+              <option value="pay_per_task">⚡ Metered</option>
+              <option value="subscription">📅 Subscription</option>
+              <option value="buyout">🔒 Buyout</option>
+              <option value="trial" selected>🎁 Free Trial (1st)</option>
+            </select>
+          </div>
           <input class="input" id="skillParams" placeholder='Params JSON (e.g. {"url":"https://example.com"})' value='{"url":"https://example.com"}'>
           <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
             <input class="input" id="workerAddr" placeholder="Worker address (0x...)" style="flex:1" value="0x70997970C51812dc3A010C7d01b50e0d17dc79C8">
             <input class="input" id="devAddr" placeholder="Developer address (0x...)" style="flex:1" value="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266">
           </div>
-          <button class="btn btn-neon" id="invokeBtn" type="submit">▶ Execute &amp; Settle</button>
+          <div style="display:flex;gap:0.75rem">
+            <button class="btn btn-neon" id="invokeBtn" type="submit" style="flex:1">▶ Execute &amp; Settle</button>
+            <button class="btn btn-sm btn-plg" id="trialBtn" type="button" onclick="document.getElementById('billingMode').value='trial'" title="Use free trial">🎁 Free</button>
+          </div>
         </form>
       </div>
     </div>
@@ -280,7 +310,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <button class="btn btn-sm btn-ghost" onclick="clearLog()">Clear</button>
       </div>
       <div class="log-feed" id="consumerLog">
-        <div class="log-entry info"><span class="time">—</span><span class="msg">Connect your wallet to begin</span></div>
+        <div class="log-entry info"><span class="time">—</span><span class="msg">Connect your wallet to begin. <strong style="color:#34d399">First task is always free!</strong></span></div>
       </div>
     </div>
   </div>
@@ -292,7 +322,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 
     <div class="role-header">
       <div class="avatar developer">🔧</div>
-      <div class="info"><h3>Developer Dashboard</h3><p>Your skills, your 70% streaming revenue — settled on-chain every task</p></div>
+      <div class="info"><h3>Developer Dashboard</h3><p>Your skills, your <strong style="color:#a78bfa">70%</strong> streaming revenue — settled on-chain every task. Use <code style="color:var(--neon)">aims-cli publish</code> for DRM protection.</p></div>
     </div>
 
     <div class="grid-3">
@@ -305,11 +335,11 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <div class="card-header"><span class="card-title">💎 Streaming Revenue (70%)</span></div>
         <div class="stat"><span class="stat-label">Cumulative Earnings</span><span class="stat-value neon" id="devRevenue">— <span class="unit">USDC</span></span></div>
         <div class="gas-meter"><div class="fill" id="devRevenueMeter" style="width:0%"></div></div>
-        <p style="font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">Auto-distributed on each settled task via 70/25/5 split</p>
+        <p style="font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">Auto-distributed on each settled task via 70/25/5 split (Q1) / 95/0/5 (Q2-Q5)</p>
       </div>
       <div class="card">
         <div class="card-header"><span class="card-title">📊 Last Settlements</span></div>
-        <div id="devSettlements"><div class="empty-state"><div class="big-icon">📭</div>No settlements yet — deploy a skill and await task execution</div></div>
+        <div id="devSettlements"><div class="empty-state"><div class="big-icon">📭</div>No settlements yet — deploy a skill and await task execution. Use <code style="color:var(--neon)">aims-cli publish</code> to deploy.</div></div>
       </div>
     </div>
   </div>
@@ -321,7 +351,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 
     <div class="role-header">
       <div class="avatar worker">⚡</div>
-      <div class="info"><h3>Worker / Provider Dashboard</h3><p>Run an AIMS node — earn 25% commission selling residential bandwidth</p></div>
+      <div class="info"><h3>Worker / Provider Dashboard</h3><p>Run an AIMS node — earn <strong style="color:#22c55e">25% commission</strong> selling residential bandwidth</p></div>
     </div>
 
     <div class="grid-3">
@@ -335,6 +365,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
           <div><span style="color:var(--text-dim)">Node ID:</span> <span id="workerNodeId" style="color:#fff">—</span></div>
           <div><span style="color:var(--text-dim)">Uptime:</span> <span id="workerUptime" style="color:#fff">0s</span></div>
           <div><span style="color:var(--text-dim)">Tasks Claimed:</span> <span id="workerTasksClaimed" style="color:#fff">0</span></div>
+          <div><span style="color:var(--text-dim)">Commission Split:</span> <span style="color:#22c55e">25% (Q1) / 0% (Q2-Q5)</span></div>
         </div>
         <div style="margin-top:1rem;display:flex;gap:0.5rem">
           <button class="btn btn-sm btn-neon" onclick="startWorkerSim()" id="workerStartBtn">▶ Start Node</button>
@@ -346,7 +377,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <div class="card-header"><span class="card-title">💰 Commission (25%)</span></div>
         <div class="stat"><span class="stat-label">Total Earned</span><span class="stat-value neon" id="workerEarnings">— <span class="unit">USDC</span></span></div>
         <div class="gas-meter"><div class="fill" id="workerEarningsMeter" style="width:0%"></div></div>
-        <p style="font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">25% of each task fee for providing residential IP bandwidth</p>
+        <p style="font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">25% of each Q1 task fee for providing residential IP bandwidth. Q2-Q5 direct skills bypass the compute layer (0% commission).</p>
       </div>
 
       <div class="card">
@@ -383,6 +414,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <div><span style="color:var(--text-dim)">API Base:</span> <span id="cfgApiBase" style="color:var(--neon)"></span></div>
         <div><span style="color:var(--text-dim)">Wallet:</span> <span id="cfgWallet">Not connected</span></div>
         <div><span style="color:var(--text-dim)">Network:</span> <span id="cfgNetwork">—</span></div>
+        <div><span style="color:var(--text-dim)">Free Trial:</span> <span id="cfgTrial" style="color:#34d399">1 per Skill (PLG)</span></div>
       </div>
     </div>
   </div>
@@ -435,6 +467,7 @@ let devRevenueUsdc = 0;
 let consumerTaskCount = 0;
 let consumerDepositedUsdc = 0;
 let skillsCache = [];
+let usedTrials = {};  // {skill_id: true} — tracks trial consumption
 
 // ════════════════════════════════════════════════════════════════
 //  Toast system
@@ -449,11 +482,15 @@ function toast(msg, type = "info") {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  Pipeline progress
+//  Pipeline progress — 6 steps (trial check inserted)
 // ════════════════════════════════════════════════════════════════
 function resetPipeline() {
-  document.querySelectorAll(".pipeline-step").forEach(s => { s.classList.remove("done", "active"); });
+  document.querySelectorAll(".pipeline-step").forEach(s => { s.classList.remove("done", "active", "trial"); });
   document.getElementById("pipelineStatus").textContent = "Idle";
+}
+
+function setTrialStep() {
+  document.querySelectorAll(".pipeline-step")[1].classList.add("trial");
 }
 
 function advancePipeline(step) {
@@ -464,8 +501,15 @@ function advancePipeline(step) {
   });
   if (step < steps.length) {
     steps[step].classList.add("active");
-    const labels = ["Authenticating…","Checking on-chain balance…","Executing skill task…","Generating Proof-of-Task…","Settling 70/25/5 split…"];
-    document.getElementById("pipelineStatus").textContent = labels[step] || `Step ${step + 1}/5`;
+    const labels = [
+      "Authenticating…",
+      "Checking free trial eligibility…",
+      "Verifying on-chain balance…",
+      "Executing skill task…",
+      "Generating Proof-of-Task…",
+      "Settling 70/25/5 split…",
+    ];
+    document.getElementById("pipelineStatus").textContent = labels[step] || `Step ${step + 1}/6`;
   } else {
     document.getElementById("pipelineStatus").textContent = "✅ Complete";
     document.getElementById("pipelineStatus").style.color = "var(--neon)";
@@ -502,6 +546,9 @@ async function connectWallet() {
     document.getElementById("cfgWallet").textContent = walletAddress;
     document.getElementById("cfgWallet").style.color = "var(--neon)";
 
+    // Show trial badge
+    document.getElementById("trialBadge").style.display = "inline-flex";
+
     // Check network
     const net = await provider.getNetwork();
     const netBadge = document.getElementById("networkBadge");
@@ -535,17 +582,15 @@ async function connectWallet() {
 //  EIP-191 signing (browser-compatible with python backend)
 // ════════════════════════════════════════════════════════════════
 async function eip191SignBody(bodyBytes) {
-  // ethers.Signer.signMessage() adds the \x19Ethereum Signed Message:\n
-  // prefix, which matches Python's encode_defunct(primitive=body)
   const sig = await signer.signMessage(new Uint8Array(bodyBytes));
-  return sig; // return 132-char hex string with 0x prefix (stripped later)
+  return sig;
 }
 
 function getAuthHeaders(bodyBytes, signature) {
   const sigHex = signature.startsWith("0x") ? signature.slice(2) : signature;
   return {
     "X-Wallet-Address": walletAddress,
-    "X-Signature": sigHex,           // 130 hex chars, no 0x
+    "X-Signature": sigHex,
     "X-Timestamp": Math.floor(Date.now() / 1000).toString(),
     "Content-Type": "application/json",
   };
@@ -572,11 +617,17 @@ async function refreshBalance() {
   }
 }
 
-function showDepositModal(balanceUsdc) {
+function showDepositModal(balanceUsdc, isTrialEligible) {
   document.getElementById("modalBody").innerHTML =
     `Each skill invocation requires a minimum of <strong>0.05 USDC</strong>. ` +
     `Your current available balance is <strong>${balanceUsdc.toFixed(2)} USDC</strong>.`;
   document.getElementById("modalContractAddr").textContent = CONTRACT_ADDRESS;
+  const trialNotice = document.getElementById("modalTrialNotice");
+  if (isTrialEligible) {
+    trialNotice.style.display = "block";
+  } else {
+    trialNotice.style.display = "none";
+  }
   document.getElementById("depositModal").classList.add("open");
 }
 
@@ -667,7 +718,7 @@ async function fetchDiscovery() {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  Invoke skill (Consumer)
+//  Invoke skill (Consumer) — with free trial & billing mode
 // ════════════════════════════════════════════════════════════════
 async function invokeSkill(event) {
   event.preventDefault();
@@ -681,6 +732,16 @@ async function invokeSkill(event) {
     toast("Invalid params JSON", "error"); return;
   }
 
+  const billingMode = document.getElementById("billingMode").value;
+  const isTrial = billingMode === "trial";
+
+  // Check if trial already used for this skill
+  if (isTrial && usedTrials[skillId]) {
+    toast(`Free trial already used for "${skillId}". Select a billing mode.`, "warn");
+    document.getElementById("billingMode").value = "pay_per_task";
+    return;
+  }
+
   const worker = document.getElementById("workerAddr").value.trim() || "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
   const developer = document.getElementById("devAddr").value.trim() || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
 
@@ -691,7 +752,7 @@ async function invokeSkill(event) {
   resetPipeline();
 
   try {
-    // ── Step 0: Auth (already have wallet) ──
+    // ── Step 0: Auth ──
     advancePipeline(0);
     const bodyPayload = {
       skill_id: skillId,
@@ -700,17 +761,26 @@ async function invokeSkill(event) {
       developer_premium: 0.01,
       max_budget: 2.0,
       compute_tier: 1,
+      billing_mode: billingMode,
     };
     const bodyBytes = new TextEncoder().encode(JSON.stringify(bodyPayload));
 
-    // ── Step 1: Sign & send — backend checks balance ──
+    // ── Step 1: Sign & send ──
     advancePipeline(1);
+    if (isTrial) {
+      setTrialStep();
+      consumerLog("trial", `🎁 Free trial: skill=${skillId} (1st invocation, 0 USDC)`);
+      toast(`Using free trial for "${skillId}" — zero cost`, "trial");
+    }
     const sig = await eip191SignBody(bodyBytes);
     const headers = getAuthHeaders(bodyBytes, sig);
 
-    // ── Step 2: Execute ──
+    // ── Step 2: Balance check (skipped for free trial on backend) ──
     advancePipeline(2);
-    consumerLog("info", `POST /api/run → skill=${skillId} address=${walletAddress.slice(0,10)}…`);
+
+    // ── Step 3: Execute ──
+    advancePipeline(3);
+    consumerLog("info", `POST /api/run → skill=${skillId} mode=${billingMode} address=${walletAddress.slice(0,10)}…`);
 
     const resp = await fetch(`${API_BASE}/api/run`, {
       method: "POST",
@@ -725,7 +795,7 @@ async function invokeSkill(event) {
       const bal = balanceMatch ? parseFloat(balanceMatch[1]) : 0;
       consumerLog("error", `402 Insufficient balance: ${bal} USDC`);
       resetPipeline();
-      showDepositModal(bal);
+      showDepositModal(bal, isTrial && !usedTrials[skillId]);
       invokeBtn.disabled = false;
       invokeBtn.textContent = "▶ Execute & Settle";
       return;
@@ -754,10 +824,15 @@ async function invokeSkill(event) {
 
     const data = await resp.json();
     const taskId = data.task_id;
+    if (isTrial) {
+      usedTrials[skillId] = true;
+      updateTrialDisplay();
+      consumerLog("trial", `🎁 Free trial consumed for "${skillId}". Task: ${taskId}`);
+    }
     consumerLog("success", `Task created: ${taskId}`);
 
-    // ── Step 3: Poll for completion — simulate PoT verification ──
-    advancePipeline(3);
+    // ── Step 4: Poll for completion ──
+    advancePipeline(4);
     let settled = false;
     for (let i = 0; i < 30; i++) {
       await new Promise(r => setTimeout(r, 1000));
@@ -772,6 +847,12 @@ async function invokeSkill(event) {
           }
           if (statusData.status === "FAILED") {
             consumerLog("error", `Task failed: ${statusData.outcome || "unknown"}`);
+            // Trial not consumed on failure
+            if (isTrial) {
+              delete usedTrials[skillId];
+              updateTrialDisplay();
+              consumerLog("trial", "🎁 Free trial restored — failure doesn't count");
+            }
             break;
           }
         }
@@ -779,8 +860,8 @@ async function invokeSkill(event) {
     }
 
     if (settled) {
-      // ── Step 4: Settlement complete ──
-      advancePipeline(4);
+      // ── Step 5: Settlement complete ──
+      advancePipeline(5);
       await new Promise(r => setTimeout(r, 600));
       completePipeline();
 
@@ -813,6 +894,13 @@ async function invokeSkill(event) {
   invokeBtn.textContent = "▶ Execute & Settle";
 }
 
+function updateTrialDisplay() {
+  const used = Object.keys(usedTrials).length;
+  const total = skillsCache.length || 1;
+  const remaining = Math.max(0, total - used);
+  document.getElementById("trialsLeft").innerHTML = `${remaining} <span class="unit">/ ${total} Skills</span>`;
+}
+
 // ════════════════════════════════════════════════════════════════
 //  Consumer log
 // ════════════════════════════════════════════════════════════════
@@ -837,7 +925,6 @@ function clearLog() {
 function startWorkerSim() {
   const btn = document.getElementById("workerStartBtn");
   if (workerInterval) {
-    // Stop
     clearInterval(workerInterval);
     workerInterval = null;
     btn.textContent = "▶ Start Node";
@@ -857,20 +944,14 @@ function startWorkerSim() {
   btn.textContent = "⏹ Stop Node";
   btn.className = "btn btn-sm btn-outline";
 
-  // Update uptime
   if (workerInterval) clearInterval(workerInterval);
   workerInterval = setInterval(() => {
     const uptime = Math.floor((Date.now() - workerStartTime) / 1000);
     document.getElementById("workerUptime").textContent = `${uptime}s`;
   }, 1000);
 
-  // Send heartbeat every 15s
   const hbInterval = setInterval(() => sendHeartbeat(), 15000);
   workerInterval._hbInterval = hbInterval;
-
-  // Override clear to also clear heartbeat
-  const origClear = clearInterval;
-  workerInterval._origClear = origClear;
 
   sendHeartbeat();
   toast("Worker node started — heartbeating every 15s", "success");
@@ -888,7 +969,7 @@ async function sendHeartbeat() {
       document.getElementById("workerStatusText").textContent = "Online (Active)";
     }
   } catch(err) {
-    // silent — network may be down
+    // silent
   }
 }
 
@@ -948,6 +1029,7 @@ if (typeof window.ethereum !== "undefined") {
       document.getElementById("connectBtn").classList.remove("connected");
       document.getElementById("walletAddress").textContent = "";
       document.getElementById("balanceDisplay").style.display = "none";
+      document.getElementById("trialBadge").style.display = "none";
       toast("Wallet disconnected", "warn");
     } else {
       connectWallet();

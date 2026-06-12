@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AIMS Network — Developer Docs</title>
-<meta name="description" content="Learn how to use AIMS Network: connect your wallet, run Skills, earn USDC.">
+<meta name="description" content="Learn how to use AIMS Network: connect your wallet, run Skills, earn USDC. First-task-free, aims-cli DRM toolchain, and 3 commerce modes.">
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 html{scroll-behavior:smooth}
@@ -20,11 +20,11 @@ code{font-family:'SF Mono','Fira Code',monospace;font-size:.85rem;background:rgb
 pre{background:#18181b;border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:1.25rem;overflow-x:auto;margin:1rem 0}
 pre code{background:none;padding:0;color:#e4e4e7;font-size:.85rem;white-space:pre}
 .gradient-text{background:linear-gradient(135deg,#22d3ee,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.container{max-width:900px;margin:0 auto;padding:0 1.5rem}
+.container{max-width:960px;margin:0 auto;padding:0 1.5rem}
 
 /* Nav */
 nav{position:fixed;top:0;left:0;right:0;z-index:1000;background:rgba(10,10,15,0.85);backdrop-filter:blur(12px);border-bottom:1px solid rgba(255,255,255,0.06)}
-nav .inner{display:flex;align-items:center;justify-content:space-between;height:60px;max-width:900px;margin:0 auto;padding:0 1.5rem}
+nav .inner{display:flex;align-items:center;justify-content:space-between;height:60px;max-width:960px;margin:0 auto;padding:0 1.5rem}
 nav a{color:#a1a1aa;font-size:.875rem;font-weight:500}
 nav a:hover{color:#fff;text-decoration:none}
 nav .logo{font-weight:700;color:#fff}
@@ -51,6 +51,11 @@ nav .logo span{color:#22d3ee}
 .warn-box{background:rgba(167,139,250,0.05);border:1px solid rgba(167,139,250,0.12);border-radius:10px;padding:1rem 1.25rem;margin:1rem 0}
 .warn-box p{font-size:.9rem;margin-bottom:0;color:#e4e4e7}
 
+/* PLG box */
+.plg-box{background:rgba(52,211,153,0.06);border:1px solid rgba(52,211,153,0.12);border-radius:10px;padding:1rem 1.25rem;margin:1rem 0}
+.plg-box p{font-size:.9rem;margin-bottom:0;color:#e4e4e7}
+.plg-box strong{color:#34d399}
+
 /* Tables */
 table{width:100%;border-collapse:separate;border-spacing:0;margin:1rem 0}
 th,td{padding:.7rem 1rem;text-align:left;border-bottom:1px solid rgba(255,255,255,0.06);font-size:.9rem}
@@ -63,6 +68,14 @@ td{color:#a1a1aa}
 .tag.auth{background:rgba(167,139,250,0.1);color:#a78bfa}
 .tag.public{background:rgba(52,211,153,0.1);color:#34d399}
 .tag.post{background:rgba(251,191,36,0.1);color:#fbbf24}
+
+/* CLI section */
+.cli-command{background:#0d0d14;border:1px solid rgba(167,139,250,0.15);border-radius:10px;padding:1rem 1.25rem;margin:.75rem 0;font-family:'SF Mono','Fira Code',monospace;font-size:.85rem;color:#a78bfa}
+.cli-command .prompt{color:#71717a}
+.cli-command .output{color:#e4e4e7;display:block;margin-top:.25rem}
+.cli-step{background:rgba(167,139,250,0.03);border-left:3px solid #a78bfa;padding:1rem 1.25rem;margin:1rem 0;border-radius:0 8px 8px 0}
+.cli-step h4{color:#a78bfa;margin-bottom:.25rem}
+.cli-step p{font-size:.88rem;margin-bottom:0}
 
 footer{text-align:center;padding:2rem 0;border-top:1px solid rgba(255,255,255,0.06);margin-top:3rem}
 footer p{font-size:.8rem;color:#52525b;margin:0}
@@ -79,6 +92,7 @@ footer p{font-size:.8rem;color:#52525b;margin:0}
     <a href="/" class="logo">AIMS<span>.</span></a>
     <div>
       <a href="/">Home</a>
+      <a href="/docs.html" style="margin-left:1.5rem;color:#22d3ee">Docs</a>
       <a href="https://aims-gateway.fly.dev/api/discovery" target="_blank" style="margin-left:1.5rem;color:#22d3ee">API Reference &#8599;</a>
     </div>
   </div>
@@ -88,14 +102,14 @@ footer p{font-size:.8rem;color:#52525b;margin:0}
   <div class="container">
 
     <h1>AIMS Network <span class="gradient-text">Developer Guide</span></h1>
-    <p>How to connect, use Skills, earn USDC, and contribute to the mesh. No sign-up forms, no approvals, no subscriptions — just your EVM wallet.</p>
+    <p>How to connect, use Skills, earn USDC, publish DRM-protected packages, and contribute to the mesh. No sign-up forms, no approvals — just your EVM wallet. <strong style="color:#34d399">Your first task is always free.</strong></p>
 
     <!-- ── Quickstart ── -->
     <h2>Quickstart: Run Your First Skill in 60 Seconds</h2>
     <p>You need two things: an EVM wallet and Python 3.10+.</p>
 
-    <div class="info-box">
-      <p><strong>&#9889; Dev mode:</strong> Every new wallet gets <strong>10.0 USDC</strong> auto-seeded — enough for ~200 free invocations. No deposit needed.</p>
+    <div class="plg-box">
+      <p><strong>&#9733; First-Task-Free:</strong> Every wallet gets <strong>1 free invocation per Skill</strong> — zero USDC required. After the trial, authenticated dev wallets are auto-seeded with <strong>10.0 USDC</strong> (~200 invocations). No deposit needed.</p>
     </div>
 
     <div class="step-group">
@@ -170,7 +184,7 @@ for _ in range(30):
 
     <div class="card">
       <h3>&#9654; Use Skills (Consumer)</h3>
-      <p>Browse the Skill registry, pick what you need, and invoke it via the API. You pay only on success — failed tasks auto-refund.</p>
+      <p>Browse the Skill registry, pick what you need, and invoke it via the API. <strong style="color:#34d399">Your first invocation per Skill is free.</strong> You pay only on success — failed tasks auto-refund.</p>
       <table>
         <thead><tr><th>Skill</th><th>What It Does</th><th>Cost</th></tr></thead>
         <tbody>
@@ -180,27 +194,30 @@ for _ in range(30):
           <tr><td><code>git_changelog</code></td><td>Auto-generate changelogs from commit history</td><td>0.05 USDC</td></tr>
         </tbody>
       </table>
+      <p style="margin-top:.75rem;font-size:.85rem"><strong>Commerce modes:</strong> Metered (pay-per-task) &middot; Subscription (monthly pass) &middot; Buyout (perpetual license)</p>
     </div>
 
     <div class="card">
-      <h3>&#8593; Publish Skills (Developer)</h3>
-      <p>Write a Python module, package it with a manifest, and upload it. Every time someone invokes your Skill, you earn a developer premium.</p>
+      <h3>&#8593; Publish Skills (Contributor / Developer)</h3>
+      <p>Write a Python module, package it with a manifest, and upload it. Every time someone invokes your Skill, you earn <strong style="color:#a78bfa">70% (Q1) or 95% (Q2-Q5)</strong> of the task fee. Use the <code>aims-cli</code> toolchain for DRM-grade obfuscation and one-command publishing.</p>
       <ol style="color:#a1a1aa;padding-left:1.25rem;font-size:.9rem">
         <li>Create <code>manifest.json</code> (name, description, input/output schema, price)</li>
         <li>Create <code>logic.py</code> with an <code>execute(payload) &#8594; dict</code> function</li>
-        <li>Zip them together: <code>zip my_skill.zip manifest.json logic.py</code></li>
-        <li>POST the zip to <code>/api/skills/upload</code></li>
+        <li>Run <code>aims-cli publish</code> — automates obfuscation, encryption, signing, and upload</li>
+        <li>Your Skill is live on the global mesh with DRM protection</li>
       </ol>
-      <pre><code>curl -X POST https://aims-gateway.fly.dev/api/skills/upload \
-  -F "zip_file=@my_skill.zip"</code></pre>
+      <pre><code><span style="color:#71717a"># Quick publish (see AIMS-CLI section below for full docs)</span>
+aims-cli init      # Interactive project configuration
+aims-cli login     # Secure keystore setup
+aims-cli publish   # Full DRM pipeline → dist.zip → gateway</code></pre>
     </div>
 
     <div class="card">
       <h3>&#9881; Run a Node (Worker / Provider)</h3>
-      <p>Two ways to earn:</p>
+      <p>Two ways to earn on the network:</p>
       <ul style="color:#a1a1aa;padding-left:1.25rem;font-size:.9rem;margin-bottom:.75rem">
-        <li><strong>Worker</strong> — claim pending tasks, execute Skill logic, submit results. Earn 80% of the task fee.</li>
-        <li><strong>Provider</strong> — route encrypted traffic through your residential IP when idle. Get paid for bandwidth.</li>
+        <li><strong>Worker</strong> — claim pending tasks, execute Skill logic, submit results. Earn <strong style="color:#22d3ee">25%</strong> of the task fee (Q1 commission).</li>
+        <li><strong>Provider</strong> — route encrypted traffic through your residential IP when idle. Get paid for bandwidth usage.</li>
       </ul>
       <pre><code><span style="color:#71717a"># Start a worker</span>
 AIMS_WALLET_KEY=0x... python -m src.worker.worker
@@ -213,19 +230,161 @@ provider.start()</code></pre>
 
     <!-- ── How Billing Works ── -->
     <h2>How Billing Works</h2>
-    <p>No subscriptions. No monthly fees. You pay per successful invocation, and the split is automatic.</p>
+    <p>Three commerce modes. One unified protocol. Every Skill author chooses their pricing model; every consumer picks what fits.</p>
 
     <table>
-      <thead><tr><th>Item</th><th>Amount</th><th>Who Gets It</th></tr></thead>
+      <thead><tr><th>Mode</th><th>Mechanism</th><th>Best For</th></tr></thead>
       <tbody>
-        <tr><td>Base task fee</td><td>0.05 USDC</td><td>80% worker / 20% protocol</td></tr>
-        <tr><td>Compute gas</td><td>$0.01/sec (Tier-1)</td><td>Worker</td></tr>
-        <tr><td>Developer premium</td><td>Author sets it</td><td>Skill developer</td></tr>
-        <tr><td>Platform tax</td><td>1% of total</td><td>Protocol treasury</td></tr>
+        <tr><td><strong style="color:#22d3ee">Metered</strong></td><td>Pay per successful invocation. No commitments.</td><td>Occasional use, testing, low-volume</td></tr>
+        <tr><td><strong style="color:#a78bfa">Subscription</strong></td><td>Monthly pass with rate-limit guarantees.</td><td>Regular power users, teams, production</td></tr>
+        <tr><td><strong style="color:#34d399">Buyout</strong></td><td>One-time perpetual license. No recurring fees.</td><td>Enterprise, embedded infrastructure</td></tr>
+      </tbody>
+    </table>
+
+    <p><strong>Revenue split</strong> — determined by the Skill's <code>function_type</code> at registration:</p>
+    <table>
+      <thead><tr><th>Quadrant</th><th>Function Type</th><th>Contributor</th><th>Worker</th><th>Treasury</th></tr></thead>
+      <tbody>
+        <tr><td><strong style="color:#22d3ee">Q1</strong></td><td><code>worker_collab</code></td><td style="color:#a78bfa">70%</td><td style="color:#22d3ee">25%</td><td style="color:#34d399">5%</td></tr>
+        <tr><td><strong style="color:#a78bfa">Q2-Q5</strong></td><td><code>direct_skill</code></td><td style="color:#a78bfa">95%</td><td style="color:#71717a">0%</td><td style="color:#34d399">5%</td></tr>
       </tbody>
     </table>
 
     <p><strong>Failed task?</strong> Your USDC never leaves escrow. The 402 safeguard rejects requests with insufficient balance before any funds move. If a worker fails to deliver valid results, the escrow refunds automatically.</p>
+
+    <!-- ── AIMS-CLI Developer Toolchain ── -->
+    <h2>AIMS-CLI Developer Toolchain Guide</h2>
+    <p>The <code>aims-cli</code> is a hardened command-line toolkit for publishing DRM-protected Skills to the AIMS network. It handles the entire lifecycle: configuration, credential management, code obfuscation, encryption, signing, and gateway registration.</p>
+
+    <div class="plg-box">
+      <p><strong>&#9889; Prerequisites:</strong> Python 3.10+, <code>pip install aims-cli</code> (or run from source at <code>bin/aims-cli</code>). An EVM wallet with a private key.</p>
+    </div>
+
+    <!-- Step 1: aims-cli init -->
+    <div class="cli-step">
+      <h4>Step 1: Project Configuration — <code>aims-cli init</code></h4>
+      <p>Interactive wizard that generates <code>aims.config.json</code> in your project root. The config is validated against the <code>AIMSConfig</code> Pydantic v2 schema — every field is type-checked, cross-validated, and circuit-broken against invalid combinations.</p>
+
+      <div class="cli-command">
+        <span class="prompt">$</span> aims-cli init
+        <span class="output">Enter skill_id [my_skill]: amazon_scraper_pro</span>
+        <span class="output">Enter entry_point [main.py]: logic.py</span>
+        <span class="output">Enter price_per_task_usdc [0.05]: 0.10</span>
+        <span class="output">Select function_type:</span>
+        <span class="output">  (1) worker_collab — Needs network compute (70/25/5 split)</span>
+        <span class="output">  (2) direct_skill — No worker needed (95/0/5 split) [default]</span>
+        <span class="output">Select billing_mode:</span>
+        <span class="output">  (1) pay_per_task — Metered usage [default]</span>
+        <span class="output">  (2) subscription — Monthly recurring pass</span>
+        <span class="output">  (3) buyout — Perpetual license</span>
+        <span class="output">Created aims.config.json — schema validated, circuit breakers active.</span>
+      </div>
+
+      <p><strong>Key config fields:</strong></p>
+      <table>
+        <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>
+          <tr><td><code>skill_id</code></td><td>string</td><td>Unique identifier for the Skill registry</td></tr>
+          <tr><td><code>entry_point</code></td><td>path</td><td>Python file exposing <code>execute(payload) → dict</code></td></tr>
+          <tr><td><code>price_per_task_usdc</code></td><td>float</td><td>Base price per successful invocation</td></tr>
+          <tr><td><code>function_type</code></td><td>enum</td><td><code>worker_collab</code> or <code>direct_skill</code></td></tr>
+          <tr><td><code>billing_mode</code></td><td>enum</td><td><code>pay_per_task</code>, <code>subscription</code>, or <code>buyout</code></td></tr>
+          <tr><td><code>enable_universal_free_trial</code></td><td>bool</td><td>Always <code>true</code> — PLG enforced at protocol level</td></tr>
+        </tbody>
+      </table>
+
+      <p><strong>Circuit breakers (automatic validation):</strong></p>
+      <ul style="color:#a1a1aa;padding-left:1.25rem;font-size:.88rem">
+        <li><code>worker_collab + buyout</code> = <strong style="color:#f87171">BLOCKED</strong> — worker-collab mode depends on network compute arbitration, incompatible with perpetual licensing</li>
+        <li><code>subscription</code> = <code>rate_limit_per_day</code> is <strong style="color:#fbbf24">MANDATORY</strong></li>
+        <li><code>buyout</code> = <code>rate_limit_per_day</code> is <strong style="color:#f87171">FORBIDDEN</strong> (perpetual = unlimited)</li>
+      </ul>
+    </div>
+
+    <!-- Step 2: aims-cli login -->
+    <div class="cli-step">
+      <h4>Step 2: Credential Management — <code>aims-cli login</code></h4>
+      <p>Securely stores your EIP-191 private key in an AES-256-GCM encrypted keystore (Web3 Secret Storage — keystore v3 standard). Your key is encrypted at rest with a password-derived key; the raw private key is never written to disk.</p>
+
+      <div class="cli-command">
+        <span class="prompt">$</span> aims-cli login
+        <span class="output">Enter your EVM private key (0x...): ****************</span>
+        <span class="output">Create a password for keystore encryption: **********</span>
+        <span class="output">Confirm password: **********</span>
+        <span class="output">&#10003; Keystore created at ~/.aims/keystore.json (Web3 Secret Storage v3)</span>
+        <span class="output">&#10003; Wallet address: 0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18</span>
+      </div>
+
+      <p><strong>Security properties:</strong></p>
+      <ul style="color:#a1a1aa;padding-left:1.25rem;font-size:.88rem">
+        <li>Key derivation: <code>scrypt</code> (N=2^18, p=1) — GPU/ASIC resistant</li>
+        <li>Cipher: <code>AES-128-CTR</code> with random 16-byte IV</li>
+        <li>MAC: <code>SHA-256(derived_key[16:32] || ciphertext)</code> — tamper-proof</li>
+        <li>The keystore file is portable — copy it across machines safely</li>
+        <li>Password prompt uses <code>getpass</code> — no terminal echo</li>
+      </ul>
+    </div>
+
+    <!-- Step 3: aims-cli publish -->
+    <div class="cli-step">
+      <h4>Step 3: DRM Build &amp; Publish — <code>aims-cli publish</code></h4>
+      <p>This is the core of the AIMS toolchain. The publish command executes an <strong>8-stage automated pipeline</strong> that transforms your raw Python source into a hardened, encrypted, signed, and registered DRM asset.</p>
+
+      <div class="cli-command">
+        <span class="prompt">$</span> aims-cli publish --gateway-url https://aims-gateway.fly.dev
+        <span class="output">&#9654; Stage 1/8 — Validating aims.config.json ... &#10003;</span>
+        <span class="output">&#9654; Stage 2/8 — Decrypting keystore (password required) ...</span>
+        <span class="output">Enter keystore password: **********</span>
+        <span class="output">&#9654; Stage 3/8 — Obfuscating entry_point (PyArmor)... &#10003; → dist/wrapper.so</span>
+        <span class="output">&#9654; Stage 4/8 — Encrypting source (AES-256-GCM)... &#10003; → dist/logic.enc</span>
+        <span class="output">&#9654; Stage 5/8 — EIP-191 copyright signing ... &#10003;</span>
+        <span class="output">&#9654; Stage 6/8 — Packaging dist/ → dist.zip ... &#10003;</span>
+        <span class="output">&#9654; Stage 7/8 — Uploading to gateway ... &#10003;</span>
+        <span class="output">&#9654; Stage 8/8 — Registering metadata (POST /api/skills/register-metadata) ... &#10003;</span>
+        <span class="output" style="color:#34d399">
+        ╔══════════════════════════════════════════╗
+        ║          PUBLISH SUMMARY                 ║
+        ╠══════════════════════════════════════════╣
+        ║ Skill ID:       amazon_scraper_pro       ║
+        ║ Artifact:       dist.zip (1.24 MB)       ║
+        ║ Obfuscation:    wrapper.so (PyArmor)     ║
+        ║ Encryption:     logic.enc (AES-256-GCM)  ║
+        ║ Signature:      0x3a1b...e8f4 (EIP-191)  ║
+        ║ Split:          70/25/5 (worker_collab)  ║
+        ║ Billing:        pay_per_task @ 0.10 USDC ║
+        ║ Free Trial:     ENABLED (PLG)            ║
+        ╚══════════════════════════════════════════╝</span>
+      </div>
+
+      <h4>Pipeline Breakdown</h4>
+
+      <p><strong>Stage 3 — Obfuscation:</strong> The entry point is compiled into a native binary via PyArmor (primary) or Cython (fallback). The output <code>wrapper.so</code> replaces the original <code>.py</code> file — the gateway loads the shared object instead of raw source, preventing decompilation and unauthorized copying.</p>
+
+      <pre><code><span style="color:#71717a"># What happens under the hood:</span>
+pyarmor obfuscate --output dist/wrapper.so logic.py
+<span style="color:#71717a"># Fallback if PyArmor not installed:</span>
+cythonize -3 -i logic.py → gcc -shared → dist/wrapper.so</code></pre>
+
+      <p><strong>Stage 4 — Encryption:</strong> All Python source files in the Skill directory are collected, archived, and encrypted with <code>AES-256-GCM</code> (random 12-byte nonce per operation). The resulting <code>logic.enc</code> is the canonical delivery artifact — only the gateway with the matching derived key can decrypt it at task time.</p>
+
+      <pre><code><span style="color:#71717a"># Encryption parameters:</span>
+Algorithm:  AES-256-GCM
+Key source: keccak(gateway_secret ++ task_id ++ user_address ++ random_nonce)
+Nonce:      12 bytes random (unique per encryption)</code></pre>
+
+      <p><strong>Stage 5 — Signing:</strong> An EIP-191 signature is generated over the message <code>AIMS-SKILL:{skill_id}:{key_hash}:{price_usdc}</code>. This signature cryptographically proves authorship and is stored on-chain for royalty enforcement.</p>
+
+      <pre><code><span style="color:#71717a"># Signed message format:</span>
+message = f"AIMS-SKILL:{skill_id}:{key_hash}:{price_usdc}"
+signature = Account.sign_message(encode_defunct(message), private_key)
+<span style="color:#71717a"># Signer address recovered from signature — immutable proof of ownership</span></code></pre>
+
+      <p><strong>Stage 8 — Metadata Registration:</strong> The gateway records the Skill's routing metadata (skill_id, contributor address, function_type, billing_mode) via <code>POST /api/skills/register-metadata</code>. The encrypted source reference and contributor signature are stored for on-chain royalty verification. Duplicate registration returns HTTP 409.</p>
+
+      <div class="info-box">
+        <p><strong>&#9432; Idempotent publishing:</strong> If the upload or registration fails mid-pipeline, <code>dist.zip</code> is preserved on disk. Fix the issue and re-run — the pipeline skips completed stages where possible.</p>
+      </div>
+    </div>
 
     <!-- ── API Endpoints ── -->
     <h2>API Endpoints at a Glance</h2>
@@ -239,6 +398,8 @@ provider.start()</code></pre>
         <tr><td><code>/api/tasks/{id}/pot</code></td><td><span class="tag method">GET</span></td><td><span class="tag public">Public</span></td><td>Get Proof-of-Task for a completed task</td></tr>
         <tr><td><code>/api/skills/upload</code></td><td><span class="tag method">POST</span></td><td><span class="tag public">Public</span></td><td>Upload a new Skill (multipart zip)</td></tr>
         <tr><td><code>/api/skills/{id}/logic</code></td><td><span class="tag method">GET</span></td><td><span class="tag public">Public</span></td><td>Download a Skill's logic.py</td></tr>
+        <tr><td><code>/api/skills/register-metadata</code></td><td><span class="tag method">POST</span></td><td><span class="tag auth">EIP-191</span></td><td>Register Skill routing + monetization metadata</td></tr>
+        <tr><td><code>/api/licensing/request-key</code></td><td><span class="tag method">POST</span></td><td><span class="tag auth">EIP-191</span></td><td>Request decryption key for a licensed Skill</td></tr>
         <tr><td><code>/api/wallet/balance</code></td><td><span class="tag method">GET</span></td><td><span class="tag public">Public</span></td><td>Check your USDC balance</td></tr>
         <tr><td><code>/api/workers/heartbeat</code></td><td><span class="tag method">POST</span></td><td><span class="tag auth">EIP-191</span></td><td>Worker keep-alive ping</td></tr>
         <tr><td><code>/api/discovery</code></td><td><span class="tag method">GET</span></td><td><span class="tag public">Public</span></td><td>Full API surface (machine-readable)</td></tr>
@@ -272,33 +433,42 @@ signature_hex = signed.signature.hex()</code></pre>
     <pre><code>curl https://aims-gateway.fly.dev/api/wallet/balance?user_id=0xYourAddress</code></pre>
 
     <div class="info-box">
-      <p><strong>&#9889; Dev mode auto-seed:</strong> Every wallet that passes EIP-191 verification receives <strong>10.0 USDC</strong> (~200 free calls). The auto-seed is instant — no approval needed.</p>
+      <p><strong>&#9889; First-Task-Free + Dev mode auto-seed:</strong> Every wallet gets <strong style="color:#34d399">1 free invocation per Skill</strong>. After the trial, EIP-191 verified wallets receive <strong>10.0 USDC</strong> (~200 free calls). No approval needed.</p>
     </div>
 
     <!-- ── FAQ ── -->
     <h2>Common Questions</h2>
 
     <h3>Do I need to deposit real money?</h3>
-    <p>Not in dev mode. The gateway auto-seeds 10.0 USDC for testing. When mainnet launches, you'll deposit real USDC to the settlement contract on Base L2.</p>
+    <p>Not to start. Every wallet gets <strong style="color:#34d399">1 free invocation per Skill</strong> — no USDC required. After the trial, dev mode auto-seeds 10.0 USDC for testing. When mainnet launches, you can deposit real USDC or use subscription/buyout passes.</p>
+
+    <h3>What are the three billing modes?</h3>
+    <p><strong>Metered</strong> — pay 0.05 USDC per successful task. <strong>Subscription</strong> — monthly pass with guaranteed rate limits, cancel anytime. <strong>Buyout</strong> — one-time perpetual license, unlimited usage, no recurring fees.</p>
+
+    <h3>How does the revenue split work?</h3>
+    <p><strong>Q1 (worker_collab):</strong> 70% to the Skill contributor, 25% to the worker, 5% to the protocol treasury. <strong>Q2-Q5 (direct_skill):</strong> 95% to the contributor, 5% to the treasury. The split is enforced as immutable bytecode on the settlement contract..</p>
 
     <h3>What if a Skill fails?</h3>
-    <p>Your USDC is never deducted. The escrow is automatically refunded. The worker receives a strike — three strikes = $1.00 slashed from their staked collateral.</p>
+    <p>Your USDC is never deducted. The escrow is automatically refunded. The worker receives a strike — three strikes = $1.00 slashed from their staked collateral. For the free trial, LLM-as-a-Judge automatically arbitrates — if the result fails schema validation, the trial is not consumed.</p>
 
     <h3>Can I run this from a browser?</h3>
-    <p>Not yet. AIMS is an API-first protocol designed for agents and developers. The primary interface is HTTP + your wallet. A web dashboard is on the roadmap.</p>
+    <p>Yes — the <a href="/console.html">AIMS Console</a> is a full Web3 dashboard. Connect MetaMask, sign EIP-191 messages, and invoke Skills directly from the browser. The console supports all three roles: Consumer, Developer, and Worker.</p>
 
     <h3>What chains do you support?</h3>
     <p>Settlement runs on Base (EVM L2). Any EVM wallet works for auth — MetaMask, Rabby, Frame, or a raw key.</p>
 
     <h3>Is my data private?</h3>
-    <p>Task payloads are encrypted in transit. Provider nodes see only encrypted bytes and routing metadata — never the content. Worker nodes receive only the task parameters, not your identity.</p>
+    <p>Task payloads are encrypted in transit. Provider nodes see only encrypted bytes and routing metadata — never the content. Worker nodes receive only the task parameters, not your identity. For DRM-published Skills, source code is AES-256-GCM encrypted and PyArmor-obfuscated.</p>
+
+    <h3>How do I protect my Skill source code?</h3>
+    <p>Use the <code>aims-cli publish</code> pipeline. It automatically obfuscates your entry point to a native binary (<code>wrapper.so</code> via PyArmor/Cython), encrypts supporting source files with AES-256-GCM (<code>logic.enc</code>), and signs the package with your EIP-191 key for cryptographic authorship proof. The gateway only decrypts and loads your Skill at task execution time.</p>
 
   </div>
 </div>
 
 <footer>
   <div class="container">
-    <p>AIMS Network &mdash; <a href="/">Home</a> &middot; <a href="https://aims-gateway.fly.dev/api/discovery" target="_blank">API Reference</a></p>
+    <p>AIMS Network &mdash; <a href="/">Home</a> &middot; <a href="/docs.html">Docs</a> &middot; <a href="/console.html">Console</a> &middot; <a href="https://aims-gateway.fly.dev/api/discovery" target="_blank">API Reference</a></p>
   </div>
 </footer>
 
