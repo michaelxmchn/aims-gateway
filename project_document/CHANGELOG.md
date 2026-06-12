@@ -11,6 +11,10 @@
 - feat(frontend): `static/docs.html` — 全量重写开发者文档，增加 aims-cli 工具链 3 节（init/login/publish 8 步 DRM）、Revenue Split 表 Q1/Q2-Q5、Billing Modes 表、API 端点表新增 register-metadata/request-key、FAQ 更新
 - feat(frontend): `static/console.html` — PLG 全功能升级，Auth→Free Trial Check→Balance Check→Execution→PoT→Settlement 6 步管道、Billing Mode 选择器（Metered/Subscription/Buyout/Free Trial）、Trial 追踪（usedTrials + 402 弹窗 "Use Free Trial"）、PLG Badge `★ 1 Free Trial / Skill`
 - feat(docs): `project_document/WEBSITE_COPY.md` — 全量重写同步 HTML 文案，11 节覆盖 Hero、价值主张、3 角色、4 优势、How It Works、PLG、Commerce Matrix、Agent 集成、Policy、aims-cli 工具链、技术规格
+### 修改
+- feat(frontend): `static/index.html` — 新增全球实时结算大屏（高频滚动 Bloomberg 风格 Settlement Feed，AI Judge 评分 + 70/25/5 分账实时流）、Google/Apple 社交登录按钮（Coming Soon）、SLA 争议仲裁保障（80/100 LLM-as-a-Judge 阈值 + 自动全额退款）、Advantage 04 重命名为 Cryptographic SLA Dispute Escrow
+- feat(frontend): `static/console.html` — 新增控制台实时结算流面板、Google/Apple Web2 登录按钮（钱包区域）、SLA 保障文案强化、结算 Mock 数据流动态推送
+
 ### 新增
 - feat(canary): 创建 `src/gateway/canary.py` — `CanaryManager` ECDSA 签名水印系统，支持 token 生成/验证/重放检测/Worker 黑名单
 - feat(canary): `POST /api/run` 注入 `_canary_token`（时间戳+随机 Hash+ECDSA 签名）到任务 payload，Worker claim 时自动携带

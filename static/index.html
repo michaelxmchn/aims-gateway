@@ -156,6 +156,51 @@ section{padding:6rem 0}
 .matrix-card .threat{font-size:.85rem;color:#f87171;font-weight:500}
 .matrix-card .mitigation{font-size:.85rem;color:#34d399;margin-top:.3rem}
 
+/* ── Settlement Feed ── */
+.feed-container{background:#050508;border:1px solid rgba(34,211,238,0.12);border-radius:16px;overflow:hidden;box-shadow:0 0 40px rgba(34,211,238,0.03)}
+.feed-header{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.5rem;background:rgba(34,211,238,0.02);border-bottom:1px solid rgba(34,211,238,0.08)}
+.feed-header .brand{font-weight:700;font-size:.9rem;color:#22d3ee;letter-spacing:.05em}
+.feed-header .live-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#22c55e;animation:pulse 1.5s infinite}
+.feed-header .live-badge{display:inline-flex;align-items:center;gap:.4rem;padding:.2rem .6rem;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:4px;font-size:.65rem;font-weight:600;color:#22c55e}
+.feed-body{padding:.5rem;min-height:280px;max-height:420px;overflow-y:auto;font-family:'SF Mono','Fira Code','Cascadia Code',monospace;font-size:.78rem;background:radial-gradient(ellipse at 50% 0%,rgba(34,211,238,0.02) 0%,transparent 70%)}
+.feed-body::-webkit-scrollbar{width:4px}
+.feed-body::-webkit-scrollbar-thumb{background:rgba(34,211,238,0.15);border-radius:2px}
+.feed-entry{display:flex;gap:.75rem;padding:.5rem .75rem;margin-bottom:2px;border-radius:6px;background:rgba(255,255,255,0.01);border-left:3px solid transparent;animation:feedSlideIn .4s ease-out;transition:background .3s}
+.feed-entry:hover{background:rgba(34,211,238,0.03)}
+.feed-entry.pass{border-left-color:#22c55e}
+.feed-entry.refund{border-left-color:#f87171}
+.feed-entry .feed-time{color:#71717a;white-space:nowrap;min-width:55px;font-size:.65rem;padding-top:2px}
+.feed-entry .feed-main{flex:1;display:flex;flex-direction:column;gap:2px}
+.feed-entry .feed-top{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}
+.feed-entry .feed-skill{color:#fff;font-weight:600;font-size:.82rem}
+.feed-entry .feed-skill .icon{margin-right:.3rem}
+.feed-entry .feed-wallet{color:#71717a;font-size:.7rem}
+.feed-entry .feed-score{font-size:.7rem;font-weight:600;padding:.1rem .45rem;border-radius:4px}
+.feed-entry .feed-score.pass{background:rgba(34,197,94,0.1);color:#22c55e}
+.feed-entry .feed-score.refund{background:rgba(248,113,113,0.1);color:#f87171}
+.feed-entry .feed-bottom{display:flex;gap:.75rem;flex-wrap:wrap;font-size:.7rem;color:#71717a}
+.feed-entry .feed-bottom .highlight{color:#22d3ee}
+.feed-entry .feed-bottom .dev-share{color:#a78bfa}
+.feed-entry .feed-bottom .worker-share{color:#34d399}
+.feed-entry .feed-bottom .treasury-share{color:#fbbf24}
+.feed-entry .feed-region{color:#6366f1;font-size:.65rem}
+@keyframes feedSlideIn{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+
+/* ── Social Login ── */
+.social-btn{display:inline-flex;align-items:center;gap:.5rem;padding:.45rem .9rem;border-radius:8px;font-size:.78rem;font-weight:600;cursor:pointer;border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.03);color:#e4e4e7;transition:all .2s;font-family:inherit;white-space:nowrap}
+.social-btn:hover{background:rgba(255,255,255,0.07);border-color:rgba(255,255,255,0.15)}
+.social-btn.google:hover{background:rgba(234,67,53,0.08);border-color:rgba(234,67,53,0.2)}
+.social-btn.apple:hover{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.2)}
+.social-btn .coming-soon{font-size:.55rem;padding:.1rem .35rem;border-radius:3px;background:rgba(251,191,36,0.1);color:#fbbf24;font-weight:500;margin-left:.2rem}
+.social-btn svg{width:16px;height:16px;flex-shrink:0}
+
+/* ── SLA Guarantee Banner ── */
+.sla-banner{background:linear-gradient(135deg,rgba(248,113,113,0.04),rgba(34,211,238,0.04));border:1px solid rgba(248,113,113,0.08);border-radius:16px;padding:2rem;margin:2rem 0;display:flex;gap:1.5rem;align-items:flex-start}
+.sla-banner .sla-icon{font-size:2rem;flex-shrink:0}
+.sla-banner .sla-content h4{color:#f87171;font-size:1rem;margin-bottom:.3rem}
+.sla-banner .sla-content p{font-size:.88rem;margin-bottom:0}
+.sla-banner .sla-content .sla-highlight{display:inline-block;background:rgba(248,113,113,0.1);border:1px solid rgba(248,113,113,0.15);padding:.15rem .6rem;border-radius:4px;font-size:.75rem;font-weight:600;color:#f87171;margin-top:.5rem}
+
 /* ── Tables ── */
 table{width:100%;border-collapse:separate;border-spacing:0;overflow:hidden}
 th,td{padding:.75rem 1rem;text-align:left;border-bottom:1px solid rgba(255,255,255,0.06);font-size:.9rem}
@@ -225,7 +270,17 @@ footer .copy{color:#71717a;font-size:.85rem}
     <div class="hero-ctas">
       <a href="#cta" class="btn-primary">Launch App</a>
       <a href="https://aims-gateway.fly.dev/api/discovery" target="_blank" class="btn-secondary">Read the Docs</a>
-      <a href="#roles" class="btn-secondary">Explore Roles</a>
+      <a href="#guide" class="btn-secondary">Explore Roles</a>
+    </div>
+    <div class="hero-ctas" style="margin-top:.75rem;gap:.5rem">
+      <button class="social-btn google" onclick="toast('Social login coming soon — use your wallet')" title="Sign in with Google (Coming Soon)">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+        Google <span class="coming-soon">Soon</span>
+      </button>
+      <button class="social-btn apple" onclick="toast('Social login coming soon — use your wallet')" title="Sign in with Apple (Coming Soon)">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+        Apple <span class="coming-soon">Soon</span>
+      </button>
     </div>
     <div class="hero-stats">
       <div class="stat"><div class="number">6+</div><div class="label">Seed Skills</div></div>
@@ -328,7 +383,7 @@ footer .copy{color:#71717a;font-size:.85rem}
       <div class="advantage-card">
         <div class="num">Advantage 01</div>
         <h3>100% Bulletproof Execution</h3>
-        <p>Every request is routed through a decentralized Residential DePIN proxy mesh — real IPs, real geolocations, real device fingerprints. No datacenter CIDR ranges, no AWS blacklists, no shared VPN blocks. Anti-bot walled gardens see a legitimate residential user, not a headless server.</p>
+        <p>Every request is routed through a decentralized Residential DePIN proxy mesh — real IPs, real geolocations, real device fingerprints. No datacenter CIDR ranges, no AWS blacklists, no shared VPN blocks. Anti-bot walled gardens see a legitimate residential user, not a headless server. <strong style="color:#f87171">Plus: every result is arbitrated by LLM-as-a-Judge with an 80/100 SLA threshold — sub-80 scores trigger automatic 100% escrow refund.</strong></p>
         <div class="tagline">If it renders in a browser, AIMS can collect it.</div>
       </div>
       <div class="advantage-card">
@@ -345,9 +400,9 @@ footer .copy{color:#71717a;font-size:.85rem}
       </div>
       <div class="advantage-card">
         <div class="num">Advantage 04</div>
-        <h3>Cryptographic PoT Guarantees</h3>
-        <p>Funds lock in escrow at submission. The gateway validates results against the Skill's output schema, then signs a Proof-of-Task: <code style="color:#22d3ee">ECDSA(keccak256(taskId ++ worker ++ amount))</code>. The 70/25/5 split (Q1) or 95/0/5 split (Q2-Q5) is immutable bytecode. No dispute desk, no trust required.</p>
-        <div class="tagline">Escrow-enforced. Code-audited. Math-verified.</div>
+        <h3>Cryptographic SLA Dispute Escrow</h3>
+        <p>Funds lock in escrow at submission. The gateway validates results against the Skill's output schema AND an <strong style="color:#f87171">LLM-as-a-Judge quality score</strong>. If the AI judge scores the output below <strong style="color:#f87171">80/100</strong>, the escrow <strong style="color:#34d399">atomically refunds 100%</strong> to the consumer — no human touch. If it passes, the gateway signs a Proof-of-Task: <code style="color:#22d3ee">ECDSA(keccak256(taskId ++ worker ++ amount))</code>. The 70/25/5 split (Q1) or 95/0/5 split (Q2-Q5) is immutable bytecode. No dispute desk, no trust required.</p>
+        <div class="tagline">Escrow-enforced. Code-audited. Math-verified. <span style="color:#f87171">SLA-guaranteed.</span></div>
       </div>
     </div>
   </div>
@@ -417,6 +472,45 @@ footer .copy{color:#71717a;font-size:.85rem}
         <p>Every unique wallet receives <strong style="color:#34d399">one free invocation</strong> per Skill — regardless of billing mode. No USDC required, no gas, no approval. On the second call, the gateway checks your payment proof per the Skill's pricing model. <strong>LLM-as-a-Judge</strong> automatically arbitrates quality disputes; if the result fails schema validation, the trial is not consumed. Risk-free evaluation, guaranteed by code.</p>
       </div>
       <span class="plg-badge">&#9733; PLG Enabled</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── Global Settlement Feed ── -->
+<section style="background:rgba(10,10,15,0.98);padding:5rem 0" id="live-feed">
+  <div class="container">
+    <span class="section-label">Live Network</span>
+    <h2>Global Real-time <span class="gradient-text">Settlement Feed</span></h2>
+    <p class="section-desc">Every task, every split, every proof — streamed live from the AIMS DePIN mesh. <strong style="color:#34d399">AI-Judge arbitrated. On-chain settled.</strong></p>
+    <div class="feed-container">
+      <div class="feed-header">
+        <div style="display:flex;align-items:center;gap:1rem">
+          <span class="brand">&#9889; AIMS PROTOCOL</span>
+          <span class="live-badge"><span class="live-dot"></span> LIVE</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:1.5rem;font-size:.75rem">
+          <span style="color:#71717a">Settled: <strong style="color:#22d3ee" id="feedTotalCount">0</strong></span>
+          <span style="color:#71717a">Volume: <strong style="color:#a78bfa" id="feedTotalVolume">0.00</strong> USDC</span>
+          <span style="color:#71717a">Disputes: <strong style="color:#f87171" id="feedDisputes">0</strong></span>
+        </div>
+      </div>
+      <div class="feed-body" id="feedBody">
+        <div style="text-align:center;padding:3rem;color:#71717a;font-family:inherit">&#9203; Initializing settlement stream&hellip;</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── SLA Dispute Escrow Banner ── -->
+<section style="padding-top:0">
+  <div class="container">
+    <div class="sla-banner">
+      <div class="sla-icon">&#9878;</div>
+      <div class="sla-content">
+        <h4>&#9889; Cryptographic SLA Dispute Escrow — No Human Intervention</h4>
+        <p>Every task is automatically adjudicated by <strong>LLM-as-a-Judge</strong> — a zero-human AI arbitrator that scores output quality from <strong>0–100</strong>. If the score falls below <strong style="color:#f87171">80/100</strong>, the smart contract escrow instantly atomically refunds <strong style="color:#34d399">100%</strong> of the task fee to the consumer — no support tickets, no dispute desk, no "we'll look into it." The developer receives nothing, the worker receives nothing, and the protocol treasury absorbs the gas. This is not a promise; it's <strong>immutable bytecode</strong> in the settlement contract.</p>
+        <span class="sla-highlight">&#9878; Contract-enforced &middot; 80/100 threshold &middot; Auto-refund &middot; No humans involved</span>
+      </div>
     </div>
   </div>
 </section>
@@ -647,5 +741,91 @@ provider.<span class="function">start</span>()</code>
   </div>
 </footer>
 
+<script>
+// ════════════════════════════════════════════════════════════════
+//  Global Real-time Settlement Feed — Mock Data Stream
+// ════════════════════════════════════════════════════════════════
+const SETTLEMENT_SKILLS = [
+  {name:'E-Commerce-Scraper', icon:'🛒', mode70:true},
+  {name:'Solidity-Audit', icon:'🔒', mode70:false},
+  {name:'Data-Analyzer', icon:'📊', mode70:true},
+  {name:'Code-Security-Audit', icon:'🛡️', mode70:false},
+  {name:'Git-Changelog', icon:'📝', mode70:true},
+  {name:'Dashboard-Generator', icon:'📈', mode70:false},
+  {name:'Competitor-Intel', icon:'🔍', mode70:true},
+  {name:'Smart-Contract-Test', icon:'⚙️', mode70:false},
+  {name:'Price-Tracker', icon:'💰', mode70:true},
+  {name:'Sentiment-Analyzer', icon:'🧠', mode70:false},
+];
+const SETTLEMENT_WALLETS = ['0x71C3…a8f2','0x9F2B…d41e','0x4B1A…c73b','0x3A7E…f902','0x8E5D…b1c4','0xD0C9…e683','0xF6A2…4d17','0x1B8F…e94a','0xC4D6…2f81','0xE9A3…b50c'];
+const SETTLEMENT_REGIONS = ['🇺🇸 us-west','🇪🇺 eu-west','🇸🇬 ap-southeast','🇯🇵 ap-northeast','🇧🇷 sa-east','🇦🇺 ap-southeast','🇮🇳 ap-south','🇬🇧 eu-west'];
+
+(function(){
+  const feedBody = document.getElementById('feedBody');
+  if (!feedBody) return;
+  let count = 0, volume = 0, disputes = 0;
+  const totalCount = document.getElementById('feedTotalCount');
+  const totalVolume = document.getElementById('feedTotalVolume');
+  const totalDisputes = document.getElementById('feedDisputes');
+
+  function addEntry(){
+    const skill = SETTLEMENT_SKILLS[Math.random() * SETTLEMENT_SKILLS.length | 0];
+    const wallet = SETTLEMENT_WALLETS[Math.random() * SETTLEMENT_WALLETS.length | 0];
+    const region = SETTLEMENT_REGIONS[Math.random() * SETTLEMENT_REGIONS.length | 0];
+    const score = Math.random() * 25 + 75;
+    const passed = score >= 80;
+    const amount = (0.025 + Math.random() * 0.035).toFixed(3);
+    const devShare = (amount * (skill.mode70 ? 0.7 : 0.95)).toFixed(4);
+    const workerShare = (skill.mode70 ? (amount * 0.25).toFixed(4) : '0.0000');
+    const treasuryShare = (amount * 0.05).toFixed(4);
+    const elapsed = ['3s','7s','12s','18s','24s','31s'][Math.random() * 6 | 0];
+
+    count++;
+    volume += parseFloat(amount);
+    if (!passed) disputes++;
+
+    const entry = document.createElement('div');
+    entry.className = `feed-entry ${passed ? 'pass' : 'refund'}`;
+    entry.innerHTML =
+      `<span class="feed-time">${elapsed}</span>` +
+      `<div class="feed-main">` +
+        `<div class="feed-top">` +
+          `<span class="feed-skill"><span class="icon">${skill.icon}</span>${skill.name}</span>` +
+          `<span class="feed-wallet">${wallet}</span>` +
+          `<span class="feed-score ${passed ? 'pass' : 'refund'}">${passed ? '✓' : '✗'} ${(score|0)}/100</span>` +
+        `</div>` +
+        `<div class="feed-bottom">` +
+          `<span>${(parseFloat(amount).toFixed(3))} USDC</span>` +
+          `<span class="highlight">${skill.mode70 ? 'Q1 70/25/5' : 'Q2-Q5 95/0/5'}</span>` +
+          `<span>Dev <span class="dev-share">${devShare}</span></span>` +
+          `<span>Worker <span class="worker-share">${workerShare}</span></span>` +
+          `<span>Treasury <span class="treasury-share">${treasuryShare}</span></span>` +
+          `<span class="feed-region">${region}</span>` +
+        `</div>` +
+      `</div>`;
+
+    feedBody.insertBefore(entry, feedBody.firstChild);
+    while (feedBody.children.length > 20) feedBody.removeChild(feedBody.lastChild);
+
+    totalCount.textContent = count;
+    totalVolume.textContent = volume.toFixed(2);
+    totalDisputes.textContent = disputes;
+  }
+
+  setInterval(addEntry, 2800);
+  for (let i = 0; i < 6; i++) setTimeout(addEntry, i * 400);
+})();
+
+// ════════════════════════════════════════════════════════════════
+//  Toast helper for social login buttons
+// ════════════════════════════════════════════════════════════════
+function toast(msg, type){
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;bottom:2rem;right:2rem;padding:.75rem 1.25rem;border-radius:8px;font-size:.85rem;font-weight:600;z-index:9999;animation:fadeIn .3s ease;background:rgba(34,211,238,0.1);border:1px solid rgba(34,211,238,0.2);color:#22d3ee';
+  d.textContent = msg;
+  document.body.appendChild(d);
+  setTimeout(()=>{d.style.opacity='0';d.style.transition='opacity .5s';setTimeout(()=>d.remove(),500)},3000);
+}
+</script>
 </body>
 </html>

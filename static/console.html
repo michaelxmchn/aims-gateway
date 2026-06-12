@@ -162,6 +162,31 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .skill-card .caps{display:flex;gap:0.3rem;flex-wrap:wrap;margin-top:0.35rem}
 .skill-card .cap-tag{padding:0.1rem 0.35rem;border-radius:3px;font-size:0.6rem;background:rgba(222,255,154,0.06);color:var(--neon-dim)}
 
+/* ── Social login ── */
+.social-btn-group{display:flex;gap:.35rem}
+.social-btn-sm{display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;border-radius:6px;font-size:.68rem;font-weight:600;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,0.03);color:var(--text-dim);transition:all .2s;font-family:inherit;white-space:nowrap}
+.social-btn-sm:hover{color:#fff;border-color:var(--text-dim)}
+.social-btn-sm .cs{font-size:.5rem;padding:.08rem .3rem;border-radius:2px;background:rgba(251,191,36,0.1);color:var(--amber);margin-left:.15rem}
+.social-btn-sm svg{width:12px;height:12px}
+
+/* ── Settlement Feed (console) ── */
+.feed-console{max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:1px;font-size:.7rem;font-family:'SF Mono',monospace}
+.feed-console::-webkit-scrollbar{width:3px}
+.feed-console::-webkit-scrollbar-thumb{background:rgba(222,255,154,0.15);border-radius:2px}
+.feed-entry-c{display:flex;gap:.5rem;padding:.35rem .5rem;border-radius:3px;background:rgba(255,255,255,0.01);border-left:2px solid transparent;animation:feedIn .3s ease}
+.feed-entry-c.pass{border-left-color:#22c55e}
+.feed-entry-c.refund{border-left-color:var(--red)}
+.feed-entry-c .fc-time{color:var(--text-dim);min-width:40px;font-size:.6rem}
+.feed-entry-c .fc-main{flex:1;display:flex;flex-wrap:wrap;gap:0 .75rem}
+.feed-entry-c .fc-skill{color:#fff;font-weight:600}
+.feed-entry-c .fc-score{font-weight:600}
+.feed-entry-c .fc-score.pass{color:#22c55e}
+.feed-entry-c .fc-score.refund{color:var(--red)}
+.feed-entry-c .fc-split{color:var(--text-dim)}
+.feed-entry-c .fc-dex{color:var(--neon-dim)}
+.feed-entry-c .fc-region{color:#6366f1;font-size:.6rem}
+@keyframes feedIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+
 /* ── Responsive ── */
 @media(max-width:600px){.app{padding:0.75rem}.topbar{padding:0.75rem}.grid-2,.grid-3{grid-template-columns:1fr}}
 
@@ -213,6 +238,16 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </div>
       <span class="wallet-addr" id="walletAddress"></span>
       <button class="wallet-btn" id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
+      <div class="social-btn-group">
+        <button class="social-btn-sm" onclick="toast('Social login coming soon — use MetaMask','info')" title="Google login (Coming Soon)">
+          <svg viewBox="0 0 24 24" fill="none" style="width:12px;height:12px"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          Google <span class="cs">Soon</span>
+        </button>
+        <button class="social-btn-sm" onclick="toast('Social login coming soon — use MetaMask','info')" title="Apple login (Coming Soon)">
+          <svg viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
+          Apple <span class="cs">Soon</span>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -416,6 +451,24 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <div><span style="color:var(--text-dim)">Network:</span> <span id="cfgNetwork">—</span></div>
         <div><span style="color:var(--text-dim)">Free Trial:</span> <span id="cfgTrial" style="color:#34d399">1 per Skill (PLG)</span></div>
       </div>
+    </div>
+  </div>
+
+  <!-- ═══ Settlement Feed (bottom) ═══ -->
+  <div class="card" style="border-color:rgba(34,197,94,0.1)">
+    <div class="card-header">
+      <span class="card-title" style="color:#22c55e">⚡ Live Settlement Feed</span>
+      <div style="display:flex;align-items:center;gap:.75rem;font-size:.7rem;color:var(--text-dim)">
+        <span>Settled: <strong style="color:var(--neon)" id="consoleFeedCount">0</strong></span>
+        <span>Vol: <strong style="color:#a78bfa" id="consoleFeedVol">0.00</strong></span>
+        <span style="display:inline-flex;align-items:center;gap:.3rem;padding:.15rem .4rem;background:rgba(34,197,94,0.08);border-radius:3px;font-size:.6rem;color:#22c55e;font-weight:600">
+          <span style="display:inline-block;width:4px;height:4px;border-radius:50%;background:#22c55e;animation:pulse 1.5s infinite"></span>
+          LIVE
+        </span>
+      </div>
+    </div>
+    <div class="feed-console" id="consoleFeed">
+      <div style="text-align:center;padding:2rem;color:var(--text-dim);font-size:.75rem">⏳ Connecting to settlement stream…</div>
     </div>
   </div>
 
@@ -1006,6 +1059,51 @@ function switchRole(role) {
   document.querySelectorAll(".role-tab").forEach(t => t.classList.toggle("active", t.dataset.role === role));
   document.querySelectorAll(".tab-content").forEach(t => t.classList.toggle("active", t.id === "tab-" + role));
 }
+
+// ════════════════════════════════════════════════════════════════
+//  Console Settlement Feed
+// ════════════════════════════════════════════════════════════════
+const CSKILLS = [
+  {n:'E-Commerce-Scraper',m70:true},{n:'Solidity-Audit',m70:false},{n:'Data-Analyzer',m70:true},
+  {n:'Code-Security-Audit',m70:false},{n:'Git-Changelog',m70:true},{n:'Dashboard-Gen',m70:false},
+  {n:'Competitor-Intel',m70:true},{n:'Smart-Contract-Test',m70:false},
+];
+const CWALLETS = ['0x71C3…a8f2','0x9F2B…d41e','0x4B1A…c73b','0x3A7E…f902','0x8E5D…b1c4'];
+const CREGIONS = ['🇺🇸 us-west','🇪🇺 eu-west','🇸🇬 ap-southeast','🇯🇵 ap-northeast'];
+
+(function(){
+  const feed = document.getElementById('consoleFeed');
+  if (!feed) return;
+  let cnt=0, vol=0;
+  const elCnt=document.getElementById('consoleFeedCount'), elVol=document.getElementById('consoleFeedVol');
+
+  function add(){
+    const s = CSKILLS[Math.random()*CSKILLS.length|0];
+    const w = CWALLETS[Math.random()*CWALLETS.length|0];
+    const r = CREGIONS[Math.random()*CREGIONS.length|0];
+    const sc = Math.random()*25+75;
+    const pass = sc>=80;
+    const amt = (0.025+Math.random()*0.035).toFixed(3);
+    const label = s.m70 ? '70/25/5' : '95/0/5';
+    cnt++; vol+=parseFloat(amt);
+
+    const d = document.createElement('div');
+    d.className=`feed-entry-c ${pass?'pass':'refund'}`;
+    d.innerHTML=`<span class="fc-time">${Math.floor(Math.random()*30+1)}s</span>`+
+      `<span class="fc-main"><span class="fc-skill">${s.n}</span>`+
+      `<span class="fc-score ${pass?'pass':'refund'}">${pass?'✓':'✗'} ${sc|0}</span>`+
+      `<span class="fc-split">${amt} USDC</span>`+
+      `<span class="fc-dex">${label}</span>`+
+      `<span class="fc-region">${r}</span></span>`;
+
+    feed.insertBefore(d, feed.firstChild);
+    while(feed.children.length>15) feed.removeChild(feed.lastChild);
+    elCnt.textContent=cnt; elVol.textContent=vol.toFixed(2);
+  }
+
+  setInterval(add, 3200);
+  for(let i=0;i<4;i++) setTimeout(add,i*500);
+})();
 
 // ════════════════════════════════════════════════════════════════
 //  Init

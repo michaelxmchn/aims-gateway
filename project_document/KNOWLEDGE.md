@@ -515,6 +515,27 @@ A: 待补充
 ### 前端页面架构
 - **index.html**（着陆页）：暗色 Cyberpunk 风格，Hero + 3 价值主张 + 3 角色卡片 + 4 大优势 + How It Works（双分账表 Q1/Q2-Q5）+ PLG 横幅 + Commerce Matrix 3 模式对比表 + 技术规格附录
 - **docs.html**（开发者文档）：Quickstart + PLG 说明框 + Revenue Split 表 + Billing Modes 表 + aims-cli 工具链 3 节（init/login/publish 8 阶段 DRM）+ API 端点表 + FAQ
-- **console.html**（Web3 控制面板）：三角色视图（Consumer/Developer/Worker）+ MetaMask 直连 + 6 步管道 + Billing Mode 选择器 + Trial 追踪 + Worker 佣金显示 + 配置面板
+- **console.html**（Web3 控制面板）：三角色视图（Consumer/Developer/Worker）+ MetaMask 直连 + 6 步管道 + Billing Mode 选择器 + Trial 追踪 + Worker 佣金显示 + 配置面板 + 结算流实时推送面板 + Google/Apple 社交登录
+
+### 前端 SLA 争议仲裁保障模式
+- **80/100 LLM-as-a-Judge 阈值**：每笔任务完成后由零人 AI 裁判自动评分，低于 80 分触发智能合约 `escrow refund` 自动 100% 退款 — 开发者 0 收入、Worker 0 收入、协议 Treasury 承担 Gas
+- **不可变字节码保障**：SLA 规则编码在 `AIMSAgentGateway.sol` 的 `settleTask()` 逻辑中，非人工客服承诺
+- **SLA Banner**：首页 `Cryptographic SLA Dispute Escrow` 醒目横幅，标注 `Contract-enforced · 80/100 threshold · Auto-refund · No humans involved`
+- **结算流体现**：Settlement Feed 中每个 entry 的 AI Judge 评分 < 80 时显示红色 `✗ REFUND` 标记，绿色 `✓ PASS` 标记表示通过仲裁
+
+### 前端全球实时结算大屏模式（Settlement Feed）
+- **Bloomberg 终端风格**：深色背景 + 绿色/青色荧光字体 + 高频滚动终端面板
+- **Mock 数据结构**：每 2.8s 生成一条新记录，含相对时间、Skill 名称+图标、钱包地址缩写、AI Judge 评分、USDC 金额、Q1 70/25/5 / Q2-Q5 95/0/5 分账明细、Worker 地理区域
+- **滚动逻辑**：`insertBefore()` 顶部插入 → 最多保留 20 条 → 溢出自动移除
+- **计数器**：Settled 总数、Volume 总量、Disputes 数量三个全局统计
+- **评分着色**：>= 80 绿色 `✓ PASS`（左侧绿色边框），< 80 红色 `✗ REFUND`（左侧红色边框 + 争议计数 +1）
+- **控制台版本**：精简版 `feed-console` 类，120px 高度滚动，15 条上限，复用相同数据生成逻辑
+
+### 前端 Web2 社交登录模式
+- **Google/Apple 一键登录按钮**：SVG 原生图标按钮，标注 "Coming Soon" / "Soon" 黄色徽章
+- **着陆页位置**：Hero CTA 下方独立一行，与 "Launch App / Read Docs / Explore Roles" 并列
+- **控制台位置**：Wallet 连接按钮右侧，`.social-btn-group` 横向排列
+- **点击行为**：`toast('Social login coming soon — use your wallet')` 提示用户当前仅支持 MetaMask
+- **技术背景**：UI 占位，后端需集成 Privy/Magic/Web3Auth 的 AA 账户抽象 + Google OAuth 完成真实社交登录
 
 - **CORS 配置**：`server.py` 使用 `CORSMiddleware(allow_origins=["*"])` 开放跨域；前端通过 `localStorage.setItem("aims_api_base", url)` 配置 API 地址
