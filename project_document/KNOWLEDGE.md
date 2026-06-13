@@ -449,6 +449,15 @@ A: 待补充
 - **`execute(params)` 单一入口**：遵循 AIMS Skill 标准接口，接收 `params` dict 返回严格匹配 `output_schema` 的 JSON，`fraud_screening` 默认开启
 - **`manifest.json` Commerce Matrix 定价**：`price_points: 5`（Metered 等价 0.05 USDC）、`staked_points: 20.0`（冷启动推广）、tags 含 10 个分类标签（tiktok/shopee/lazada/ecommerce/competitive_intel/sea/malaysia/ad_intelligence/fraud_detection），`agent_hint` 提供中文 AI Agent 指引
 
+### E2E Testnet Simulation 双流联动测试模式
+- **`tests/e2e_testnet_simulation.py`**：综合性仿真联动测试，模拟 Base Sepolia 测试网（或 in-memory）全链路结算流程，Bloomberg 终端风格彩色日志输出
+- **双流商业故事**：Flow 1 (PASS) = PLG First-Task-Free 网关拦截 → DRM PyArmor+AES-256 包装执行 → AI Judge 92/100 → 70/25/5 PLG 国库补贴池结算；Flow 2 (REFUND) = 回归钱包 Metered 模式 → 网络劣化导致输出残缺（`status="partial"`, 缺 `market_insights`）→ AI Judge 74/100 (< 80 SLA) → 合约退款 → 消费者余额不变
+- **AI Judge 评分引擎**：`evaluate(result, tampered=False)` → (score, verdict, reason)。扣分规则：status 缺失 25pts、competitor_metrics 缺失 20pts、top_competitors 缺失 15pts、fraud_risk_score 缺失 15pts、market_insights 缺失 10pts、volume <5 减 5pts、恶意篡改 50pts hard cut。阈值 80/100 = SLA 仲裁分界线
+- **DRMWrapper 模拟三层 DRM**：`_pyarmor_load()` 加载混淆桩（wrapper.so 模拟）+ `_aes_decrypt()` AES-256-GCM 解密 logic.enc → `execute_skill()` 执行 + `_checksum_verify()` 收尾完整性校验
+- **6 个确定性 EVM 地址**：`GATEWAY_ADDRESS=0xaaaa...`、`TREASURY_ADDRESS=0xbbbb...`、`DEVELOPER_ADDRESS=0xcccc...`、`WORKER_ADDRESS=0xdddd...`、`CONSUMER_ALPHA=0xeeee...`（新钱包，Flow 1 免费）、`CONSUMER_BETA=0xffff...`（回归钱包，Flow 2 扣费）
+- **Bloomberg 终端日志**：`_ts()` 微秒时间戳 + 彩色标记（green PASS / red REFUND / yellow warn / cyan header）+ 分账 DEBIT(💸)/CREDIT(🧾) 行 + 结算汇总表 + 资金守恒审计断言
+- **CLI 网络选择**：`--network in-memory`（默认，零外部依赖）或 `--network base-sepolia`（需 `AIMS_RPC_URL`/`AIMS_CONTRACT_ADDRESS`/`AIMS_GATEWAY_PRIVATE_KEY` 环境变量）
+
 ### aims-cli DRM 发布管道模式
 - **四模块工具链**：Obfuscator（`src/cli/obfuscator.py`）+ Encryptor（`src/cli/encryptor.py`）+ Signer（`src/cli/signer.py`）+ Publisher（`src/cli/publisher.py`），由 `main.py publish` 命令编排
 - **Obfuscator 三级降级**：优先 PyArmor（`pyarmor obfuscate` → `wrapper.so`）→ Cython（`cythonize -3 -i` → `gcc -shared` → `.so`）→ bytecode 复制 + 警告。120s 子进程超时防止挂死

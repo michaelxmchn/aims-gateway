@@ -468,6 +468,20 @@ class CommerceEngine:
         self._billing = billing
         self._pot_manager = pot_manager
 
+    # ── Audit trail (delegates to billing engine) ───────────────────────
+
+    def _record(
+        self,
+        action: str,
+        task_id: str,
+        roles: dict[str, str],
+        amounts: dict[str, int],
+        tx_hash: str = "",
+        detail: str = "",
+    ) -> None:
+        """Append an immutable entry to the billing audit trail."""
+        self._billing._record(action, task_id, roles, amounts, tx_hash, detail)
+
     # ── Revenue phase ───────────────────────────────────────────────────
 
     def get_revenue_phase(self) -> RevenuePhase:

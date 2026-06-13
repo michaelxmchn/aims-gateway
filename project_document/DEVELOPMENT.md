@@ -25,6 +25,8 @@
 - [x] **前端 Phase 2 三大功能升级**：`static/index.html` 新增全球实时结算大屏（高频滚动 Settlement Feed + AI Judge 评分 + 70/25/5 分账实时流）、Google/Apple 社交登录入口、SLA 争议仲裁保障（80/100 阈值 + 自动 100% 退款）；`static/console.html` 新增结算流面板 + 社交登录 + SLA 强化文案
 - [x] **Phase 5: Commerce Matrix 多维计费契约** — `src/gateway/billing.py` 重构：新增 `CommerceEngine` 多模式结算路由（pay_per_task/subscription/buyout），`RevenuePhase` 收入分配合约切换（Q1 70/25/5 ↔ Q2-Q5 95/0/5），PLG 国库补贴池，定价系统；`src/gateway/server.py` 新增 8 个 `/api/commerce/*` 端点（Subscription/Buyout 购买、定价查询、收入阶段切换、Pool 状态、PLG Seed）
 - [x] **Phase 3: TikTok Shop 竞品情报 Skill + DRM 发布指南** — `src/skills/tiktok_competitive_intel.py` 马来西亚/东南亚竞品监控智能体（价格/销量/广告/欺诈风险），`src/skills/manifests/tiktok_competitive_intel/manifest.json` Commerce Matrix 定价（Metered: 0.05/Sub: 19.99/Buyout: 199 USDC），`project_document/DRM_PUBLISH_GUIDE.md` 8 步 DRM 加壳发布指南
+- [x] **Phase 4: E2E Testnet Simulation 双流联动测试** — `tests/e2e_testnet_simulation.py` 模拟两个商业故事流（PLG First-Task-Free → AI Judge 92/100 → 70/25/5 PLG 补贴结算 + Metered Escrow → AI Judge 74/100 <80 SLA → 合约自动退款），Bloomberg 终端风格日志，6 个确定性 EVM 地址，AI Judge 85/100 阈值评分，DRM 包装器模拟 PyArmor+AES-256 执行，资金守恒审计
+- [x] **fix(gateway): `CommerceEngine._record()` 缺失委托方法** — `CommerceEngine.charge_and_settle()` 在免费试用/订阅/买断路径调用 `self._record()`，但 `_record()` 仅定义在 `BillingEngine` 上，导致 `AttributeError`。添加委托方法转发至 `self._billing._record()`
 
 ## 已完成任务清单
 

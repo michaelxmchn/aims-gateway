@@ -5,6 +5,15 @@
 > **格式要求**: 严格遵循 `.claude/output-styles/bullet-points.md` 格式规范  
 > **提交规范**: 遵循 commitlint 规范（type(scope): subject）
 
+## [2026-06-13]
+### 新增
+- feat(test): `tests/e2e_testnet_simulation.py` — E2E Testnet Simulation 双流联动测试，PLG First-Task-Free → AI Judge 92/100 → 70/25/5 补贴结算 (Flow 1 PASS) + Metered Escrow → AI Judge 74/100 → SLA 自动退款 (Flow 2 REFUND)，Bloomberg 终端日志，6 确定性 EVM 地址，DRM 包装器模拟，资金守恒审计
+- feat(knowledge): `project_document/KNOWLEDGE.md` — 新增 E2E Testnet Simulation 双流联动测试模式文档（AI Judge 评分引擎/DRM 三层包装/6 地址/Bloomberg 日志/CLI 网络选择）
+### 修改
+- fix(gateway): `src/gateway/billing.py` — `CommerceEngine` 新增 `_record()` 委托方法转发至 `BillingEngine._record()`，修复 `charge_and_settle()` 在免费试用/订阅/买断路径的 `AttributeError` 潜在 bug
+- feat(docs): `project_document/DEVELOPMENT.md` — 添加 Phase 4 E2E Testnet Simulation 和 billing.py `_record()` 修复条目
+- feat(docs): `project_document/CHANGELOG.md` — 添加 2026-06-13 新条目
+
 ## [2026-06-12]
 ### 修改
 ### 新增
