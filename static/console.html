@@ -624,6 +624,38 @@ async function connectWallet() {
     await refreshBalance();
     await fetchDiscovery();
     await fetchHealth();
+
+    // ── Prompt to switch to Base Sepolia ──
+    const net = await provider.getNetwork();
+    if (net.chainId !== 84532n && net.chainId !== 8453n) {
+      const switchResp = confirm("Switch to Base Sepolia (testnet) for on-chain settlement?");
+      if (switchResp) {
+        try {
+          await provider.send("wallet_switchEthereumChain", [{ chainId: "0x14a34" }]);
+          toast("Switched to Base Sepolia", "success");
+        } catch (switchErr) {
+          if (switchErr.code === 4902) {
+            try {
+              await provider.send("wallet_addEthereumChain", [{
+                chainId: "0x14a34",
+                chainName: "Base Sepolia",
+                nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+                rpcUrls: ["https://sepolia.base.org"],
+                blockExplorerUrls: ["https://sepolia.basescan.org"],
+              }]);
+              toast("Added & switched to Base Sepolia", "success");
+            } catch (addErr) {
+              toast("Could not add Base Sepolia: " + addErr.message, "warn");
+            }
+          } else {
+            toast("Could not switch network: " + switchErr.message, "warn");
+          }
+        }
+      }
+    }
+
+    // ── AIMS_GATEWAY_AUTH beacon ──
+    await signAuthBeacon("system");
     return true;
   } catch (err) {
     toast(`Wallet connection failed: ${err.message}`, "error");
@@ -647,6 +679,35 @@ function getAuthHeaders(bodyBytes, signature) {
     "X-Timestamp": Math.floor(Date.now() / 1000).toString(),
     "Content-Type": "application/json",
   };
+}
+
+// ════════════════════════════════════════════════════════════════
+//  AIMS_GATEWAY_AUTH Beacon
+// ════════════════════════════════════════════════════════════════
+async function signAuthBeacon(skillId) {
+  if (!walletAddress || !signer) return null;
+  const message = `AIMS_GATEWAY_AUTH:${walletAddress}:${skillId}`;
+  try {
+    const sig = await signer.signMessage(message);
+    const sigHex = sig.startsWith("0x") ? sig.slice(2) : sig;
+    const resp = await fetch(`${API_BASE}/api/auth/pre-check`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, signature: sigHex }),
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      if (data.verified) {
+        consumerLog("success", `🔐 Auth beacon verified — wallet=${walletAddress.slice(0,10)}… skill=${skillId}`);
+        return true;
+      }
+    }
+    consumerLog("error", `⚠️ Auth beacon rejected for skill=${skillId}`);
+    return false;
+  } catch (err) {
+    console.warn("Auth beacon failed:", err.message);
+    return false;
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -817,6 +878,12 @@ async function invokeSkill(event) {
       billing_mode: billingMode,
     };
     const bodyBytes = new TextEncoder().encode(JSON.stringify(bodyPayload));
+
+    // ── AIMS_GATEWAY_AUTH beacon (MetaMask-signed) ──
+    const beaconOk = await signAuthBeacon(skillId);
+    if (!beaconOk) {
+      consumerLog("warn", "Auth beacon not confirmed — continuing with EIP-191 only");
+    }
 
     // ── Step 1: Sign & send ──
     advancePipeline(1);
@@ -1061,48 +1128,64 @@ function switchRole(role) {
 }
 
 // ════════════════════════════════════════════════════════════════
-//  Console Settlement Feed
+//  Console Settlement Feed — Real SSE Stream
 // ════════════════════════════════════════════════════════════════
-const CSKILLS = [
-  {n:'E-Commerce-Scraper',m70:true},{n:'Solidity-Audit',m70:false},{n:'Data-Analyzer',m70:true},
-  {n:'Code-Security-Audit',m70:false},{n:'Git-Changelog',m70:true},{n:'Dashboard-Gen',m70:false},
-  {n:'Competitor-Intel',m70:true},{n:'Smart-Contract-Test',m70:false},
-];
-const CWALLETS = ['0x71C3…a8f2','0x9F2B…d41e','0x4B1A…c73b','0x3A7E…f902','0x8E5D…b1c4'];
-const CREGIONS = ['🇺🇸 us-west','🇪🇺 eu-west','🇸🇬 ap-southeast','🇯🇵 ap-northeast'];
-
 (function(){
   const feed = document.getElementById('consoleFeed');
   if (!feed) return;
-  let cnt=0, vol=0;
-  const elCnt=document.getElementById('consoleFeedCount'), elVol=document.getElementById('consoleFeedVol');
+  let cnt = 0, vol = 0;
+  const elCnt = document.getElementById('consoleFeedCount');
+  const elVol = document.getElementById('consoleFeedVol');
 
-  function add(){
-    const s = CSKILLS[Math.random()*CSKILLS.length|0];
-    const w = CWALLETS[Math.random()*CWALLETS.length|0];
-    const r = CREGIONS[Math.random()*CREGIONS.length|0];
-    const sc = Math.random()*25+75;
-    const pass = sc>=80;
-    const amt = (0.025+Math.random()*0.035).toFixed(3);
-    const label = s.m70 ? '70/25/5' : '95/0/5';
-    cnt++; vol+=parseFloat(amt);
+  function addEntry(data) {
+    const action = data.action || 'settle';
+    const isPass = action !== 'refund' && action !== 'pool_shortfall';
+    const taskId = (data.task_id || '').slice(0, 8);
+    const amt = data.amounts
+      ? (data.amounts.total_deducted || data.amounts.user_deduction || 0) / 1000000
+      : 0;
+    const skillLabel = data.detail ? data.detail.match(/skill=(\S+)/) : null;
+    const skillName = skillLabel ? skillLabel[1] : taskId;
+
+    cnt++;
+    vol += amt;
 
     const d = document.createElement('div');
-    d.className=`feed-entry-c ${pass?'pass':'refund'}`;
-    d.innerHTML=`<span class="fc-time">${Math.floor(Math.random()*30+1)}s</span>`+
-      `<span class="fc-main"><span class="fc-skill">${s.n}</span>`+
-      `<span class="fc-score ${pass?'pass':'refund'}">${pass?'✓':'✗'} ${sc|0}</span>`+
-      `<span class="fc-split">${amt} USDC</span>`+
-      `<span class="fc-dex">${label}</span>`+
-      `<span class="fc-region">${r}</span></span>`;
+    d.className = `feed-entry-c ${isPass ? 'pass' : 'refund'}`;
+    d.innerHTML =
+      `<span class="fc-time">${new Date(data.ts * 1000).toLocaleTimeString()}</span>` +
+      `<span class="fc-main">` +
+        `<span class="fc-skill">${skillName}</span>` +
+        `<span class="fc-score ${isPass ? 'pass' : 'refund'}">${isPass ? '✓' : '✗'} ${action}</span>` +
+        `<span class="fc-split">${amt.toFixed(4)} USDC</span>` +
+        `<span class="fc-dex">${data.action}</span>` +
+      `</span>`;
 
     feed.insertBefore(d, feed.firstChild);
-    while(feed.children.length>15) feed.removeChild(feed.lastChild);
-    elCnt.textContent=cnt; elVol.textContent=vol.toFixed(2);
+    while (feed.children.length > 15) feed.removeChild(feed.lastChild);
+    elCnt.textContent = cnt;
+    elVol.textContent = vol.toFixed(4);
   }
 
-  setInterval(add, 3200);
-  for(let i=0;i<4;i++) setTimeout(add,i*500);
+  // Connect to the real SSE endpoint
+  let eventSource = null;
+  function connectSSE() {
+    if (eventSource) { eventSource.close(); }
+    eventSource = new EventSource(`${API_BASE}/api/v2/feed/stream`);
+    eventSource.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        addEntry(data);
+      } catch (e) { /* ignore parse errors */ }
+    };
+    eventSource.onerror = () => {
+      // Reconnect after 5s on error
+      setTimeout(connectSSE, 5000);
+    };
+  }
+
+  // Start SSE connection after a short delay (let page init first)
+  setTimeout(connectSSE, 2000);
 })();
 
 // ════════════════════════════════════════════════════════════════

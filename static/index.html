@@ -742,24 +742,11 @@ provider.<span class="function">start</span>()</code>
 </footer>
 
 <script>
-// ════════════════════════════════════════════════════════════════
-//  Global Real-time Settlement Feed — Mock Data Stream
-// ════════════════════════════════════════════════════════════════
-const SETTLEMENT_SKILLS = [
-  {name:'E-Commerce-Scraper', icon:'🛒', mode70:true},
-  {name:'Solidity-Audit', icon:'🔒', mode70:false},
-  {name:'Data-Analyzer', icon:'📊', mode70:true},
-  {name:'Code-Security-Audit', icon:'🛡️', mode70:false},
-  {name:'Git-Changelog', icon:'📝', mode70:true},
-  {name:'Dashboard-Generator', icon:'📈', mode70:false},
-  {name:'Competitor-Intel', icon:'🔍', mode70:true},
-  {name:'Smart-Contract-Test', icon:'⚙️', mode70:false},
-  {name:'Price-Tracker', icon:'💰', mode70:true},
-  {name:'Sentiment-Analyzer', icon:'🧠', mode70:false},
-];
-const SETTLEMENT_WALLETS = ['0x71C3…a8f2','0x9F2B…d41e','0x4B1A…c73b','0x3A7E…f902','0x8E5D…b1c4','0xD0C9…e683','0xF6A2…4d17','0x1B8F…e94a','0xC4D6…2f81','0xE9A3…b50c'];
-const SETTLEMENT_REGIONS = ['🇺🇸 us-west','🇪🇺 eu-west','🇸🇬 ap-southeast','🇯🇵 ap-northeast','🇧🇷 sa-east','🇦🇺 ap-southeast','🇮🇳 ap-south','🇬🇧 eu-west'];
+const API_BASE = "https://aims-gateway.fly.dev";
 
+// ════════════════════════════════════════════════════════════════
+//  Global Real-time Settlement Feed — SSE Stream
+// ════════════════════════════════════════════════════════════════
 (function(){
   const feedBody = document.getElementById('feedBody');
   if (!feedBody) return;
@@ -768,39 +755,41 @@ const SETTLEMENT_REGIONS = ['🇺🇸 us-west','🇪🇺 eu-west','🇸🇬 ap-s
   const totalVolume = document.getElementById('feedTotalVolume');
   const totalDisputes = document.getElementById('feedDisputes');
 
-  function addEntry(){
-    const skill = SETTLEMENT_SKILLS[Math.random() * SETTLEMENT_SKILLS.length | 0];
-    const wallet = SETTLEMENT_WALLETS[Math.random() * SETTLEMENT_WALLETS.length | 0];
-    const region = SETTLEMENT_REGIONS[Math.random() * SETTLEMENT_REGIONS.length | 0];
-    const score = Math.random() * 25 + 75;
-    const passed = score >= 80;
-    const amount = (0.025 + Math.random() * 0.035).toFixed(3);
-    const devShare = (amount * (skill.mode70 ? 0.7 : 0.95)).toFixed(4);
-    const workerShare = (skill.mode70 ? (amount * 0.25).toFixed(4) : '0.0000');
-    const treasuryShare = (amount * 0.05).toFixed(4);
-    const elapsed = ['3s','7s','12s','18s','24s','31s'][Math.random() * 6 | 0];
+  function addEntry(data) {
+    const action = data.action || 'settle';
+    const isPass = action !== 'refund' && action !== 'pool_shortfall';
+    const taskId = (data.task_id || '').slice(0, 8);
+    const amt = data.amounts
+      ? (data.amounts.total_deducted || data.amounts.user_deduction || 0) / 1000000
+      : 0;
+    const skillLabel = data.detail ? data.detail.match(/skill=(\S+)/) : null;
+    const skillName = skillLabel ? skillLabel[1] : taskId;
 
     count++;
-    volume += parseFloat(amount);
-    if (!passed) disputes++;
+    volume += amt;
+    if (!isPass) disputes++;
+
+    const roles = data.roles || {};
+    const workerShare = data.amounts ? (data.amounts.worker_share || 0) / 1000000 : 0;
+    const devShare = data.amounts ? (data.amounts.developer_share || 0) / 1000000 : 0;
+    const treasuryShare = data.amounts ? (data.amounts.treasury_share || 0) / 1000000 : 0;
 
     const entry = document.createElement('div');
-    entry.className = `feed-entry ${passed ? 'pass' : 'refund'}`;
+    entry.className = `feed-entry ${isPass ? 'pass' : 'refund'}`;
     entry.innerHTML =
-      `<span class="feed-time">${elapsed}</span>` +
+      `<span class="feed-time">${new Date(data.ts * 1000).toLocaleTimeString()}</span>` +
       `<div class="feed-main">` +
         `<div class="feed-top">` +
-          `<span class="feed-skill"><span class="icon">${skill.icon}</span>${skill.name}</span>` +
-          `<span class="feed-wallet">${wallet}</span>` +
-          `<span class="feed-score ${passed ? 'pass' : 'refund'}">${passed ? '✓' : '✗'} ${(score|0)}/100</span>` +
+          `<span class="feed-skill"><span class="icon">⚡</span>${skillName}</span>` +
+          `<span class="feed-wallet">${(roles.user || '').slice(0,10)}…</span>` +
+          `<span class="feed-score ${isPass ? 'pass' : 'refund'}">${isPass ? '✓' : '✗'} ${action}</span>` +
         `</div>` +
         `<div class="feed-bottom">` +
-          `<span>${(parseFloat(amount).toFixed(3))} USDC</span>` +
-          `<span class="highlight">${skill.mode70 ? 'Q1 70/25/5' : 'Q2-Q5 95/0/5'}</span>` +
-          `<span>Dev <span class="dev-share">${devShare}</span></span>` +
-          `<span>Worker <span class="worker-share">${workerShare}</span></span>` +
-          `<span>Treasury <span class="treasury-share">${treasuryShare}</span></span>` +
-          `<span class="feed-region">${region}</span>` +
+          `<span>${amt.toFixed(4)} USDC</span>` +
+          `<span class="highlight">${action}</span>` +
+          `<span>Dev <span class="dev-share">${devShare.toFixed(4)}</span></span>` +
+          `<span>Worker <span class="worker-share">${workerShare.toFixed(4)}</span></span>` +
+          `<span>Treasury <span class="treasury-share">${treasuryShare.toFixed(4)}</span></span>` +
         `</div>` +
       `</div>`;
 
@@ -808,12 +797,27 @@ const SETTLEMENT_REGIONS = ['🇺🇸 us-west','🇪🇺 eu-west','🇸🇬 ap-s
     while (feedBody.children.length > 20) feedBody.removeChild(feedBody.lastChild);
 
     totalCount.textContent = count;
-    totalVolume.textContent = volume.toFixed(2);
+    totalVolume.textContent = volume.toFixed(4);
     totalDisputes.textContent = disputes;
   }
 
-  setInterval(addEntry, 2800);
-  for (let i = 0; i < 6; i++) setTimeout(addEntry, i * 400);
+  // Connect to SSE endpoint
+  let eventSource = null;
+  function connectSSE() {
+    if (eventSource) { eventSource.close(); }
+    eventSource = new EventSource(`${API_BASE}/api/v2/feed/stream`);
+    eventSource.onmessage = (ev) => {
+      try {
+        const data = JSON.parse(ev.data);
+        addEntry(data);
+      } catch (e) { /* ignore parse errors */ }
+    };
+    eventSource.onerror = () => {
+      setTimeout(connectSSE, 5000);
+    };
+  }
+
+  setTimeout(connectSSE, 2000);
 })();
 
 // ════════════════════════════════════════════════════════════════

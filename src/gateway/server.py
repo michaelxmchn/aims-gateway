@@ -8,6 +8,7 @@ EIP-712 typed-data signature authentication.
 from __future__ import annotations
 
 import asyncio
+import collections
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ from typing import Any
 
 from eth_account import Account
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -114,12 +116,28 @@ billing = BillingEngine(
     pot_manager=pot_manager,
 )
 
+# ── SSE settlement broadcast (defined before CommerceEngine uses it) ─────
+
+_settlement_buffer: collections.deque = collections.deque(maxlen=200)
+"""Thread-safe ring buffer for settlement events — SSE consumers poll this."""
+
+_settlement_buffer_lock: Lock = Lock()
+"""Protects _settlement_buffer against concurrent threadpool writes."""
+
+
+def broadcast_settlement(event: dict) -> None:
+    """Thread-safe bridge: called from threadpool workers to enqueue a settlement event."""
+    with _settlement_buffer_lock:
+        _settlement_buffer.append(event)
+
+
 # AIMS 2.0 Commerce Engine — multi-mode billing orchestration
 commerce = CommerceEngine(
     storage=storage,
     trial_manager=_trial_manager,
     billing=billing,
     pot_manager=pot_manager,
+    on_settlement=broadcast_settlement,
 )
 
 # Worker heartbeat tracking: worker_id → last_seen_unix_ts
@@ -130,6 +148,8 @@ app = FastAPI(
     title="AIMS Gateway",
     version="1.0.0",
     description="AIMS DePIN Network — Task Dispatch & Settlement Gateway",
+    docs_url="/api/docs",
+    openapi_url="/api/openapi.json",
 )
 
 # ── CORS (allow frontend dev servers to connect) ────────────────────────────
@@ -141,6 +161,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── SSE settlement broadcast ────────────────────────────────────────────────
+
+
+@app.get("/api/v2/feed/stream")
+async def settlement_feed_stream(request: Request):
+    """SSE endpoint — streams real-time settlement events to connected clients.
+
+    Polls ``_settlement_buffer`` every 2 seconds, yielding new events as
+    ``data:`` frames.  Sends a ``: keepalive`` comment when idle to keep
+    the connection alive.
+    """
+    async def event_generator():
+        seen = 0
+        while True:
+            new_events = []
+            with _settlement_buffer_lock:
+                current = list(_settlement_buffer)
+                if len(current) > seen:
+                    new_events = current[seen:]
+                    seen = len(current)
+            for event in new_events:
+                yield f"data: {json.dumps(event)}\n\n"
+            if not new_events:
+                yield ": keepalive\n\n"
+            await asyncio.sleep(2)
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 # ── Static frontend ─────────────────────────────────────────────────────────
 
@@ -173,6 +221,8 @@ EXEMPT_PATHS = {
     "/api/health",
     "/api/discovery",
     "/api/skills/upload",
+    "/api/auth/pre-check",
+    "/api/v2/feed/stream",
 }
 
 
@@ -435,6 +485,20 @@ class PotResponse(BaseModel):
     """Legacy field — same as party_address. Kept for backwards compatibility."""
     party_address: str = ""
     signature: str
+
+
+# ── Auth pre-check models ──────────────────────────────────────────────
+
+
+class PreCheckRequest(BaseModel):
+    message: str = Field(..., min_length=1, description="The signed message (format: AIMS_GATEWAY_AUTH:{wallet}:{skill_id})")
+    signature: str = Field(..., min_length=1, description="EIP-191 personal_sign hex signature")
+
+
+class PreCheckResponse(BaseModel):
+    wallet: str
+    verified: bool
+    ts: float
 
 
 # ── AIMS 2.0 Licensing models ────────────────────────────────────────────
@@ -1585,4 +1649,32 @@ async def task_status(task_id: str):
         result=result,
         outcome=outcome,
         pot=pot_sig,
+    )
+
+
+# ── Auth pre-check endpoint ──────────────────────────────────────────
+
+
+@app.post("/api/auth/pre-check", response_model=PreCheckResponse)
+async def auth_precheck(req: PreCheckRequest):
+    """Verify an AIMS_GATEWAY_AUTH beacon signature.
+
+    The frontend signs ``AIMS_GATEWAY_AUTH:{wallet}:{skill_id}`` with
+    MetaMask.  This endpoint recovers the signer and confirms ownership
+    before the task execution flow begins.
+    """
+    try:
+        signable = encode_defunct(primitive=req.message.encode())
+        recovered = Account.recover_message(signable, signature=req.signature)
+    except Exception as exc:
+        raise HTTPException(status_code=403, detail=f"Signature verification failed: {exc}")
+
+    parts = req.message.split(":")
+    expected_wallet = parts[1].lower() if len(parts) >= 2 else ""
+    verified = recovered.lower() == expected_wallet
+
+    return PreCheckResponse(
+        wallet=recovered,
+        verified=verified,
+        ts=time.time(),
     )

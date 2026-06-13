@@ -1,4 +1,4 @@
-<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-10 | Hermes-Verified -->
+<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-13 | Hermes-Verified -->
 
 # 项目知识库
 
@@ -28,6 +28,21 @@
 - **EIP-191 personal_sign 认证**：用户钱包签署原始请求体 bytes，网关 middleware 通过 `encode_defunct` + `Account.recover_message` 恢复签名者比对 X-Wallet-Address，替代 EIP-712 typed data（更简单，无需 nonce/deadline）
 - **Proof-of-Task (PoT)**：任务完成后网关 ECDSA 签署 `keccak256(taskId ++ workerAddress)`，Worker 持 PoT 调用合约 `claimReward()` 领取报酬
 - **结算分账 (70/25/5)**：每笔成功任务按 70% 开发者 / 25% Worker / 5% Treasury 自动分配，开发者未注册时份额归 Treasury
+
+### AIMS_GATEWAY_AUTH 信标验证
+- **信标格式**：`AIMS_GATEWAY_AUTH:{wallet}:{skill_id}`，由 MetaMask 通过 `signer.signMessage(message)` 签署
+- **`POST /api/auth/pre-check`**：免认证端点，接收 `{message, signature}`，使用 `encode_defunct` + `Account.recover_message` 恢复签名者并比对 `X-Wallet-Address`
+- **前置验证**：在任务执行前调用，确保钱包持有者确认授权，日志记录验证结果
+
+### SSE 实时结算流
+- **`broadcast_settlement()`**：同步函数，由 `CommerceEngine._record()` 在线程池中调用，向线程安全 `deque(maxlen=200)` 附加结算事件
+- **`_settlement_buffer_lock`**：`threading.Lock` 保护 deque 免受线程池并发写入
+- **`GET /api/v2/feed/stream`**：异步 SSE 端点，每 2s 轮询 deque，以 `data: {json}\n\n` 格式推送新事件，空闲时发送 `: keepalive\n\n` 注释保持连接
+- **前端消费**：`new EventSource('/api/v2/feed/stream')` 监听 `onmessage` 事件，解析 JSON 渲染至 UI 结算大屏；连接断开自动 5s 重连
+
+### MetaMask 网络切换
+- **Base Sepolia**：Chain ID `0x14a34`（84532），RPC `https://sepolia.base.org`，浏览器 `https://sepolia.basescan.org`
+- **`wallet_switchEthereumChain`**：连接后检测当前网络，若非 Base Sepolia/Mainnet 则弹出 `confirm()` 询问是否切换；`wallet_addEthereumChain` 处理 4902 错误（链未添加）
 - **合约部署底链**：Base（EVM 兼容，L2，低 Gas），USDC 6 位小数
 - **部署脚本硬编码 PLATFORM_OWNER**：`scripts/deploy_settlement.js` 中 `PLATFORM_OWNER = "0x08c9fd0a915f2b0856353850b8adea943f226bcf"`（Solidity `immutable`，烧入合约字节码，永久不可更改）
 - **Base 网络配置**：`hardhat.config.js` 包含 mainnet（chainId 8453）和 baseSepolia（chainId 84532）双网络，`DEPLOYER_PRIVATE_KEY` 环境变量注入

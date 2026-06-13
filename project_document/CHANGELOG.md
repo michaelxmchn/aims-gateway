@@ -1,4 +1,4 @@
-<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-10 | Hermes-Verified -->
+<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-13 | Hermes-Verified -->
 
 # 变更日志
 
@@ -13,6 +13,13 @@
 - fix(gateway): `src/gateway/billing.py` — `CommerceEngine` 新增 `_record()` 委托方法转发至 `BillingEngine._record()`，修复 `charge_and_settle()` 在免费试用/订阅/买断路径的 `AttributeError` 潜在 bug
 - feat(docs): `project_document/DEVELOPMENT.md` — 添加 Phase 4 E2E Testnet Simulation 和 billing.py `_record()` 修复条目
 - feat(docs): `project_document/CHANGELOG.md` — 添加 2026-06-13 新条目
+### 新增
+- feat(gateway): `src/gateway/server.py` — 新增 `POST /api/auth/pre-check` AIMS_GATEWAY_AUTH 信标验签端点 + `GET /api/v2/feed/stream` SSE 实时结算流端点
+- feat(frontend): `static/console.html` — MetaMask 连接后 Base Sepolia `wallet_switchEthereumChain` 网络切换提示 + `AIMS_GATEWAY_AUTH` 信标签名验证 + Mock 数据流替换为 EventSource SSE 实时连接
+- feat(frontend): `static/index.html` — 全局结算大屏替换为 EventSource SSE 实时连接至 `/api/v2/feed/stream`
+### 修改
+- feat(billing): `src/gateway/billing.py` — `CommerceEngine` 新增 `on_settlement` 可调用回调参数，`_record()` 方法在写入审计账本后调用回调广播结算事件
+- feat(server): `src/gateway/server.py` — `broadcast_settlement` 定义移至 `CommerceEngine` 实例化之前修复 NameError；`EXEMPT_PATHS` 新增 `/api/auth/pre-check` 和 `/api/v2/feed/stream`；FastAPI `docs_url` 改为 `/api/docs`，`openapi_url` 改为 `/api/openapi.json`
 
 ## [2026-06-12]
 ### 修改

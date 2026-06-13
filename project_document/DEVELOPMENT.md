@@ -1,4 +1,4 @@
-<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-10 | Hermes-Verified -->
+<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-13 | Hermes-Verified -->
 
 # 开发工作文档
 
@@ -27,6 +27,10 @@
 - [x] **Phase 3: TikTok Shop 竞品情报 Skill + DRM 发布指南** — `src/skills/tiktok_competitive_intel.py` 马来西亚/东南亚竞品监控智能体（价格/销量/广告/欺诈风险），`src/skills/manifests/tiktok_competitive_intel/manifest.json` Commerce Matrix 定价（Metered: 0.05/Sub: 19.99/Buyout: 199 USDC），`project_document/DRM_PUBLISH_GUIDE.md` 8 步 DRM 加壳发布指南
 - [x] **Phase 4: E2E Testnet Simulation 双流联动测试** — `tests/e2e_testnet_simulation.py` 模拟两个商业故事流（PLG First-Task-Free → AI Judge 92/100 → 70/25/5 PLG 补贴结算 + Metered Escrow → AI Judge 74/100 <80 SLA → 合约自动退款），Bloomberg 终端风格日志，6 个确定性 EVM 地址，AI Judge 85/100 阈值评分，DRM 包装器模拟 PyArmor+AES-256 执行，资金守恒审计
 - [x] **fix(gateway): `CommerceEngine._record()` 缺失委托方法** — `CommerceEngine.charge_and_settle()` 在免费试用/订阅/买断路径调用 `self._record()`，但 `_record()` 仅定义在 `BillingEngine` 上，导致 `AttributeError`。添加委托方法转发至 `self._billing._record()`
+- [x] **Phase 5: 前后端接口大合流与 MetaMask 真实钱包联动** — 三项硬核联调任务：
+  - **Task 1 (MetaMask)**: `connectWallet()` 新增 Base Sepolia `wallet_switchEthereumChain` 网络切换提示 + `AIMS_GATEWAY_AUTH:{wallet}:{skill_id}` 信标签名 + `POST /api/auth/pre-check` 服务器验签端点
+  - **Task 2 (SSE)**: `CommerceEngine` 新增 `on_settlement` 回调参数，线程安全 `deque(maxlen=200)` + `Lock` 桥接至 `GET /api/v2/feed/stream` 异步 SSE 端点；`console.html` 与 `index.html` 替换 Mock 数据流为 `new EventSource()` 实时连接
+  - **Task 3 (docs_url)**: FastAPI `docs_url` 从默认 `/docs` 改为 `/api/docs`，释放 `/docs` 路由用于 `static/docs.html`，`openapi_url` 改为 `/api/openapi.json`
 
 ## 已完成任务清单
 
@@ -377,7 +381,7 @@
 - **Hermes 元数据标记**
   - 状态: 已完成 (2026-06-09)
   - 文件: 全部 12 个 markdown 文件
-  - 描述: 为全部 markdown 文件添加 `<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-10 | Hermes-Verified -->` 隐藏头部注释
+  - 描述: 为全部 markdown 文件添加 `<!-- AIMS Protocol | Version 1.0.0 | Last Updated: 2026-06-13 | Hermes-Verified -->` 隐藏头部注释
 - **文档根 URL 指向 GitHub Raw**
   - 状态: 已完成 (2026-06-09)
   - 文件: src/gateway/server.py

@@ -36,7 +36,7 @@ from __future__ import annotations
 import enum
 import logging
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from eth_account import Account
 from eth_utils import keccak, to_canonical_address
@@ -462,11 +462,13 @@ class CommerceEngine:
         trial_manager: FreeTrialManager,
         billing: BillingEngine,
         pot_manager: Optional[POTManager] = None,
+        on_settlement: Optional[Callable[[dict], None]] = None,
     ) -> None:
         self._storage = storage
         self._trial_manager = trial_manager
         self._billing = billing
         self._pot_manager = pot_manager
+        self._on_settlement = on_settlement
 
     # ── Audit trail (delegates to billing engine) ───────────────────────
 
@@ -481,6 +483,15 @@ class CommerceEngine:
     ) -> None:
         """Append an immutable entry to the billing audit trail."""
         self._billing._record(action, task_id, roles, amounts, tx_hash, detail)
+        if self._on_settlement is not None:
+            self._on_settlement({
+                "action": action,
+                "task_id": task_id,
+                "roles": dict(roles),
+                "amounts": {k: v for k, v in amounts.items()} if isinstance(amounts, dict) else amounts,
+                "ts": time.time(),
+                "detail": detail,
+            })
 
     # ── Revenue phase ───────────────────────────────────────────────────
 
