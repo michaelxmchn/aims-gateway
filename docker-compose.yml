@@ -1,0 +1,141 @@
+# AIMS 2.0 Production Cluster — docker-compose.yml
+# One-click launch:  docker compose up -d --build
+# Tear down:         docker compose down -v
+#
+# Topology:
+#   gateway-server   — FastAPI backend + static frontend (port 8000)
+#   redis            — State coordination (port 6379, internal only)
+#   worker-node-1/2/3 — Three isolated DePIN workers, each with unique wallet
+
+version: "3.9"
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-gateway-env: &gateway-env
+  REDIS_URL: "redis://redis:6379/0"
+  AIMS_GATEWAY_PRIVATE_KEY: "${AIMS_GATEWAY_PRIVATE_KEY:-0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80}"
+  AIMS_CONTRACT_ADDRESS: "${AIMS_CONTRACT_ADDRESS:-0x0000000000000000000000000000000000000001}"
+  AIMS_RPC_URL: "${AIMS_RPC_URL:-http://host.docker.internal:8545}"
+  AIMS_SIGNING_SECRET: "${AIMS_SIGNING_SECRET:-AIMS_MOCK_SECRET_2026}"
+  APP_ENV: "production"
+  PYTHONDONTWRITEBYTECODE: "1"
+  PYTHONUNBUFFERED: "1"
+
+x-worker-env: &worker-env
+  <<: *gateway-env
+  AIMS_GATEWAY_URL: "http://gateway-server:8000"
+
+services:
+
+  redis-coordinator:
+    image: redis:7-alpine
+    container_name: aims-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: ["redis-server", "--appendonly", "yes", "--save", "60", "1"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    logging: *default-logging
+    restart: unless-stopped
+
+  gateway-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aims-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      <<: *gateway-env
+    volumes:
+      # Mount uploaded skills and DRM-protected artifacts
+      - gateway-data:/app/data
+      - ./static:/app/static:ro
+    depends_on:
+      redis-coordinator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging: *default-logging
+    restart: unless-stopped
+
+  # ── Worker replicas ──────────────────────────────────────────────────────
+  # Each worker binds a distinct wallet and worker_id.  Override wallet keys
+  # via .env file or environment variables for production.
+  #
+  # To add more workers, copy the block and bump the index.
+
+  worker-node-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aims-worker-1
+    environment:
+      <<: *worker-env
+      AIMS_WORKER_ID: "worker-001"
+      AIMS_WORKER_WALLET: "0x70997970C51812dc3A010C7d01b50e0d17dc79C8"
+      AIMS_WORKER_KEY: "${AIMS_WORKER_1_KEY:-0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d}"
+    volumes:
+      # Mount DRM-protected skill artifacts (wrapper.so)
+      - ./dist:/app/dist:ro
+    command: ["python", "-m", "src.worker.worker"]
+    depends_on:
+      gateway-server:
+        condition: service_healthy
+    logging: *default-logging
+    restart: unless-stopped
+
+  worker-node-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aims-worker-2
+    environment:
+      <<: *worker-env
+      AIMS_WORKER_ID: "worker-002"
+      AIMS_WORKER_WALLET: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+      AIMS_WORKER_KEY: "${AIMS_WORKER_2_KEY:-0x5de4111afa1a4b94908f83103eb1f15f0f2f16a6b5734a4b6d3c3f3a3b3c3b3d}"
+    volumes:
+      - ./dist:/app/dist:ro
+    command: ["python", "-m", "src.worker.worker"]
+    depends_on:
+      gateway-server:
+        condition: service_healthy
+    logging: *default-logging
+    restart: unless-stopped
+
+  worker-node-3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: aims-worker-3
+    environment:
+      <<: *worker-env
+      AIMS_WORKER_ID: "worker-003"
+      AIMS_WORKER_WALLET: "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
+      AIMS_WORKER_KEY: "${AIMS_WORKER_3_KEY:-0x7c852118294e51e653712a81e05800f419141751be58f605c371e15141b007a6}"
+    volumes:
+      - ./dist:/app/dist:ro
+    command: ["python", "-m", "src.worker.worker"]
+    depends_on:
+      gateway-server:
+        condition: service_healthy
+    logging: *default-logging
+    restart: unless-stopped
+
+volumes:
+  redis-data:
+  gateway-data:

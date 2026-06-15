@@ -500,3 +500,11 @@
   - **Admin 端点**：`POST /api/admin/emergency-pause`（全网紧急暂停→OPEN+红警）、`POST /api/admin/reset`（管理复位→CLOSED）、`GET /api/admin/circuit-breaker`（状态快照）
   - **stress_cluster_simulation.py**：10 EIP-191 异步 Worker 节点 × 50 并发请求/5s 突发窗口，Bloomberg 终端日志，4 场景（公平路由/CB CLOSED→HALF_OPEN→OPEN 衰减/冷却自愈/Admin 强制暂停→复位）
 - **修复**: fix(stress): `tests/stress_cluster_simulation.py` — Worker 注册 key 不匹配（`seed_dev_usdt` 使用 wallet 地址而非 worker_id）+ Worker 循环终止竞态（claim_task 返回 None 时未检查完成条件）
+
+### Phase 9: 集群化容器编排、Demo Day 自动化路演与生产网发布清单
+- **状态**: 已完成 (2026-06-15)
+- **文件**: `docker-compose.yml` / `scripts/demo_day_master.py` / `project_document/PRODUCTION_READY.md`
+- **描述**: AIMS 2.0 终局收官——全栈集群化部署、投资人路演剧本与生产网跃迁路线图：
+  - **docker-compose.yml**：一键拉起生产级 AIMS 集群（`gateway-server` + `redis-coordinator` + `worker-node-1/2/3` 三独立 Worker），每个 Worker 绑定不同测试网钱包，挂载 DRM 保护的 `wrapper.so` 二进制策略
+  - **Demo Day 路演脚本**（`scripts/demo_day_master.py`）：4 幕自动化路演——Act I PLG 闪电破局（Alice $0 获客）、Act II 密码学分账（Bob 95 分 70/25/5 原子拆账）、Act III 铁面裁决争议（Carol 72 分 SLA 100% 自动退款 + 红警）、Act IV 极限自愈熔断（5 超时→HALF_OPEN→启发式降级→auto CLOSED）
+  - **PRODUCTION_READY.md**：Base Mainnet 迁移清单（合约部署/多签/USDC 地址/Gateway 热钱包安全/Worker 黑盒防线/Fly.io 生产启动/监控告警/回滚方案/成本预估）

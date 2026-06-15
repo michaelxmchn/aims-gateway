@@ -18,6 +18,10 @@
 - feat(console): 新增 switchBillingMode()/updateCanaryStatus() 等 JS 功能函数，Wire 至 Worker 节点启停生命周期
 ### 修复
 - fix(stress): `tests/stress_cluster_simulation.py` — 修复 Worker 注册失败（`seed_dev_usdt` 使用 wallet 地址而非 worker_id 导致 key 不匹配）+ Worker 循环终止竞态（claim_task 返回 None 时未检查完成条件导致无限循环）；4 场景全部 PASSED ✓
+### 新增
+- feat(ops): `docker-compose.yml` — 多节点集群化容器编排，一键拉起 gateway-server + redis-coordinator + 3× worker-node（独立钱包/DRM 挂载），healthcheck 全链路依赖等待
+- feat(demo): `scripts/demo_day_master.py` — Demo Day 4 幕自动化路演脚本（PLG 闪电破局/70/25/5 密码学分账/SLA 铁面裁决退款/熔断极限自愈），Bloomberg 终端色彩，SSE 事件监控
+- feat(docs): `project_document/PRODUCTION_READY.md` — Base Mainnet 生产网迁移清单（合约部署/多签/USDC/热钱包安全/Worker 黑盒防线/成本预估/回滚方案）
 
 ## [2026-06-13]
 ### 新增

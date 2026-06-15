@@ -623,3 +623,20 @@ A: 待补充
 - **Worker 注册 key 一致性**：`seed_dev_usdt()` 和 `register_worker()` 必须使用相同的 key（worker_id `"worker_00"` 而非 EVM `wallet` 地址），否则注册因余额检查失败
 - **Worker 循环终止条件**：`claim_task()` 返回 `None` 时必须在 `continue` 前检查全局完成状态（`pending_count == 0 && all()`），否则空闲 Worker 无限循环
 - **异步 Worker 池设计**：`asyncio.gather()` 驱动 N 个 `worker_cycle()` 协程，每个协程内 `while True` 循环，通过 `broker.pending_count` 和全量状态扫描决定退出
+
+### 容器化集群编排模式
+- **多节点拓扑**：`docker-compose.yml` 定义 `gateway-server`（FastAPI + 前端）→ `redis-coordinator`（持久化/协调）→ `worker-node-1/2/3`（DePIN 计算节点）的三层依赖拓扑
+- **YAML 锚点继承**：`x-gateway-env` / `x-worker-env` YAML 锚点实现环境变量 DRY，Worker 通过 `<<: *gateway-env` 继承 Gateway 的全部配置并追加 `AIMS_GATEWAY_URL`
+- **Healthcheck 链式依赖**：`depends_on` 配合 `condition: service_healthy` 确保 redis 就绪→gateway 就绪→worker 启动，`curl` 探测 `GET /api/health`
+- **Worker 隔离**：每个 Worker 容器绑定独立 `AIMS_WORKER_ID`/`AIMS_WORKER_KEY`/`AIMS_WORKER_WALLET`，通过 `.env` 文件或平台 secret 注入生产密钥
+
+### Demo Day 路演编排模式
+- **4 幕故事线**：Act I（PLG 零摩擦获客）→ Act II（70/25/5 密码学分账）→ Act III（SLA 铁面裁决退款 + 红警）→ Act IV（熔断极限自愈 + 黄警）
+- **Bloomberg 终端视觉**：`banner()`/`log()`/`sep()`/`countdown()` 工具函数，彩色状态指示（绿=通过/蓝=结算/红=告警/黄=降级），`C_BG_RED`/`C_BG_GREEN` 大色块强调关键转折
+- **SSE 事件总线**：`_on_settlement()` 回调写入 `sse_buffer` 列表，`check_sse_events()` 按时间窗口和 action 过滤，验证每个 Act 的正确事件广播
+- **Judge 评分劫持**：`judge.score` 方法在 Demo 场景中通过 `JudgeVerdict(...)` 强制设定确定性分数（95/72 等），确保路演每次结果一致
+
+### 生产网迁移清单模式
+- **三阶段发布**：Pre-Flight（T-48h 合约部署 + 密钥生成）→ Launch（Fly.io deploy + Worker 启动 + 监控观察）→ Rollback（`admin/emergency-pause` + `fly deploy` 回滚）
+- **密钥分级**：`AIMS_GATEWAY_PRIVATE_KEY`（热钱包，< 0.1 ETH，季度轮换）→ `AIMS_SIGNING_SECRET`（HMAC 共享密钥）→ Worker 密钥（每节点独立，仅签名 PoT）
+- **多签治理**：`PLATFORM_OWNER` 必须为 3/5 Gnosis Safe，合约升级权限分离（UUPS proxy admin 与 owner 不同多签）
