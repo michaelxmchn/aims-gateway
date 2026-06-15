@@ -22,6 +22,8 @@
 - feat(ops): `docker-compose.yml` — 多节点集群化容器编排，一键拉起 gateway-server + redis-coordinator + 3× worker-node（独立钱包/DRM 挂载），healthcheck 全链路依赖等待
 - feat(demo): `scripts/demo_day_master.py` — Demo Day 4 幕自动化路演脚本（PLG 闪电破局/70/25/5 密码学分账/SLA 铁面裁决退款/熔断极限自愈），Bloomberg 终端色彩，SSE 事件监控
 - feat(docs): `project_document/PRODUCTION_READY.md` — Base Mainnet 生产网迁移清单（合约部署/多签/USDC/热钱包安全/Worker 黑盒防线/成本预估/回滚方案）
+### 修复
+- fix(demo): `scripts/demo_day_master.py` — 6 项修复：Alice 余额不足 (`seed_usdt` $0→$2)、GATEWAY_KEY 截断 31→32 bytes（缺失 `944`）、InMemorySettlementContract 集成（`contract_client=` 注入 + `deposit()`/`register_developer()`）、FreeTrialManager API (`check_free_trial()`→`is_trial_eligible()`)、余额源 (MockLedger→contract)、Refund mock（跳过真实扣款）
 
 ## [2026-06-13]
 ### 新增

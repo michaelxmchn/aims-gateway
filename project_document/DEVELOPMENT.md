@@ -508,3 +508,10 @@
   - **docker-compose.yml**：一键拉起生产级 AIMS 集群（`gateway-server` + `redis-coordinator` + `worker-node-1/2/3` 三独立 Worker），每个 Worker 绑定不同测试网钱包，挂载 DRM 保护的 `wrapper.so` 二进制策略
   - **Demo Day 路演脚本**（`scripts/demo_day_master.py`）：4 幕自动化路演——Act I PLG 闪电破局（Alice $0 获客）、Act II 密码学分账（Bob 95 分 70/25/5 原子拆账）、Act III 铁面裁决争议（Carol 72 分 SLA 100% 自动退款 + 红警）、Act IV 极限自愈熔断（5 超时→HALF_OPEN→启发式降级→auto CLOSED）
   - **PRODUCTION_READY.md**：Base Mainnet 迁移清单（合约部署/多签/USDC 地址/Gateway 热钱包安全/Worker 黑盒防线/Fly.io 生产启动/监控告警/回滚方案/成本预估）
+- **修复**:
+  - fix(demo): Alice 余额不足导致 `publish_task` 返回 None — `publish_task` 内部 `create_escrow_hold()` 要求 min balance，Alice 余额 $0 无法发布；将 `seed_usdt` 从 `0.0` 提升至 `2.0` 满足 escrow
+  - fix(demo): GATEWAY_KEY 截断为 31 bytes — `0xac0974bec39a17e36ba4a6b4d238ff***bacb***...` 缺失 `944`，导致 PoT 签名时报 `"The private key must be exactly 32 bytes long, instead of 31 bytes"`；更正为 `0xac0974bec39a17e36ba4a6b4d238ff***944bacb***...`
+  - fix(demo): `InMemorySettlementContract` 集成 — 注入 `contract_client=` 参数至 BillingEngine，`deposit()` 预充值 Bob/Carol，`register_developer()` 注册 skill 开发者
+  - fix(demo): `FreeTrialManager` API 校正 — `check_free_trial()` 不存在，改用 `is_trial_eligible()`/`consume_trial()`/`get_usage_count()`
+  - fix(demo): 余额显示源 — MockLedger 余额不反映合约内资金，改用 `contract.get_user_balance()` / 1_000_000
+  - fix(demo): Refund mock — Carol 退款场景不应调用 `charge_and_settle()`（会真实扣款），改为构造 mock refund 收据

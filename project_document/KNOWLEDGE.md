@@ -635,6 +635,11 @@ A: 待补充
 - **Bloomberg 终端视觉**：`banner()`/`log()`/`sep()`/`countdown()` 工具函数，彩色状态指示（绿=通过/蓝=结算/红=告警/黄=降级），`C_BG_RED`/`C_BG_GREEN` 大色块强调关键转折
 - **SSE 事件总线**：`_on_settlement()` 回调写入 `sse_buffer` 列表，`check_sse_events()` 按时间窗口和 action 过滤，验证每个 Act 的正确事件广播
 - **Judge 评分劫持**：`judge.score` 方法在 Demo 场景中通过 `JudgeVerdict(...)` 强制设定确定性分数（95/72 等），确保路演每次结果一致
+- **Demo 常见陷阱**：
+  - **Gateway 私钥截断**：Hardhat `GATEWAY_KEY` 必须是 64 hex chars（32 bytes），短于 64 的 hex 串导致 `"private key must be exactly 32 bytes"` 错误
+  - **Escrow 余额前置**：`publish_task()` 内部调用 `create_escrow_hold()` 检查用户余额，即使是免费试用也需满足 escrow 最低余额
+  - **合约注入**：`CommerceEngine.charge_and_settle()` 的 metered 路径调用 `BillingEngine.request_settlement()` 需要 `contract_client` 参数，否则返回 `"No contract client configured"`
+  - **余额查询源**：`contract.get_user_balance()` / 1_000_000（6 decimal USDC）查询合约内余额，`ledger.get_user_usdt()` 仅反映 MockLedger 隔离余额
 
 ### 生产网迁移清单模式
 - **三阶段发布**：Pre-Flight（T-48h 合约部署 + 密钥生成）→ Launch（Fly.io deploy + Worker 启动 + 监控观察）→ Rollback（`admin/emergency-pause` + `fly deploy` 回滚）
