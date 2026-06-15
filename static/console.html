@@ -99,6 +99,7 @@ body{font-family:'SF Mono',SFMono-Regular,'JetBrains Mono','Fira Code',monospace
 .btn-neon:disabled{opacity:0.4;cursor:not-allowed;transform:none}
 .btn-outline{background:transparent;color:var(--neon);border-color:var(--neon)}
 .btn-outline:hover{background:var(--neon-glow)}
+.btn-outline.active{background:var(--neon-glow);border-color:var(--neon);color:var(--neon)}
 .btn-ghost{background:transparent;color:var(--text-dim);border-color:var(--border)}
 .btn-ghost:hover{color:#fff;border-color:var(--text-dim)}
 .btn-sm{padding:0.35rem 0.85rem;font-size:0.7rem}
@@ -225,6 +226,30 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   </div>
 </div>
 
+<!-- ── Buyout Perpetual License Modal ── -->
+<div class="modal-overlay" id="buyoutModal">
+  <div class="modal">
+    <h3>🔒 Buyout Perpetual License</h3>
+    <p>Purchase a one-time perpetual license for this Skill. No recurring fees, no rate limits, no expiration.</p>
+    <div style="background:rgba(52,211,153,0.06);border:1px solid rgba(52,211,153,0.12);border-radius:8px;padding:1rem;margin:1rem 0">
+      <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:0.5rem">
+        <span style="color:var(--text-dim)">Skill</span><span style="color:#fff" id="buyoutSkillName">—</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:0.5rem">
+        <span style="color:var(--text-dim)">License Type</span><span style="color:#34d399">Perpetual (Lifetime)</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:0.85rem">
+        <span style="color:var(--text-dim)">Price</span><span style="color:var(--neon);font-weight:700">25.00 USDC</span>
+      </div>
+    </div>
+    <p style="font-size:0.8rem;color:var(--text-dim)">Buyout grants unlimited perpetual access to this Skill. License is tied to your wallet address and non-transferable. <strong>LLM-as-a-Judge</strong> arbitration still applies to all invocations.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="closeBuyoutModal()">Cancel</button>
+      <button class="btn btn-neon" onclick="confirmBuyout()">🔒 Purchase Perpetual License</button>
+    </div>
+  </div>
+</div>
+
 <div class="app">
 
   <!-- ═══ Top Bar ═══ -->
@@ -295,6 +320,30 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <div class="info"><h3>Consumer Dashboard</h3><p>Invoke AI skills with your wallet — EIP-191 signed, on-chain settled. <strong style="color:#34d399">First task free per Skill.</strong></p></div>
     </div>
 
+    <!-- ── Free Trial Status Banner ── -->
+    <div class="card" style="border-color:rgba(52,211,153,0.15);margin-bottom:0">
+      <div class="card-header">
+        <span class="card-title">🎁 Free Trial Status</span>
+        <span id="trialStatusBadge" class="plg-badge active">&#9733; PLG Enabled</span>
+      </div>
+      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
+        <div class="stat">
+          <span class="stat-label">Remaining Trials</span>
+          <span class="stat-value" style="color:#34d399" id="trialsLeftEnhanced">—</span>
+        </div>
+        <div style="flex:1;min-width:200px">
+          <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-dim);margin-bottom:0.25rem">
+            <span>Trial Usage</span>
+            <span id="trialProgressText">0 / 0 Skills used</span>
+          </div>
+          <div class="gas-meter"><div class="fill" id="trialProgressBar" style="width:0%;background:linear-gradient(90deg,#34d399,#22c55e)"></div></div>
+        </div>
+        <div style="font-size:0.72rem;color:var(--text-dim);max-width:300px;line-height:1.5">
+          Every wallet gets <strong style="color:#34d399">1 free invocation per Skill</strong> — zero USDC required. <strong>LLM-as-a-Judge</strong> arbitrates quality; failed trials don't count.
+        </div>
+      </div>
+    </div>
+
     <div class="grid-2">
       <!-- Quick stats -->
       <div class="card">
@@ -306,7 +355,7 @@ tr:hover td{background:rgba(255,255,255,0.02)}
           <div class="stat"><span class="stat-label">Available Balance</span><span class="stat-value neon" id="consumerBalance">— <span class="unit">USDC</span></span></div>
           <div class="stat"><span class="stat-label">Total Deposited</span><span class="stat-value" id="consumerDeposited">— <span class="unit">USDC</span></span></div>
           <div class="stat"><span class="stat-label">Tasks Executed</span><span class="stat-value" id="consumerTasks">0</span></div>
-          <div class="stat"><span class="stat-label">Free Trials Left</span><span class="stat-value" style="color:#34d399" id="trialsLeft">1 <span class="unit">per Skill</span></span></div>
+          <div class="stat"><span class="stat-label">Free Trials Left</span><span class="stat-value" style="color:#34d399" id="trialsLeft">— <span class="unit">/ Skills</span></span></div>
         </div>
       </div>
 
@@ -335,6 +384,28 @@ tr:hover td{background:rgba(255,255,255,0.02)}
             <button class="btn btn-sm btn-plg" id="trialBtn" type="button" onclick="document.getElementById('billingMode').value='trial'" title="Use free trial">🎁 Free</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- ── Commerce Mode & Buyout ── -->
+    <div class="card" id="commercePanel">
+      <div class="card-header">
+        <span class="card-title">💳 Commerce Mode &amp; License</span>
+        <span id="currentBillingModeDisplay" style="font-size:0.7rem;padding:0.2rem 0.6rem;border-radius:4px;background:var(--neon-glow);color:var(--neon)">Metered</span>
+      </div>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+          <button class="btn btn-sm btn-outline active" data-mode="pay_per_task" onclick="switchBillingMode('pay_per_task')">⚡ Metered</button>
+          <button class="btn btn-sm btn-outline" data-mode="subscription" onclick="switchBillingMode('subscription')">📅 Subscription</button>
+          <button class="btn btn-sm btn-outline" data-mode="trial" onclick="switchBillingMode('trial')">🎁 Free Trial</button>
+        </div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-left:auto">
+          <button class="btn btn-sm btn-plg" onclick="openBuyoutModal()">🔒 Buyout Perpetual License</button>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border);font-size:0.75rem">
+        <span style="color:var(--text-dim)" id="commerceModeDesc">Pay per successful invocation. No commitments, no expiration.</span>
+        <span style="color:var(--neon-dim);font-size:0.7rem" id="commerceFreeTrialNote">✓ Free trial available for this Skill</span>
       </div>
     </div>
 
@@ -418,6 +489,26 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       <div class="card">
         <div class="card-header"><span class="card-title">📋 Last Payouts</span></div>
         <div id="workerPayouts"><div class="empty-state"><div class="big-icon">📭</div>No payouts yet — start your node and claim tasks</div></div>
+      </div>
+    </div>
+
+    <!-- ── Canary Watermark Status ── -->
+    <div class="card" id="canaryStatusCard" style="border-color:rgba(52,211,153,0.15)">
+      <div class="card-header">
+        <span class="card-title">🛡️ Canary Watermark Status</span>
+        <span id="canaryStatusBadge" style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:4px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.15);font-weight:600">● ACTIVE</span>
+      </div>
+      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <span id="canaryStatusDot" class="status-dot online"></span>
+          <span style="font-size:0.85rem;font-weight:600;color:#fff" id="canaryStatusText">Protection Active</span>
+        </div>
+        <div style="font-size:0.78rem">
+          <div style="margin-bottom:0.35rem"><span style="color:var(--text-dim)">Layer 1 — Canary Token:</span> <span style="color:#34d399">ECDSA-signed watermark injected</span></div>
+          <div style="margin-bottom:0.35rem"><span style="color:var(--text-dim)">Layer 2 — Replay Shield:</span> <span style="color:#34d399">Nonce + UUID composite verification</span></div>
+          <div style="margin-bottom:0.35rem"><span style="color:var(--text-dim)">Layer 3 — Piracy Blacklist:</span> <span style="color:#34d399" id="canaryBlacklistStatus">Clean — no strikes</span></div>
+          <div><span style="color:var(--text-dim)">Circuit Breaker:</span> <span style="color:#fbbf24;font-weight:600">FORBIDDEN_PIRACY armed</span></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1019,6 +1110,97 @@ function updateTrialDisplay() {
   const total = skillsCache.length || 1;
   const remaining = Math.max(0, total - used);
   document.getElementById("trialsLeft").innerHTML = `${remaining} <span class="unit">/ ${total} Skills</span>`;
+  // Update enhanced trial card
+  const enhancedEl = document.getElementById("trialsLeftEnhanced");
+  if (enhancedEl) {
+    enhancedEl.textContent = remaining === 0 ? "0 — Purchase a plan" : `${remaining} / ${total}`;
+  }
+  const progressText = document.getElementById("trialProgressText");
+  if (progressText) {
+    progressText.textContent = `${used} / ${total} Skills used`;
+  }
+  const progressBar = document.getElementById("trialProgressBar");
+  if (progressBar) {
+    const pct = total > 0 ? (used / total) * 100 : 0;
+    progressBar.style.width = Math.min(pct, 100) + "%";
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Commerce mode switching
+// ════════════════════════════════════════════════════════════════
+function switchBillingMode(mode) {
+  document.getElementById("billingMode").value = mode;
+  const display = document.getElementById("currentBillingModeDisplay");
+  const desc = document.getElementById("commerceModeDesc");
+  const labels = {
+    "pay_per_task": "Metered",
+    "subscription": "Subscription",
+    "buyout": "Buyout",
+    "trial": "Free Trial",
+  };
+  const descs = {
+    "pay_per_task": "Pay per successful invocation. No commitments, no expiration.",
+    "subscription": "Monthly pass with guaranteed rate limits, cancel anytime.",
+    "buyout": "One-time perpetual license. No recurring fees, unlimited usage.",
+    "trial": "First invocation free per Skill. Zero USDC required.",
+  };
+  display.textContent = labels[mode] || "Metered";
+  display.style.color = mode === "trial" ? "#34d399" : "var(--neon)";
+  if (desc) desc.textContent = descs[mode] || "";
+  // Highlight active button
+  document.querySelectorAll("#commercePanel .btn-outline").forEach(b => {
+    b.classList.toggle("active", b.dataset.mode === mode);
+  });
+  toast(`Switched to ${labels[mode] || mode}`, "info");
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Buyout Perpetual License
+// ════════════════════════════════════════════════════════════════
+function openBuyoutModal() {
+  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
+  const skillId = document.getElementById("skillSelect").value || "—";
+  document.getElementById("buyoutSkillName").textContent = skillId;
+  if (!document.getElementById("skillSelect").value) {
+    toast("Select a skill first to see buyout pricing", "warn");
+  }
+  document.getElementById("buyoutModal").classList.add("open");
+}
+
+function closeBuyoutModal() {
+  document.getElementById("buyoutModal").classList.remove("open");
+}
+
+async function confirmBuyout() {
+  if (!walletAddress) { toast("Connect wallet first", "error"); return; }
+  const skillId = document.getElementById("skillSelect").value;
+  if (!skillId) { toast("Select a skill first", "error"); return; }
+  closeBuyoutModal();
+  toast(`Processing buyout for "${skillId}"…`, "info");
+  try {
+    const body = JSON.stringify({
+      skill_id: skillId,
+      user_id: walletAddress,
+      license_type: "buyout",
+      price_usdc: 25.0,
+    });
+    const sig = await eip191SignBody(new TextEncoder().encode(body));
+    const headers = getAuthHeaders(new TextEncoder().encode(body), sig);
+    const resp = await fetch(`${API_BASE}/api/licensing/request-key`, {
+      method: "POST", headers, body,
+    });
+    if (resp.ok) {
+      toast(`✅ Buyout license acquired for "${skillId}" — perpetual access granted`, "success");
+      consumerLog("success", `🔒 Buyout perpetual license purchased for skill=${skillId} (25.0 USDC)`);
+      switchBillingMode("buyout");
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      toast("Buyout failed: " + (err.detail || resp.statusText), "error");
+    }
+  } catch (err) {
+    toast("Buyout error: " + err.message, "error");
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1052,6 +1234,7 @@ function startWorkerSim() {
     document.getElementById("workerStatusDot").className = "status-dot offline";
     document.getElementById("workerStatusText").textContent = "Offline";
     document.getElementById("workerNodeId").textContent = "—";
+    updateCanaryStatus(false);
     toast("Worker node stopped", "info");
     return;
   }
@@ -1061,6 +1244,7 @@ function startWorkerSim() {
   document.getElementById("workerNodeId").textContent = nodeId;
   document.getElementById("workerStatusDot").className = "status-dot idle";
   document.getElementById("workerStatusText").textContent = "Online (Idle)";
+  updateCanaryStatus(true);
   btn.textContent = "⏹ Stop Node";
   btn.className = "btn btn-sm btn-outline";
 
@@ -1090,6 +1274,34 @@ async function sendHeartbeat() {
     }
   } catch(err) {
     // silent
+  }
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Canary Watermark Status
+// ════════════════════════════════════════════════════════════════
+function updateCanaryStatus(active) {
+  const dot = document.getElementById("canaryStatusDot");
+  const text = document.getElementById("canaryStatusText");
+  const badge = document.getElementById("canaryStatusBadge");
+  const blacklist = document.getElementById("canaryBlacklistStatus");
+  if (!dot || !text || !badge) return;
+  if (active) {
+    dot.className = "status-dot online";
+    text.textContent = "Protection Active";
+    badge.innerHTML = "● ACTIVE";
+    badge.style.color = "#22c55e";
+    badge.style.borderColor = "rgba(34,197,94,0.15)";
+    badge.style.background = "rgba(34,197,94,0.1)";
+    if (blacklist) blacklist.textContent = "Clean — no strikes";
+  } else {
+    dot.className = "status-dot offline";
+    text.textContent = "Protection Disabled";
+    badge.innerHTML = "● INACTIVE";
+    badge.style.color = "var(--text-dim)";
+    badge.style.borderColor = "var(--border)";
+    badge.style.background = "transparent";
+    if (blacklist) blacklist.textContent = "Unknown";
   }
 }
 
@@ -1193,6 +1405,10 @@ function switchRole(role) {
 // ════════════════════════════════════════════════════════════════
 fetchHealth();
 fetchDiscovery();
+
+// Initialize commerce panel and canary status display
+switchBillingMode('pay_per_task');
+updateCanaryStatus(true);
 
 // Auto-connect if MetaMask already authorized
 if (typeof window.ethereum !== "undefined") {

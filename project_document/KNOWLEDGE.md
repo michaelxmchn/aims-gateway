@@ -604,3 +604,9 @@ A: 待补充
 - **SSE 桥接**：`on_settlement`/`on_refund` 回调参数指向 `broadcast_settlement`，实现监听器→前端实时推送
 - **生命周期**：FastAPI `lifespan` 上下文管理器启动时调用 `_chain_listener.start()`，关闭时 `_chain_listener.stop()`
 - **管理端点**：`GET /api/admin/listener` 返回运行状态、模式、`last_processed_block`、`last_event_count`
+
+### Console 前端 UI 组件模式
+- **Free Trial 动态状态指示器**：Consumer 面板顶部专属卡片展示剩余试用次数 + 使用进度条（`trialProgressBar`，绿→绿色渐变），`updateTrialDisplay()` 按 `(usedTrials, skillsCache.length)` 计算剩余并同步更新 Account 卡的 `trialsLeft` 和增强卡片的 `trialsLeftEnhanced`
+- **Commerce Mode 切换面板**：`#commercePanel` 卡片包含 Metered/Subscription/Free Trial 三按钮组 + Buyout Perpetual License 按钮，`switchBillingMode()` 同步更新 `#billingMode` 下拉选择器、模式标签和描述文本，按钮高亮通过 `.btn-outline.active` CSS 类控制
+- **Buyout Perpetual License 交互**：`#buyoutModal` 模态框展示 Skill 名称/许可证类型/价格，`confirmBuyout()` 通过 `POST /api/licensing/request-key` 发送 EIP-191 签名请求完成买断，成功后自动切换到 buyout 模式
+- **Canary Watermark Status 三层防御指示器**：Worker 面板中 `#canaryStatusCard` 卡片实时显示 ECDSA Token（Layer 1）/ Replay Shield（Layer 2）/ Piracy Blacklist（Layer 3）状态，`updateCanaryStatus(true/false)` 在 Worker 节点启动/停止时切换

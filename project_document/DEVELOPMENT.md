@@ -482,3 +482,11 @@
   - schema.py: `MonetizationConfig` 2×2 矩阵（Q1 70/25/5, Q2–Q4 95/0/5）+ `AIMSConfig` 8 字段
   - init: 2×2 矩阵交互引导，展示收入分配合约
   - publisher: ASCII 审计表详细列出 5% Platform Treasury 分账明细
+
+### Console 前端 P0 审计升级（三项 UI 组件）
+- **状态**: 已完成 (2026-06-15)
+- **文件**: `static/console.html`
+- **描述**: 三项核心业务形态上屏：
+  - **Free Trial 动态状态指示器** — Consumer 面板顶部专属卡片，剩余次数 + 进度条 + 按 Skill 追踪消耗
+  - **Commerce Mode 切换面板 + Buyout 按钮** — Metered/Subscription/Free Trial 按钮组，Buyout Perpetual License 模态确认框，`POST /api/licensing/request-key` EIP-191 签名买断
+  - **Canary Watermark Status 三层防御** — Worker 面板 ECDSA Token / Replay Shield / Piracy Blacklist 状态指示，随节点启停切换

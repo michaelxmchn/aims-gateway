@@ -5,6 +5,13 @@
 > **格式要求**: 严格遵循 `.claude/output-styles/bullet-points.md` 格式规范  
 > **提交规范**: 遵循 commitlint 规范（type(scope): subject）
 
+## [2026-06-15]
+### 修改
+- feat(console): 新增 Free Trial 动态状态指示器（剩余次数 + 进度条 + 增强卡片）
+- feat(console): 新增 Commerce Mode 切换面板（Metered/Subscription/Free Trial 按钮组 + Buyout Perpetual License 交互按钮 + 模态确认框）
+- feat(console): 新增 Canary Watermark Status 三层防御指示器（Worker 面板，ECDSA Token/Replay Shield/Piracy Blacklist）
+- feat(console): 新增 switchBillingMode()/updateCanaryStatus() 等 JS 功能函数，Wire 至 Worker 节点启停生命周期
+
 ## [2026-06-13]
 ### 新增
 - feat(test): `tests/e2e_testnet_simulation.py` — E2E Testnet Simulation 双流联动测试，PLG First-Task-Free → AI Judge 92/100 → 70/25/5 补贴结算 (Flow 1 PASS) + Metered Escrow → AI Judge 74/100 → SLA 自动退款 (Flow 2 REFUND)，Bloomberg 终端日志，6 确定性 EVM 地址，DRM 包装器模拟，资金守恒审计
