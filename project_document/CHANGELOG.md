@@ -6,11 +6,18 @@
 > **提交规范**: 遵循 commitlint 规范（type(scope): subject）
 
 ## [2026-06-15]
+### 新增
+- feat(circuit_breaker): `src/gateway/circuit_breaker.py` — 三阶智能熔断隔离（CLOSED/HALF_OPEN/OPEN），3 连续失败→降级，6 累积→熔断，120s 冷却自愈，持久化计数器，SSE 黄/红警回调
+- feat(stress): `tests/stress_cluster_simulation.py` — 多 Worker 并发压测 + 熔断韧性验证，10 async EIP-191 Worker × 50 请求/5s 突发，4 场景（公平路由/CB 衰减/自愈/Admin 控制），Bloomberg 终端日志
 ### 修改
+- feat(server): `src/gateway/server.py` — CircuitBreaker 全局实例集成，`/api/run` 503 熔断门，`submit_task` Judge 评分 success/failure 联动状态机，SSE 桥接
+- feat(server): `src/gateway/server.py` — 新增 `POST /api/admin/emergency-pause`（全网紧急暂停+红警）、`POST /api/admin/reset`（管理复位）、`GET /api/admin/circuit-breaker`（状态快照）
 - feat(console): 新增 Free Trial 动态状态指示器（剩余次数 + 进度条 + 增强卡片）
 - feat(console): 新增 Commerce Mode 切换面板（Metered/Subscription/Free Trial 按钮组 + Buyout Perpetual License 交互按钮 + 模态确认框）
 - feat(console): 新增 Canary Watermark Status 三层防御指示器（Worker 面板，ECDSA Token/Replay Shield/Piracy Blacklist）
 - feat(console): 新增 switchBillingMode()/updateCanaryStatus() 等 JS 功能函数，Wire 至 Worker 节点启停生命周期
+### 修复
+- fix(stress): `tests/stress_cluster_simulation.py` — 修复 Worker 注册失败（`seed_dev_usdt` 使用 wallet 地址而非 worker_id 导致 key 不匹配）+ Worker 循环终止竞态（claim_task 返回 None 时未检查完成条件导致无限循环）；4 场景全部 PASSED ✓
 
 ## [2026-06-13]
 ### 新增

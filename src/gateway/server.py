@@ -30,6 +30,7 @@ from eth_account.messages import encode_defunct
 from src.chain.nonce_manager import NonceManager
 from src.chain.pot import POTManager
 from src.gateway.canary import CanaryManager
+from src.gateway.circuit_breaker import CircuitBreaker
 from src.gateway.licensing import LicensingManager
 from src.gateway.trial import FreeTrialManager, FreeTrialError
 from src.gateway.broker import TaskBroker
@@ -149,6 +150,18 @@ _judge_engine = JudgeEngine(
     contract_client=_contract,
     gateway_private_key=AIMS_GATEWAY_PRIVATE_KEY,
     on_refund_alert=broadcast_settlement,
+)
+
+# ── Circuit Breaker — 3-state fault isolation with SSE alerts ───────
+
+_breaker = CircuitBreaker(
+    storage=storage,
+    on_state_change=lambda old, new: broadcast_settlement({
+        "action": "circuit_breaker_transition",
+        "from": old,
+        "to": new,
+        "ts": time.time(),
+    }),
 )
 
 # ── Chain Listener — background poller for settlement events ──────────
@@ -747,6 +760,48 @@ async def admin_listener():
     return _chain_listener.get_status()
 
 
+@app.get("/api/admin/circuit-breaker")
+async def admin_circuit_breaker():
+    """Return the current circuit breaker state and thresholds."""
+    return _breaker.status()
+
+
+@app.post("/api/admin/emergency-pause")
+async def admin_emergency_pause():
+    """Emergency stop — forces circuit breaker to OPEN state.
+
+    All subsequent ``/api/run`` calls will be rejected with 503.
+    SSE red alert broadcast via ``broadcast_settlement``.
+
+    To resume normal operation, call ``POST /api/admin/reset``.
+    """
+    state = _breaker.admin_force_open()
+    logger.critical("🔴 EMERGENCY PAUSE — circuit forced to OPEN by admin")
+    broadcast_settlement({
+        "action": "emergency_pause",
+        "state": state.value,
+        "ts": time.time(),
+    })
+    return {"status": "paused", "state": state.value}
+
+
+@app.post("/api/admin/reset")
+async def admin_reset():
+    """Admin-triggered full reset: any state → CLOSED, all counters cleared.
+
+    Only effective after the OPEN cooldown window (120s by default) if the
+    breaker is in OPEN state, or immediately from CLOSED/HALF_OPEN.
+    """
+    state = _breaker.admin_reset()
+    logger.info("🔧 Admin reset — circuit breaker returned to CLOSED")
+    broadcast_settlement({
+        "action": "circuit_breaker_reset",
+        "state": state.value,
+        "ts": time.time(),
+    })
+    return {"status": "reset", "state": state.value}
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────
 
 
@@ -1023,6 +1078,8 @@ async def submit_task(req: SubmitRequest):
             "JUDGE_FAIL: task=%s worker=%s score=%d reason=%s",
             req.task_id, req.worker_id, judge_verdict.score, judge_verdict.reason,
         )
+        # Record failure in circuit breaker (may trigger HALF_OPEN or OPEN)
+        _breaker.record_failure(reason=f"Judge score {judge_verdict.score}/100")
         # Execute on-chain refund
         _judge_engine.refund_on_chain(
             task_id=req.task_id,
@@ -1037,6 +1094,9 @@ async def submit_task(req: SubmitRequest):
             outcome="REFUNDED",
             error=f"AI Judge score {judge_verdict.score}/100 — quality below threshold ({judge_verdict.reason})",
         )
+    else:
+        # Record success — resets consecutive failure counter, self-heals HALF_OPEN
+        _breaker.record_success()
 
     # ── 6. Complete task (may re-queue for pipeline intermediate step) ─
     completion = await _run_in_thread(broker.complete_task, req.task_id, "SUCCESS")
@@ -1613,6 +1673,14 @@ async def run_skill(req: RunRequest):
     3. Creates an escrow hold and publishes a PENDING broker task.
     4. The task is picked up by an idle worker via the normal claim cycle.
     """
+    # ── 0. Circuit breaker gate − reject if OPEN ────────────────────────
+    if not _breaker.can_pass(f"run_skill:{req.skill_id}"):
+        raise HTTPException(
+            status_code=503,
+            detail="Gateway is in OPEN state — accepting no new tasks. "
+                   "Try again later or contact admin.",
+        )
+
     # ── 1. Look up manifest ─────────────────────────────────────────────
     manifest = registry.get(req.skill_id)
     if manifest is None:

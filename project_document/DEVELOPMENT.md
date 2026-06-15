@@ -490,3 +490,13 @@
   - **Free Trial 动态状态指示器** — Consumer 面板顶部专属卡片，剩余次数 + 进度条 + 按 Skill 追踪消耗
   - **Commerce Mode 切换面板 + Buyout 按钮** — Metered/Subscription/Free Trial 按钮组，Buyout Perpetual License 模态确认框，`POST /api/licensing/request-key` EIP-191 签名买断
   - **Canary Watermark Status 三层防御** — Worker 面板 ECDSA Token / Replay Shield / Piracy Blacklist 状态指示，随节点启停切换
+
+### Phase 8: Circuit Breaker 三阶熔断 + 多 Worker 并发压测
+- **状态**: 已完成 (2026-06-15)
+- **文件**: `src/gateway/circuit_breaker.py` / `src/gateway/server.py` / `tests/stress_cluster_simulation.py`
+- **描述**: 生产级智能容灾熔断与多节点并发调度：
+  - **CircuitBreaker 三阶状态机**（`src/gateway/circuit_breaker.py`）：CLOSED（正常）→ HALF_OPEN（降级，SSE 黄警）→ OPEN（熔断，SSE 红警），持久化计数器，120s 冷却自动恢复
+  - **server.py 集成**：`/api/run` 入口 `breaker.can_pass()` 503 拒止；`submit_task` Judge 评分后 `record_success()`/`record_failure()` 自动推进状态机；SSE 桥接 `broadcast_settlement` 推送状态切换事件
+  - **Admin 端点**：`POST /api/admin/emergency-pause`（全网紧急暂停→OPEN+红警）、`POST /api/admin/reset`（管理复位→CLOSED）、`GET /api/admin/circuit-breaker`（状态快照）
+  - **stress_cluster_simulation.py**：10 EIP-191 异步 Worker 节点 × 50 并发请求/5s 突发窗口，Bloomberg 终端日志，4 场景（公平路由/CB CLOSED→HALF_OPEN→OPEN 衰减/冷却自愈/Admin 强制暂停→复位）
+- **修复**: fix(stress): `tests/stress_cluster_simulation.py` — Worker 注册 key 不匹配（`seed_dev_usdt` 使用 wallet 地址而非 worker_id）+ Worker 循环终止竞态（claim_task 返回 None 时未检查完成条件）

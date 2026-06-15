@@ -610,3 +610,16 @@ A: 待补充
 - **Commerce Mode 切换面板**：`#commercePanel` 卡片包含 Metered/Subscription/Free Trial 三按钮组 + Buyout Perpetual License 按钮，`switchBillingMode()` 同步更新 `#billingMode` 下拉选择器、模式标签和描述文本，按钮高亮通过 `.btn-outline.active` CSS 类控制
 - **Buyout Perpetual License 交互**：`#buyoutModal` 模态框展示 Skill 名称/许可证类型/价格，`confirmBuyout()` 通过 `POST /api/licensing/request-key` 发送 EIP-191 签名请求完成买断，成功后自动切换到 buyout 模式
 - **Canary Watermark Status 三层防御指示器**：Worker 面板中 `#canaryStatusCard` 卡片实时显示 ECDSA Token（Layer 1）/ Replay Shield（Layer 2）/ Piracy Blacklist（Layer 3）状态，`updateCanaryStatus(true/false)` 在 Worker 节点启动/停止时切换
+
+### Circuit Breaker 三阶熔断模式
+- **CircuitBreaker**（`src/gateway/circuit_breaker.py`）：CLOSED→HALF_OPEN→OPEN **三态有限状态机**，通过 `Storage` 持久化计数，SSE 回调桥接实时告警
+- **状态转换阈值**：`DEFAULT_CONSECUTIVE_THRESHOLD=3`（连续失败数触发 CLOSED→HALF_OPEN）、`MAX_DEGRADED_THRESHOLD=6`（HALF_OPEN 累积失败触发 OPEN）、`OPEN_COOLDOWN_SECONDS=120.0`（冷却后 `can_pass()` 自动转 CLOSED）
+- **核心方法**：`record_failure(reason)` 递增失败计数并推进状态机；`record_success()` 清零并自愈（HALF_OPEN→CLOSED）；`can_pass()` 检查当前是否可放行（OPEN 时返回 False 并检查冷却是否过期）；`admin_reset()`/`admin_force_open()` 管理控制
+- **server.py 集成**：`/api/run` 入口调用 `breaker.can_pass()` → OPEN 时返回 503；`submit_task` Judge 评分后 `record_success()`/`record_failure()` 自动驱动状态迁移；`on_state_change` lambda 回调 `broadcast_settlement()` 推 SSE 事件
+- **Admin 端点**：`POST /api/admin/emergency-pause`（全网紧急暂停 → `admin_force_open()` + SSE 红警）、`POST /api/admin/reset`（`admin_reset()` 复位 CLOSED）、`GET /api/admin/circuit-breaker`（全量状态快照含阈值和冷却剩余时间）
+- **SSE 事件类型**：`circuit_breaker_transition`（状态切换 `{from, to, ts}`）、`emergency_pause`（管理暂停 `{state, ts}`）、`circuit_breaker_reset`（管理复位 `{state, ts}`）
+
+### 并发压测 Worker 循环模式
+- **Worker 注册 key 一致性**：`seed_dev_usdt()` 和 `register_worker()` 必须使用相同的 key（worker_id `"worker_00"` 而非 EVM `wallet` 地址），否则注册因余额检查失败
+- **Worker 循环终止条件**：`claim_task()` 返回 `None` 时必须在 `continue` 前检查全局完成状态（`pending_count == 0 && all()`），否则空闲 Worker 无限循环
+- **异步 Worker 池设计**：`asyncio.gather()` 驱动 N 个 `worker_cycle()` 协程，每个协程内 `while True` 循环，通过 `broker.pending_count` 和全量状态扫描决定退出
