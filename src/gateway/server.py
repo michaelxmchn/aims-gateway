@@ -13,8 +13,9 @@ import json
 import logging
 import os
 import time
+from contextlib import asynccontextmanager
 from threading import Lock
-from typing import Any
+from typing import Any, AsyncIterator
 
 from eth_account import Account
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
@@ -37,6 +38,8 @@ from src.gateway.storage import Storage
 from src.ledger.mock_counter import MockLedger
 from src.skills.registry import SkillRegistry
 from src.gateway.billing import BillingEngine, CommerceEngine, BillingMode, RevenuePhase, USDC_UNIT
+from src.gateway.chain_listener import ChainListener
+from src.judge.judge_agent import JudgeEngine
 
 logger = logging.getLogger(__name__)
 
@@ -140,9 +143,43 @@ commerce = CommerceEngine(
     on_settlement=broadcast_settlement,
 )
 
+# ── AI Judge — scores task output 0-100, executes refund on fail ───────
+
+_judge_engine = JudgeEngine(
+    contract_client=_contract,
+    gateway_private_key=AIMS_GATEWAY_PRIVATE_KEY,
+    on_refund_alert=broadcast_settlement,
+)
+
+# ── Chain Listener — background poller for settlement events ──────────
+
+AIMS_RPC_URL: str = os.getenv("AIMS_RPC_URL", "")
+_chain_listener = ChainListener(
+    contract_client=_contract,
+    rpc_url=AIMS_RPC_URL,
+    contract_address=AIMS_CONTRACT_ADDRESS,
+    gateway_private_key=AIMS_GATEWAY_PRIVATE_KEY,
+    on_settlement=broadcast_settlement,
+    on_refund=broadcast_settlement,
+    storage=storage,
+)
+
 # Worker heartbeat tracking: worker_id → last_seen_unix_ts
 worker_heartbeats: dict[str, float] = {}
 _heartbeat_lock = Lock()
+
+# ── App lifespan (startup/shutdown) ──────────────────────────────────────
+
+
+@asynccontextmanager
+async def lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
+    """Start background services on startup, clean up on shutdown."""
+    # Startup: start the chain event listener
+    _chain_listener.start()
+    yield
+    # Shutdown: stop background threads
+    _chain_listener.stop()
+
 
 app = FastAPI(
     title="AIMS Gateway",
@@ -150,6 +187,7 @@ app = FastAPI(
     description="AIMS DePIN Network — Task Dispatch & Settlement Gateway",
     docs_url="/api/docs",
     openapi_url="/api/openapi.json",
+    lifespan=lifespan,
 )
 
 # ── CORS (allow frontend dev servers to connect) ────────────────────────────
@@ -674,6 +712,41 @@ async def admin_setup():
     )
 
 
+class JudgeTestRequest(BaseModel):
+    task_input: dict[str, Any] = Field(default_factory=dict)
+    task_output: dict[str, Any] = Field(default_factory=dict)
+    skill_id: str = Field(default="test_skill")
+
+
+class JudgeTestResponse(BaseModel):
+    score: int
+    passed: bool
+    reason: str
+    latency_ms: float
+
+
+@app.post("/api/admin/judge", response_model=JudgeTestResponse)
+async def admin_judge(req: JudgeTestRequest):
+    """Test the AI Judge engine with arbitrary input/output pairs."""
+    verdict = _judge_engine.score(
+        task_input=req.task_input,
+        task_output=req.task_output,
+        skill_id=req.skill_id,
+    )
+    return JudgeTestResponse(
+        score=verdict.score,
+        passed=verdict.passed,
+        reason=verdict.reason,
+        latency_ms=verdict.latency_ms,
+    )
+
+
+@app.get("/api/admin/listener")
+async def admin_listener():
+    """Return the chain listener status."""
+    return _chain_listener.get_status()
+
+
 # ── Routes ─────────────────────────────────────────────────────────────────
 
 
@@ -938,7 +1011,34 @@ async def submit_task(req: SubmitRequest):
             error=f"SKILL_PIRACY_DETECTED: {canary_reason}",
         )
 
-    # ── 5. Complete task (may re-queue for pipeline intermediate step) ─
+    # ── 5. AI Judge gate — score output quality before settlement ────────
+    judge_verdict = _judge_engine.score(
+        task_input=task_meta.payload or {},
+        task_output=schema_input,
+        skill_id=skill_id,
+        output_schema=schema,
+    )
+    if not judge_verdict.passed:
+        logger.warning(
+            "JUDGE_FAIL: task=%s worker=%s score=%d reason=%s",
+            req.task_id, req.worker_id, judge_verdict.score, judge_verdict.reason,
+        )
+        # Execute on-chain refund
+        _judge_engine.refund_on_chain(
+            task_id=req.task_id,
+            user_address=task_meta.user_id,
+            amount=BillingEngine.COST_PER_TASK_USDC,
+            reason=f"AI Judge score {judge_verdict.score}/100: {judge_verdict.reason}",
+        )
+        await _run_in_thread(broker.complete_task, req.task_id, "FAILED")
+        return SubmitResponse(
+            task_id=req.task_id,
+            worker_id=req.worker_id,
+            outcome="REFUNDED",
+            error=f"AI Judge score {judge_verdict.score}/100 — quality below threshold ({judge_verdict.reason})",
+        )
+
+    # ── 6. Complete task (may re-queue for pipeline intermediate step) ─
     completion = await _run_in_thread(broker.complete_task, req.task_id, "SUCCESS")
 
     if not completion.get("settle", True):

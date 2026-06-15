@@ -584,3 +584,23 @@ A: 待补充
 - **技术背景**：UI 占位，后端需集成 Privy/Magic/Web3Auth 的 AA 账户抽象 + Google OAuth 完成真实社交登录
 
 - **CORS 配置**：`server.py` 使用 `CORSMiddleware(allow_origins=["*"])` 开放跨域；前端通过 `localStorage.setItem("aims_api_base", url)` 配置 API 地址
+
+### AI Judge 仲裁模式
+- **LLM-as-a-Judge 评分引擎**（`src/judge/judge_agent.py`）：通过 OpenAI `gpt-4o-mini` 对 Worker 输出进行 0-100 评分，基于三要素（正确性 0-40 / 完整性 0-30 / 质量 0-30）
+- **评分流程**：构造带 `JUDGE_SYSTEM_PROMPT` + Task Input/Schema/Output 的 Prompt → OpenAI `chat.completions.create(temperature=0.1)` → 解析 JSON `{"score": int, "reason": "..."}` → 返回 `JudgeVerdict`
+- **阈值 80/100**：`JUDGE_PASS_THRESHOLD = 80`，`score >= 80` 通过（继续正常结算），`score < 80` 触发 `refund_on_chain()` + SSE 红警广播
+- **确定性回退**：无 `OPENAI_API_KEY` 时使用结构启发式评分（字段缺失 -20 / 空值 -5/个 / 内容过短 -15 / 错误关键词 -10/个），起点 50 分
+- **`refund_on_chain()`**：`keccak(task_id)` → `contract.refund_task(amount + reason)` → `on_refund_alert` 回调推 SSE `{"severity": "ALERT"}` 事件
+- **集成点**：`server.py` `submit_task` 函数中，Schema 验证和 Canary 检查之后，`commerce.charge_and_settle()` 之前插入 `judge_engine.score()`，评分 < 80 直接返回 `REFUNDED`
+- **管理端点**：`POST /api/admin/judge` 接受任意 task_input/task_output/skill_id 测试评分
+
+### Chain Event Listener 模式
+- **`ChainListener`**（`src/gateway/chain_listener.py`）：`daemon=True` 后台线程以可配置间隔（默认 15s）轮询合约事件
+- **双模式**：`_is_inmemory` 属性通过 `hasattr(contract_client, '_w3')` 自动检测
+  - **InMemory 模式**：读取 `InMemorySettlementContract._event_buffer` 列表，比较 `_last_event_count` 发现新事件
+  - **Web3 模式**：通过 `w3.eth.get_logs()` 按 topic hash 过滤 `TaskSettled`/`TaskRefunded`，`fromBlock`/`toBlock` 分块扫描（max 200 blocks/次），`last_processed_block` 持久化到 Redis
+- **事件 ABI 解码**：`eth_abi.decode()` 解析 indexed 参数（`topics[1:]`）和非 indexed 参数（`data`）；`TaskSettled`（5 个 non-indexed: address + 4×uint256），`TaskRefunded`（2 个 non-indexed: uint256 + string）
+- **事件缓冲**：`InMemorySettlementContract.__init__()` 新增 `_event_buffer: list[dict] = []`，`settle_task()` 和 `refund_task()` 方法结束时追加事件 dict
+- **SSE 桥接**：`on_settlement`/`on_refund` 回调参数指向 `broadcast_settlement`，实现监听器→前端实时推送
+- **生命周期**：FastAPI `lifespan` 上下文管理器启动时调用 `_chain_listener.start()`，关闭时 `_chain_listener.stop()`
+- **管理端点**：`GET /api/admin/listener` 返回运行状态、模式、`last_processed_block`、`last_event_count`

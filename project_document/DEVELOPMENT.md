@@ -31,6 +31,11 @@
   - **Task 1 (MetaMask)**: `connectWallet()` 新增 Base Sepolia `wallet_switchEthereumChain` 网络切换提示 + `AIMS_GATEWAY_AUTH:{wallet}:{skill_id}` 信标签名 + `POST /api/auth/pre-check` 服务器验签端点
   - **Task 2 (SSE)**: `CommerceEngine` 新增 `on_settlement` 回调参数，线程安全 `deque(maxlen=200)` + `Lock` 桥接至 `GET /api/v2/feed/stream` 异步 SSE 端点；`console.html` 与 `index.html` 替换 Mock 数据流为 `new EventSource()` 实时连接
   - **Task 3 (docs_url)**: FastAPI `docs_url` 从默认 `/docs` 改为 `/api/docs`，释放 `/docs` 路由用于 `static/docs.html`，`openapi_url` 改为 `/api/openapi.json`
+- [x] **Phase 6: 链上事件监听器与 AI 裁判盲审闭环驱动** — 三项硬核交付物：
+  - **Deliverable 1 (Listener)**: `src/gateway/chain_listener.py` — 异步后台线程轮询合约 `TaskSettled`/`TaskRefunded` 事件；双模式（InMemory 从 `_event_buffer` 读取 + Web3 从 `w3.eth.get_logs` 轮询）；事件日志 ABI 解码（`eth_abi`），SSE 回调桥接；`last_processed_block` Redis 持久化；`GET /api/admin/listener` 健康检查端点
+  - **Deliverable 2 (Judge)**: `src/judge/judge_agent.py` — `JudgeEngine` 类；LLM-as-a-Judge（OpenAI `gpt-4o-mini`）评分 0-100；确定性回退（Schema 字段缺失/空值/错误关键词检测）；`score < 80` 自动 `refund_on_chain()` + SSE 红警广播；`POST /api/admin/judge` 测试端点
+  - **Integration**: `src/gateway/server.py` — `lifespan` 启动时 `_chain_listener.start()`；`submit_task` 中插入 AI Judge 门（Schema 验证后/结算前），评分 < 80 触发合约 `refundTask` + 返回 `REFUNDED`；`_event_buffer` 追加至 `InMemorySettlementContract.settle_task()`/`refund_task()`
+- [ ] **Phase 6.5: Base Sepolia 多 Agent 测试网联调** — E2E Chain Listener + AI Judge + SSE 闭环验证
 
 ## 已完成任务清单
 

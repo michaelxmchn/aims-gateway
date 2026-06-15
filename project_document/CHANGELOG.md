@@ -20,6 +20,15 @@
 ### 修改
 - feat(billing): `src/gateway/billing.py` — `CommerceEngine` 新增 `on_settlement` 可调用回调参数，`_record()` 方法在写入审计账本后调用回调广播结算事件
 - feat(server): `src/gateway/server.py` — `broadcast_settlement` 定义移至 `CommerceEngine` 实例化之前修复 NameError；`EXEMPT_PATHS` 新增 `/api/auth/pre-check` 和 `/api/v2/feed/stream`；FastAPI `docs_url` 改为 `/api/docs`，`openapi_url` 改为 `/api/openapi.json`
+### 新增
+- feat(judge): `src/judge/judge_agent.py` — `JudgeEngine` AI 裁判评分引擎（LLM-as-a-Judge 0-100，OpenAI `gpt-4o-mini`），确定性回退评分，`score < 80` 自动 `refund_on_chain()` + SSE 红警广播
+- feat(chain): `src/gateway/chain_listener.py` — `ChainListener` 异步后台线程轮询合约事件，双模式（InMemory `_event_buffer` + Web3 `w3.eth.get_logs`），ABI 事件解码，Redis 持久化 `last_processed_block`
+- feat(contract): `src/chain/contract_client.py` — `InMemorySettlementContract` 新增 `_event_buffer` 事件缓冲，`settle_task()`/`refund_task()` 追加事件供 ChainListener 消费
+- feat(server): `src/gateway/server.py` — `lifespan` 启动时 `_chain_listener.start()`；`submit_task` 插入 AI Judge 质量门（评分 < 80 触发 `refundTask` + `REFUNDED`）；`POST /api/admin/judge` 与 `GET /api/admin/listener` 管理端点
+### 修改
+- feat(deps): `requirements.txt` — 新增 `openai>=1.0,<3.0`（AI Judge）和 `eth-abi>=5.0,<6.0`（事件 ABI 解码）
+- feat(docs): `project_document/DEVELOPMENT.md` — 添加 Phase 6 链上事件监听器与 AI 裁判盲审条目
+- feat(docs): `project_document/CHANGELOG.md` — 添加 2026-06-13 Phase 6 条目
 
 ## [2026-06-12]
 ### 修改

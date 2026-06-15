@@ -189,6 +189,9 @@ class InMemorySettlementContract(SettlementContractClient):
         # Accumulated treasury fees
         self._accumulated_treasury_fees: int = 0
 
+        # Event buffer for chain listener (appended on settle/refund)
+        self._event_buffer: list[dict] = []
+
     # ── Gateway address ─────────────────────────────────────────────────
 
     @property
@@ -314,6 +317,22 @@ class InMemorySettlementContract(SettlementContractClient):
         # Deduct from user
         self._balances[user_addr] = user_bal - amount
 
+        # Record event for chain listener
+        self._event_buffer.append({
+            "type": "TaskSettled",
+            "task_id": task_id.hex(),
+            "skill_id_hash": skill_id_hash.hex(),
+            "consumer": user_addr,
+            "worker": worker.lower(),
+            "total_amount": amount,
+            "worker_share": worker_share,
+            "developer_share": developer_share,
+            "treasury_share": treasury_share,
+            "block_number": 0,
+            "tx_hash": "",
+            "ts": time.time(),
+        })
+
         # Store snapshot
         settlement = TaskSettlement(
             worker=worker.lower(),
@@ -377,6 +396,18 @@ class InMemorySettlementContract(SettlementContractClient):
 
         self._task_status[task_id] = TASK_STATUS_REFUNDED
         self._balances[user.lower()] = self._balances.get(user.lower(), 0) + amount
+
+        # Record event for chain listener
+        self._event_buffer.append({
+            "type": "TaskRefunded",
+            "task_id": task_id.hex(),
+            "consumer": user.lower(),
+            "amount": amount,
+            "reason": reason,
+            "block_number": 0,
+            "tx_hash": "",
+            "ts": time.time(),
+        })
 
     # ── Pending payouts ─────────────────────────────────────────────────
 

@@ -38,3 +38,9 @@ click>=8.1,<9.0
 
 # AES-256-GCM encryption (aims-cli publish)
 cryptography>=42.0,<44.0
+
+# AI Judge (LLM-as-a-Judge scoring engine)
+openai>=1.0,<3.0
+
+# ABI decoding for chain event listener
+eth-abi>=5.0,<6.0

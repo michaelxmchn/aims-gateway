@@ -8,6 +8,7 @@ gateway and workers call.
 
 from __future__ import annotations
 
+import json
 import os
 
 # ── USDC ─────────────────────────────────────────────────────────────────────
@@ -34,6 +35,33 @@ TREASURY_BPS = 500       # 5 %
 # ── Full ABI for AIMSAgentGateway ────────────────────────────────────────────
 
 AIMS_AGENT_GATEWAY_ABI: list[dict] = [
+    # ── events ──
+    {
+        "anonymous": False,
+        "inputs": [
+            {"indexed": True, "name": "taskId", "type": "bytes32"},
+            {"indexed": True, "name": "skillIdHash", "type": "bytes32"},
+            {"indexed": True, "name": "consumer", "type": "address"},
+            {"indexed": False, "name": "worker", "type": "address"},
+            {"indexed": False, "name": "totalAmount", "type": "uint256"},
+            {"indexed": False, "name": "workerShare", "type": "uint256"},
+            {"indexed": False, "name": "developerShare", "type": "uint256"},
+            {"indexed": False, "name": "treasuryShare", "type": "uint256"},
+        ],
+        "name": "TaskSettled",
+        "type": "event",
+    },
+    {
+        "anonymous": False,
+        "inputs": [
+            {"indexed": True, "name": "taskId", "type": "bytes32"},
+            {"indexed": True, "name": "consumer", "type": "address"},
+            {"indexed": False, "name": "amount", "type": "uint256"},
+            {"indexed": False, "name": "reason", "type": "string"},
+        ],
+        "name": "TaskRefunded",
+        "type": "event",
+    },
     # ── view ──
     {
         "inputs": [{"name": "", "type": "address"}],
