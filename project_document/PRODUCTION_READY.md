@@ -299,6 +299,124 @@ cast send <contract> "claimReward(bytes,bytes)" <pot> <sig> \
   --rpc-url https://mainnet.base.org --private-key $WORKER_KEY
 ```
 
+## 10. Mainnet Monitoring — Hardcore Dashboards
+
+### 10.1 Redis AOF — Trace Every $0.05 USDC Flow
+
+After a real user task settles, the Redis AOF log records every escrow hold,
+settlement, and refund.  Monitor live:
+
+```bash
+# Attach to Redis CLI
+docker exec -it aims-prod-redis redis-cli -a "${REDIS_PASSWORD}"
+
+# Inside redis-cli — list all keys
+KEYS task:*
+KEYS wallet:*
+KEYS settlement:*
+
+# Get task status
+HGETALL task:task-0001          # → status, worker, user, amount
+
+# Get wallet balance
+GET wallet:0xUserAddress:usdt   # → raw balance (6 decimals)
+
+# Count total settlements
+SCARD settlement:ledger         # → total settled task count
+
+# Monitor live stream (10 sec sample)
+MONITOR | head -50              # every command hitting Redis
+```
+
+### 10.2 PLG Zero-CAC Grayscale Tracking
+
+Track the Universal First-Task-Free PLG pipeline in production:
+
+```bash
+# Check free trial usage per wallet
+curl -s http://localhost:8000/api/admin/trials | jq '.'
+
+# Expected output:
+# {
+#   "0xUserAddress": { "amazon_scraper": { "usage_count": 1, "eligible": false } }
+# }
+
+# Check PLG subsidy pool remaining
+curl -s http://localhost:8000/api/admin/pools | jq '.plg_pool'
+
+# Monitor real-time SSE settlement feed (watch live)
+curl -Ns http://localhost:8000/api/v2/feed/stream
+
+# Each event shows: action=settle, user, worker, developer split amounts
+```
+
+### 10.3 AI Judge (DeepSeek) Scoring Audit
+
+Every task scored by DeepSeek leaves an audit trail:
+
+```bash
+# Check judge health
+curl -s http://localhost:8000/api/admin/judge | jq '.'
+
+# Verify model is deepseek-chat
+# Expected: {"model": "deepseek-chat", "status": "ready", ...}
+
+# Recent verdicts (last 100)
+curl -s http://localhost:8000/api/admin/judge/verdicts?limit=5 | jq '.'
+
+# DeepSeek latency check (p95 should be < 5s)
+curl -s http://localhost:8000/api/health | jq '.judge_latency_ms'
+```
+
+### 10.4 Circuit Breaker — Always CLOSED
+
+```bash
+# Snapshot every 30 seconds
+watch -n 30 'curl -s http://localhost:8000/api/admin/circuit-breaker | jq .'
+
+# Healthy output:
+# { "state": "CLOSED", "consecutive_fails": 0, "degraded_fails": 0 }
+```
+
+### 10.5 Audit Ledger — Full Settlement History
+
+```bash
+# All settlements (paginated)
+curl -s "http://localhost:8000/api/admin/audit?limit=10" | jq '.'
+
+# Filter by specific task
+curl -s "http://localhost:8000/api/admin/audit?task_id=task-0042" | jq '.'
+
+# Aggregate stats
+curl -s "http://localhost:8000/api/admin/audit" | \
+  python3 -c "import sys,json; data=json.load(sys.stdin); print(f'Tasks: {len(data.get(\"ledger\",[]))}')"
+```
+
+### 10.6 Production Watchdog — One-Liner Health Board
+
+```bash
+# Paste into production terminal for a Bloomberg-style dashboard
+while true; do
+  clear
+  echo "=== AIMS MAINNET DASHBOARD ==="
+  echo "Time: $(date -u +%H:%M:%S) UTC"
+  echo ""
+  curl -s http://localhost:8000/api/health | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+print(f'Gateway:      {\"UP\" if d.get(\"gateway\",\"\")==\"healthy\" else \"DOWN\"}')
+print(f'Chain:        {d.get(\"chain_status\",\"unknown\")}')
+print(f'CB State:     {d.get(\"circuit_breaker\",{}).get(\"state\",\"unknown\")}')
+print(f'Tasks:        {d.get(\"tasks_total\",0)} total / {d.get(\"tasks_pending\",0)} pending')
+print(f'Judge Model:  {d.get(\"judge_model\",\"unknown\")}')
+print(f'Pool USDC:    {d.get(\"plg_pool\",\"?\")}')
+"
+  sleep 10
+done
+```
+
+---
+
 ### C. Environment Variable Reference
 
 | Variable | Required | Default | Production Value |

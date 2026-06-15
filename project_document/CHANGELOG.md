@@ -24,6 +24,10 @@
 - feat(docs): `project_document/PRODUCTION_READY.md` — Base Mainnet 生产网迁移清单（合约部署/多签/USDC/热钱包安全/Worker 黑盒防线/成本预估/回滚方案）
 ### 修复
 - fix(demo): `scripts/demo_day_master.py` — 6 项修复：Alice 余额不足 (`seed_usdt` $0→$2)、GATEWAY_KEY 截断 31→32 bytes（缺失 `944`）、InMemorySettlementContract 集成（`contract_client=` 注入 + `deposit()`/`register_developer()`）、FreeTrialManager API (`check_free_trial()`→`is_trial_eligible()`)、余额源 (MockLedger→contract)、Refund mock（跳过真实扣款）
+### 新增
+- feat(prod): `docker-compose.prod.yml` — Base 主网离线部署 Compose（镜像锁定 `redis:7-alpine`/`python:3.11-slim`，`PRODUCTION=true`，凭证 `${VARIABLE}` 注入无默认值，Worker `user:1000` + `cap_drop:ALL` + `read_only` 工业隔离）
+- feat(prod): `scripts/deploy_mainnet.sh` — 交互式 Shell 点火脚本（离线镜像阻断检查 + `read -p` 逐项采集主网参数 + `docker-compose up` + 5 轮 ChainListener CLOSED 健康轮询）
+- feat(docs): `project_document/PRODUCTION_READY.md` (§10) — 主网上线看盘手册（Redis AOF 资金追踪 / PLG 灰度盯盘 / DeepSeek Judge 审计 / CB 熔断快照 / Dashboard One-Liner）
 
 ## [2026-06-13]
 ### 新增

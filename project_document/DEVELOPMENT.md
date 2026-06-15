@@ -515,3 +515,11 @@
   - fix(demo): `FreeTrialManager` API 校正 — `check_free_trial()` 不存在，改用 `is_trial_eligible()`/`consume_trial()`/`get_usage_count()`
   - fix(demo): 余额显示源 — MockLedger 余额不反映合约内资金，改用 `contract.get_user_balance()` / 1_000_000
   - fix(demo): Refund mock — Carol 退款场景不应调用 `charge_and_settle()`（会真实扣款），改为构造 mock refund 收据
+
+### Phase 10: Base Mainnet 生产网正式发布
+- **状态**: 已完成 (2026-06-15)
+- **文件**: `docker-compose.prod.yml` / `scripts/deploy_mainnet.sh` / `project_document/PRODUCTION_READY.md`
+- **描述**: AIMS 2.0 主网终局发布——离线部署集群编排、交互式点火脚本与 DeepSeek AI Judge 生产切换：
+  - **docker-compose.prod.yml**：纯离线部署版 Compose（image 锁定 `redis:7-alpine` / `python:3.11-slim`，`PRODUCTION=true` 强制生产模式），所有敏感凭证 `${VARIABLE}` 注入无默认值，Worker 容器 `user:1000` + `cap_drop:ALL` + `read_only:true` + `tmpfs` 工业隔离
+  - **scripts/deploy_mainnet.sh**：交互式 Shell 点火脚本——Step 1 基础镜像存在性阻断检查（`docker images` 检测 `redis:7-alpine`/`python:3.11-slim` 缺失即中断），Step 2 `read -p` 依次采集 `BASE_MAINNET_RPC_URL`/`GATEWAY_PRIVATE_KEY`/`OPENAI_API_KEY`/`REDIS_PASSWORD`/`AIMS_CONTRACT_ADDRESS`/`AIMS_SIGNING_SECRET`，硬编码 `OPENAI_BASE_URL=https://api.deepseek.com/v1` + `LLM_MODEL_NAME=deepseek-chat`，Step 3 配置摘要确认，Step 4 `docker-compose up -d` + 5 轮 `/api/admin/listener` 健康轮询（ChainListener=running + CircuitBreaker=CLOSED 校验）
+  - **PRODUCTION_READY.md §10**：Redis AOF 实时监控（KEYS/HGETALL/MONITOR）、PLG 零获客灰度追踪（trial/pool/SSE feed）、DeepSeek Judge 评分审计（verdicts/latency）、CB CLOSED 快照、Audit Ledger 回溯、全量 Dashboard One-Liner

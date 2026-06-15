@@ -1,0 +1,229 @@
+# AIMS 2.0 Production Cluster — Base Mainnet Offline Deployment
+# ── Deployment ────────────────────────────────────────────────────────────────
+#   1. docker load -i redis-7-alpine.tar        # offline image load
+#   2. docker load -i python-3.11-slim.tar       # offline image load
+#   3. bash scripts/deploy_mainnet.sh            # interactive deploy
+# ── Topology ──────────────────────────────────────────────────────────────────
+#   redis            — AOF-persistent coordinator (internal port 6379)
+#   gateway-server   — FastAPI + static frontend (port 8000)
+#   worker-node-1/2/3 — Three isolated DePIN workers, no shell, read-only /dist
+#
+# ALL sensitive values use ${VARIABLE} injection — NO defaults, NO plaintext.
+# Pre-seed via:  export VAR=value    or    .env file (chmod 600)
+
+version: "3.9"
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+
+  # ── Redis Coordinator ─────────────────────────────────────────────────────
+  redis-coordinator:
+    image: redis:7-alpine
+    container_name: aims-prod-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command:
+      [
+        "redis-server",
+        "--appendonly", "yes",
+        "--save", "60", "1",
+        "--requirepass", "${REDIS_PASSWORD}",
+        "--rename-command", "FLUSHALL", "",
+      ]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    logging: *default-logging
+    restart: unless-stopped
+    # Production hardening
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETUID
+      - SETGID
+
+  # ── Gateway Server ────────────────────────────────────────────────────────
+  gateway-server:
+    image: python:3.11-slim
+    container_name: aims-prod-gateway
+    ports:
+      - "8000:8000"
+    environment:
+      # ── AIMS Core ──────────────────────────────────────────────────────
+      AIMS_GATEWAY_PRIVATE_KEY: "${AIMS_GATEWAY_PRIVATE_KEY}"
+      AIMS_CONTRACT_ADDRESS: "${AIMS_CONTRACT_ADDRESS}"
+      AIMS_RPC_URL: "${AIMS_RPC_URL}"
+      AIMS_SIGNING_SECRET: "${AIMS_SIGNING_SECRET}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-coordinator:6379/0"
+      # ── Production mode ────────────────────────────────────────────────
+      PRODUCTION: "true"
+      APP_ENV: "production"
+      # ── DeepSeek AI Judge (OpenAI-compatible) ───────────────────────────
+      OPENAI_API_KEY: "${OPENAI_API_KEY}"
+      OPENAI_BASE_URL: "https://api.deepseek.com/v1"
+      LLM_MODEL_NAME: "deepseek-chat"
+      # ── Runtime ────────────────────────────────────────────────────────
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - gateway-data:/app/data
+    depends_on:
+      redis-coordinator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging: *default-logging
+    restart: unless-stopped
+    # Hardened gateway user
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    working_dir: /app
+
+  # ── Worker Node 1 ──────────────────────────────────────────────────────────
+  worker-node-1:
+    image: python:3.11-slim
+    container_name: aims-prod-worker-1
+    environment:
+      # ── AIMS Core (gateway connection) ─────────────────────────────────
+      AIMS_GATEWAY_PRIVATE_KEY: "${AIMS_GATEWAY_PRIVATE_KEY}"
+      AIMS_CONTRACT_ADDRESS: "${AIMS_CONTRACT_ADDRESS}"
+      AIMS_RPC_URL: "${AIMS_RPC_URL}"
+      AIMS_SIGNING_SECRET: "${AIMS_SIGNING_SECRET}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-coordinator:6379/0"
+      # ── Worker identity ────────────────────────────────────────────────
+      AIMS_GATEWAY_URL: "http://gateway-server:8000"
+      AIMS_WORKER_ID: "worker-001"
+      AIMS_WORKER_WALLET: "${AIMS_WORKER_1_WALLET}"
+      AIMS_WORKER_KEY: "${AIMS_WORKER_1_KEY}"
+      # ── Runtime ────────────────────────────────────────────────────────
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      # DRM black box — read-only, obfuscated binary only
+      - ./dist:/app/dist:ro
+    working_dir: /app
+    command:
+      [
+        "python3", "-m", "src.worker.worker",
+      ]
+    depends_on:
+      gateway-server:
+        condition: service_healthy
+    logging: *default-logging
+    restart: unless-stopped
+    # ── Industrial isolation ─────────────────────────────────────────────
+    # Non-root, no shell, no network tools, read-only FS
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE    # only outbound HTTP to gateway
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+    # No stdin/stdin_open — interactive shell impossible
+    stdin_open: false
+    tty: false
+
+  # ── Worker Node 2 ──────────────────────────────────────────────────────────
+  worker-node-2:
+    image: python:3.11-slim
+    container_name: aims-prod-worker-2
+    environment:
+      AIMS_GATEWAY_PRIVATE_KEY: "${AIMS_GATEWAY_PRIVATE_KEY}"
+      AIMS_CONTRACT_ADDRESS: "${AIMS_CONTRACT_ADDRESS}"
+      AIMS_RPC_URL: "${AIMS_RPC_URL}"
+      AIMS_SIGNING_SECRET: "${AIMS_SIGNING_SECRET}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-coordinator:6379/0"
+      AIMS_GATEWAY_URL: "http://gateway-server:8000"
+      AIMS_WORKER_ID: "worker-002"
+      AIMS_WORKER_WALLET: "${AIMS_WORKER_2_WALLET}"
+      AIMS_WORKER_KEY: "${AIMS_WORKER_2_KEY}"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./dist:/app/dist:ro
+    working_dir: /app
+    command: ["python3", "-m", "src.worker.worker"]
+    depends_on:
+      gateway-server:
+        condition: service_healthy
+    logging: *default-logging
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+    stdin_open: false
+    tty: false
+
+  # ── Worker Node 3 ──────────────────────────────────────────────────────────
+  worker-node-3:
+    image: python:3.11-slim
+    container_name: aims-prod-worker-3
+    environment:
+      AIMS_GATEWAY_PRIVATE_KEY: "${AIMS_GATEWAY_PRIVATE_KEY}"
+      AIMS_CONTRACT_ADDRESS: "${AIMS_CONTRACT_ADDRESS}"
+      AIMS_RPC_URL: "${AIMS_RPC_URL}"
+      AIMS_SIGNING_SECRET: "${AIMS_SIGNING_SECRET}"
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@redis-coordinator:6379/0"
+      AIMS_GATEWAY_URL: "http://gateway-server:8000"
+      AIMS_WORKER_ID: "worker-003"
+      AIMS_WORKER_WALLET: "${AIMS_WORKER_3_WALLET}"
+      AIMS_WORKER_KEY: "${AIMS_WORKER_3_KEY}"
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
+    volumes:
+      - ./dist:/app/dist:ro
+    working_dir: /app
+    command: ["python3", "-m", "src.worker.worker"]
+    depends_on:
+      gateway-server:
+        condition: service_healthy
+    logging: *default-logging
+    restart: unless-stopped
+    user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    read_only: true
+    tmpfs:
+      - /tmp:noexec,nosuid,size=64m
+    stdin_open: false
+    tty: false
+
+volumes:
+  redis-data:
+  gateway-data:

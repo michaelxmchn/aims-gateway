@@ -645,3 +645,16 @@ A: 待补充
 - **三阶段发布**：Pre-Flight（T-48h 合约部署 + 密钥生成）→ Launch（Fly.io deploy + Worker 启动 + 监控观察）→ Rollback（`admin/emergency-pause` + `fly deploy` 回滚）
 - **密钥分级**：`AIMS_GATEWAY_PRIVATE_KEY`（热钱包，< 0.1 ETH，季度轮换）→ `AIMS_SIGNING_SECRET`（HMAC 共享密钥）→ Worker 密钥（每节点独立，仅签名 PoT）
 - **多签治理**：`PLATFORM_OWNER` 必须为 3/5 Gnosis Safe，合约升级权限分离（UUPS proxy admin 与 owner 不同多签）
+
+### 生产集群离线部署模式
+- **纯离线 Compose**（`docker-compose.prod.yml`）：`image` 直接锁定 `redis:7-alpine` 和 `python:3.11-slim`，不经 `build` 步骤，无 Docker Hub 网络依赖
+- **零默认值凭证**：所有 `${VARIABLE}` 不设 `:-fallback`，容器缺失环境变量时立即启动失败而非静默使用不安全默认值
+- **Worker 工业隔离三件套**：`user: "1000:1000"`（非 root）+ `cap_drop: ALL`（无网络嗅探/进程外溢）+ `read_only: true` + `tmpfs: /tmp`（无持久化写盘）
+- **交互式点火脚本**（`scripts/deploy_mainnet.sh`）：`docker images` 阻断检查 + `read -p` 逐项采集 + `read -s` 静默输入私钥 + 严格格式校验（64 hex chars/URL prefix/address regex）
+- **点火后健康轮询**：`/api/admin/listener` 端点 5 轮轮询，同时验证 `ChainListener.status=running` 和 `CircuitBreaker.state=CLOSED`
+
+### DeepSeek AI Judge 生产切换模式
+- **零代码变更**：`JudgeEngine` 使用 `openai` Python 包，自动读取 `OPENAI_BASE_URL` 环境变量；只需设置 `OPENAI_BASE_URL=https://api.deepseek.com/v1` + `OPENAI_API_KEY=<DeepSeek Key>` 即完成切换
+- **硬编码兜底**：`deploy_mainnet.sh` 脚本内写死 `export OPENAI_BASE_URL="https://api.deepseek.com/v1"` 和 `export LLM_MODEL_NAME="deepseek-chat"`，杜绝人为配错
+- **生产模型**：`deepseek-chat` 完全兼容 OpenAI Chat Completions API，`temperature=0.1` + `max_tokens=256` 保持评分一致性
+- **生产监控**：`/api/admin/judge` 端点返回当前 model 名称验证，`/api/admin/judge/verdicts` 回溯最近评分记录
