@@ -64,7 +64,7 @@ class BillingMode(str, enum.Enum):
 
 
 class RevenuePhase(str, enum.Enum):
-    """Revenue split phase — maps to the AIMS Network timeline.
+    """Revenue split phase — maps to the AIMS Gateway timeline.
 
     Q1 (launch):
         Developer 70 % / Worker 25 % / Treasury 5 %

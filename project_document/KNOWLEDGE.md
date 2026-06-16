@@ -223,6 +223,13 @@ A: 待补充
 - **值替换**：原始字符串值替换为文件元数据 dict `{"_type": "file", "path": "...", "mime_type": "...", "size_bytes": N}`，技能 `execute()` 可直接读取 `path`
 - **集成点**：`execute_dynamic_skill()` 入口处调用 `preprocess_multimodal(payload)`，对下游技能透明
 
+### 品牌命名规范
+- **正式品牌名称**：`AIMS Gateway`（非 `AIMS Network`、`AIMS Protocol`、`AIMS` 单独使用）
+- **适用范围**：所有 UI 展示（Logo/标题/描述）、系统提示词、文档开头和结尾、开屏信息
+- **内部代码引用**：包名、类名、模块名保持技术命名（如 `aims_worker`、`aims_gateway`），仅用户可见文本统一为 `AIMS Gateway`
+- **例外**：`AIMS Protocol` 仅在法律/版权声明（footer Copyright）中使用，`AIMS` 作为缩写仅用于代码标识符
+- **上次全局修正**：2026-06-16，覆盖 15 处引用于 HTML/MD/Python 文件
+
 ## 技术决策记录
 
 ### 决策1：链上架构最小化

@@ -1,4 +1,4 @@
-# AIMS Network — Website Copy
+# AIMS Gateway — Website Copy
 
 > **One Entrance. Every Switch.**
 > Unified Decentralized AI Agent Skill & DePIN Network
@@ -326,4 +326,4 @@ Stage 8: Metadata registration
 
 ---
 
-*— AIMS Network. One Entrance. Every Switch. First-Task-Free.*
+*— AIMS Gateway. One Entrance. Every Switch. First-Task-Free.*

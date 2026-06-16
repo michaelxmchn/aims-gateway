@@ -15,6 +15,7 @@
 - feat(server): `src/gateway/server.py` — JudgeEngine 模型名从 `LLM_MODEL_NAME` 环境变量读取，生产切换 `deepseek-v4-flash`
 - fix(config): `docker-compose.prod.yml` — `LLM_MODEL_NAME` 修正为 `deepseek-v4-flash`（原 `deepseek-chat` 被 DeepSeek API 拒绝）
 - docs(deploy): `DEPLOY.md` — 追加入《AIMS 2.0 系统业务与功能梳理报告》9 大板块
+- chore(brand): 全局 `AIMS Network` → `AIMS Gateway` — 修正 3 个 HTML、2 个 Markdown、4 个 Python 源码共 15 处品牌引用
 ### 验证
 - **E2E 全链路通过**: task-0006 (worker-002) → DeepSeek Score ≥80 → SETTLED → on-chain settlement 执行成功 ✓
 

@@ -362,4 +362,4 @@ aims_provider.start()  # non-blocking, runs in event loop
 ---
 
 *One Entrance. Every Switch.*
-*AIMS Network — Unified Decentralized AI Agent Skill & DePIN Protocol.*
+*AIMS Gateway — Unified Decentralized AI Agent Skill & DePIN Protocol.*

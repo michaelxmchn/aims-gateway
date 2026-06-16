@@ -236,7 +236,7 @@ def main() -> int:
           f"{' ' * 17}{C_RESET}")
     print(f"{C_BOLD}{C_BG_BLUE}{' ' * 78}{C_RESET}")
     print()
-    print(f"  {C_DIM}Protocol:{C_RESET} AIMS Network v2.0")
+    print(f"  {C_DIM}Protocol:{C_RESET} AIMS Gateway v2.0")
     print(f"  {C_DIM}Network:{C_RESET} Base Sepolia (chain 84532)")
     print(f"  {C_DIM}Gateway:{C_RESET} {args.gateway}")
     print(f"  {C_DIM}Date:   {C_RESET} {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")

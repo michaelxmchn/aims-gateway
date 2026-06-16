@@ -249,7 +249,7 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 async def index():
-    """Serve the AIMS Network landing page."""
+    """Serve the AIMS Gateway landing page."""
     with open("static/index.html", "r") as f:
         return HTMLResponse(content=f.read())
 

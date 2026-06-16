@@ -36,6 +36,7 @@
   - **Deliverable 2 (Judge)**: `src/judge/judge_agent.py` — `JudgeEngine` 类；LLM-as-a-Judge（OpenAI `gpt-4o-mini`）评分 0-100；确定性回退（Schema 字段缺失/空值/错误关键词检测）；`score < 80` 自动 `refund_on_chain()` + SSE 红警广播；`POST /api/admin/judge` 测试端点
   - **Integration**: `src/gateway/server.py` — `lifespan` 启动时 `_chain_listener.start()`；`submit_task` 中插入 AI Judge 门（Schema 验证后/结算前），评分 < 80 触发合约 `refundTask` + 返回 `REFUNDED`；`_event_buffer` 追加至 `InMemorySettlementContract.settle_task()`/`refund_task()`
 - [ ] **Phase 6.5: Base Sepolia 多 Agent 测试网联调** — E2E Chain Listener + AI Judge + SSE 闭环验证
+- [x] **品牌名称统一修正** — 全局 `AIMS Network` → `AIMS Gateway`，覆盖 3 个 HTML 文件、2 个 Markdown 文件、4 个 Python 源码文件，共 15 处引用
 
 ## 已完成任务清单
 

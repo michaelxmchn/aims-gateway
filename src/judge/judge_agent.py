@@ -36,7 +36,7 @@ JUDGE_PASS_THRESHOLD: int = 80
 """Minimum score for a task to pass arbitration (≥80 = settle, <80 = refund)."""
 
 JUDGE_SYSTEM_PROMPT: str = (
-    "You are an AI Judge on the AIMS Network. Your role is to evaluate the "
+    "You are an AI Judge on the AIMS Gateway. Your role is to evaluate the "
     "quality of worker-submitted task outputs. Score 0-100 based on:\n"
     "- Correctness (0-40): Does the output correctly address the task input?\n"
     "- Completeness (0-30): Are all required fields present and meaningful?\n"
