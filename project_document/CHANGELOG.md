@@ -8,6 +8,9 @@
 ## [2026-06-16]
 ### 新增
 - feat(test): `scripts/test_trigger_biz.py` — E2E 业务触发测试脚本，跨境贸易结算全链路（POST /api/run → DeepSeek AI Judge → Worker claim/submit → on-chain settlement）
+- feat(vault): `src/gateway/server.py` — `DEVELOPER_INTEGRATION_NS` + `TASK_VAULT_NS` 常量，`_generate_vault_address()` 确定性唯一 vault 地址生成（`0xV` + SHA256），`_settle_vault()` 70/25/5 分账，`POST /api/developer/integrate` 一键接入端点（自动识别 URL vs Skill），`POST /api/tasks/{id}/simulate-fiat-payment` 法币充值模拟，`GET /api/tasks/{id}/vault-status` 状态轮询，`POST /api/tasks/{id}/settle-from-vault` 管理手动结算
+- feat(vault): `src/gateway/server.py` — `publish_task` 响应升级为 `PublishTaskResponse`，新增 vault 自动生成（`unfunded` 状态）；`submit_task` 插入 vault settlement 门控（AI Judge 通过后 vault-funded 优先结算）
+- feat(console): `static/console.html` — One-Click Integration 一键接入 UI（Developer 选项卡，skill/URL 输入 + 钱包绑定 + 状态展示 + 自动注册 70% 分润）；Task Vault 扫码付款面板（Consumer 发布后展示 vault 地址/余额/QR 模拟/付款触发按钮/状态轮询）；新增 `oneClickIntegrate()`/`fetchIntegrationStatus()`/`showVaultPanel()`/`simulateVaultPayment()`/`pollVaultStatus()` JS 函数
 ### 新增
 - feat(api): `POST /api/wallet/withdraw` — 用户提现端点，Deduct 余额 + tx_ledger 追溯记录
 - feat(api): `POST /api/wallet/fiat-deposit` — 法币充值中继桥（mock Stripe），USD→USDC 自动兑换 + tx_ledger 记录

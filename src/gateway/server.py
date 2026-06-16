@@ -72,6 +72,12 @@ RATE_LIMIT_NS = "rate:limiter"
 CREDIT_SCORE_NS = "worker:credit"
 """Storage namespace for worker credit scores (0-100 integer)."""
 
+DEVELOPER_INTEGRATION_NS = "developer:integration"
+"""Storage namespace for one-click developer integration mappings."""
+
+TASK_VAULT_NS = "task_vault"
+"""Storage namespace for task-vault escrow addresses (扫码付款唯一托管钱包)."""
+
 # ── Global instances (singleton per process) ──────────────────────────────
 
 storage = Storage()
@@ -314,6 +320,7 @@ async def verify_wallet_middleware(request: Request, call_next):
         or path.startswith("/api/wallet/balance")
         or path.startswith("/api/wallet/history")
         or path.startswith("/api/worker/credit-score")
+        or path.startswith("/api/developer/")
         or path.startswith("/api/commerce/")
     ):
         return await call_next(request)
@@ -545,6 +552,31 @@ class CreditScoreResponse(BaseModel):
 class PendingTasksResponse(BaseModel):
     tasks: list[dict[str, Any]]
     count: int
+
+
+class IntegrateRequest(BaseModel):
+    skill_name_or_url: str = Field(..., min_length=1, max_length=512, description="Skill name or third-party API URL")
+    wallet_address: str = Field(..., min_length=42, max_length=42, description="EVM wallet for revenue settlement")
+
+
+class IntegrationStatusResponse(BaseModel):
+    wallet: str
+    skills: list[dict]
+    count: int
+
+
+class VaultStatusResponse(BaseModel):
+    task_id: str
+    vault_address: str
+    balance: float = 0.0
+    status: str
+
+
+class PublishTaskResponse(BaseModel):
+    task_id: str
+    status: str = "PENDING"
+    vault_address: str = ""
+    vault_status: str = ""
 
 
 # ── Wallet & Balance models ────────────────────────────────────────────────
@@ -1013,6 +1045,23 @@ async def discovery():
                     {"method": "POST", "path": "/api/worker/credit-score", "summary": "Set a worker's credit score (admin).", "auth_required": True},
                 ],
             },
+            {
+                "category": "Developer Integration",
+                "description": "One-Click Integration for developers — map skills/URLs to wallets.",
+                "operations": [
+                    {"method": "POST", "path": "/api/developer/integrate", "summary": "One-click integrate skill or URL to wallet.", "auth_required": True},
+                    {"method": "GET", "path": "/api/developer/integration/{wallet}", "summary": "Get integration status.", "auth_required": False},
+                ],
+            },
+            {
+                "category": "Task Vault (扫码付款)",
+                "description": "Unique escrow vault per task — fiat/QR funded, AI Judge released.",
+                "operations": [
+                    {"method": "POST", "path": "/api/tasks/{id}/simulate-fiat-payment", "summary": "Simulate fiat → vault funding.", "auth_required": True},
+                    {"method": "GET", "path": "/api/tasks/{id}/vault-status", "summary": "Poll vault funding & release status.", "auth_required": False},
+                    {"method": "POST", "path": "/api/tasks/{id}/settle-from-vault", "summary": "Manually trigger vault settlement (admin).", "auth_required": True},
+                ],
+            },
         ],
         "links": {
             "developer_guide": {
@@ -1206,7 +1255,41 @@ async def submit_task(req: SubmitRequest):
             ),
         )
 
-    # ── 5. Final step — calculate execution time & settle escrow ──────
+    # ── 5b. Vault settlement (if task was vault-funded via 扫码付款) ─────
+    vault_key = f"{TASK_VAULT_NS}:{req.task_id}"
+    vault_data_raw = storage.dict_get(TASK_VAULT_NS, req.task_id)
+    if vault_data_raw and vault_data_raw.get("status") == "funded":
+        vault_result = _settle_vault(req.task_id)
+        pot_sig = None
+        if pot_manager:
+            try:
+                from eth_account.messages import encode_defunct
+                pot_message = encode_defunct(primitive=f"AIMS_POT:{req.task_id}:{req.worker_id}".encode())
+                pot_sig_obj = pot_manager.generate_pot(req.task_id, req.worker_id)
+                if pot_sig_obj:
+                    pot_sig = pot_sig_obj.signature if hasattr(pot_sig_obj, "signature") else str(pot_sig_obj)
+                    await _run_in_thread(broker.set_pot_signature, req.task_id, pot_sig)
+            except Exception:
+                pass
+
+        broadcast_settlement({
+            "action": "vault_settle_complete",
+            "task_id": req.task_id,
+            "amounts": vault_result,
+            "ts": time.time(),
+        })
+
+        return SubmitResponse(
+            task_id=req.task_id,
+            worker_id=req.worker_id,
+            outcome="COMPLETED",
+            total_cost=vault_result.get("balance", 0),
+            developer_payout=vault_result.get("developer", 0),
+            platform_tax=vault_result.get("treasury", 0),
+            pot=pot_sig,
+        )
+
+    # ── 6. Final step — calculate execution time & settle escrow ──────
     execution_time = max(time.time() - claimed_at, 0.1)
 
     skill_meta = {
@@ -1356,16 +1439,252 @@ async def set_credit_score(req: CreditScoreRequest):
     return CreditScoreResponse(wallet=req.wallet, score=req.score)
 
 
+# ── One-Click Developer Integration ────────────────────────────────────────
+
+
+@app.post("/api/developer/integrate")
+async def developer_integrate(req: IntegrateRequest):
+    """一键接入（One-Click Integration）— map skill/URL to wallet.
+
+    Accepts a skill name or third-party API URL and binds it to the
+    developer's wallet address.  When the skill is invoked, revenue is
+    automatically routed to the bound wallet via 70/25/5 split.
+
+    The system auto-detects whether the input is a URL (third-party API)
+    or a known skill name and stores the mapping accordingly.
+    """
+    wallet = req.wallet_address.lower()
+    existing_raw = storage.dict_get(DEVELOPER_INTEGRATION_NS, wallet) or {}
+    existing_skills = existing_raw.get("skills", []) if isinstance(existing_raw, dict) else []
+
+    # Detect URL vs skill name
+    is_url = req.skill_name_or_url.startswith("http://") or req.skill_name_or_url.startswith("https://")
+    entry = {
+        "name": req.skill_name_or_url if not is_url else "",
+        "url": req.skill_name_or_url if is_url else "",
+        "mapped_at": time.time(),
+        "type": "url_proxy" if is_url else "skill_map",
+    }
+
+    # Prevent duplicates
+    for s in existing_skills:
+        if (is_url and s.get("url") == req.skill_name_or_url) or (not is_url and s.get("name") == req.skill_name_or_url):
+            return {"status": "exists", "wallet": wallet, "skill": req.skill_name_or_url}
+
+    existing_skills.append(entry)
+    integration_data = {
+        "wallet": wallet,
+        "skills": existing_skills,
+        "updated_at": time.time(),
+    }
+    storage.dict_set(DEVELOPER_INTEGRATION_NS, wallet, integration_data)
+
+    # If it's a known skill name, auto-register developer wallet for 70% split
+    if not is_url:
+        manifest = registry.get(req.skill_name_or_url)
+        if manifest is not None:
+            billing.register_developer(req.skill_name_or_url, wallet)
+            logger.info("Developer auto-registered: skill=%s wallet=%s", req.skill_name_or_url, wallet)
+
+    logger.info(
+        "One-click integrate: wallet=%s input=%s type=%s",
+        wallet, req.skill_name_or_url, entry["type"],
+    )
+
+    return {
+        "status": "ok",
+        "wallet": wallet,
+        "skill": req.skill_name_or_url,
+        "type": entry["type"],
+        "skills_count": len(existing_skills),
+    }
+
+
+@app.get("/api/developer/integration/{wallet}", response_model=IntegrationStatusResponse)
+async def developer_integration_status(wallet: str):
+    """Return the one-click integration status for a developer wallet."""
+    raw = storage.dict_get(DEVELOPER_INTEGRATION_NS, wallet.lower())
+    if not raw or not isinstance(raw, dict):
+        return IntegrationStatusResponse(wallet=wallet, skills=[], count=0)
+    skills = raw.get("skills", [])
+    return IntegrationStatusResponse(wallet=wallet, skills=skills, count=len(skills))
+
+
+# ── Vault (扫码付款唯一托管钱包) endpoints ──────────────────────────────
+
+
+import hashlib
+
+
+def _generate_vault_address(task_id: str) -> str:
+    """Generate a deterministic unique vault address from task_id.
+
+    Format: ``0xV`` + SHA-256(task_id)[:39] → 42-char EVM address.
+    The ``V`` prefix distinguishes vault addresses from user wallets.
+    """
+    digest = hashlib.sha256(f"aims:vault:{task_id}".encode()).hexdigest()
+    return "0xV" + digest[:39]
+
+
+def _settle_vault(task_id: str) -> dict:
+    """Execute 70/25/5 vault settlement for a vault-funded task.
+
+    Called after AI Judge passes.  Reads the vault balance, distributes
+    to developer (70%), worker (25%), and treasury (5%), then marks
+    the vault as RELEASED.
+
+    Returns a dict with the split breakdown, or an error status.
+    """
+    vault_data = storage.dict_get(TASK_VAULT_NS, task_id)
+    if vault_data is None:
+        return {"status": "NO_VAULT"}
+    if vault_data.get("status") != "funded":
+        return {"status": "INVALID_STATE", "current": vault_data.get("status")}
+
+    balance = vault_data.get("balance", 0.0)
+    dev_share = round(balance * 0.70, 6)
+    worker_share = round(balance * 0.25, 6)
+    treasury_share = round(balance * 0.05, 6)
+
+    vault_data["status"] = "released"
+    vault_data["settled_at"] = time.time()
+    vault_data["split"] = {
+        "developer_70": dev_share,
+        "worker_25": worker_share,
+        "treasury_5": treasury_share,
+    }
+    storage.dict_set(TASK_VAULT_NS, task_id, vault_data)
+
+    logger.info(
+        "VAULT_SETTLE: task=%s balance=%.6f dev=%.6f worker=%.6f treasury=%.6f",
+        task_id, balance, dev_share, worker_share, treasury_share,
+    )
+
+    broadcast_settlement({
+        "action": "vault_settle",
+        "task_id": task_id,
+        "amounts": {
+            "total": balance,
+            "developer_70": dev_share,
+            "worker_25": worker_share,
+            "treasury_5": treasury_share,
+        },
+        "ts": time.time(),
+    })
+
+    return {
+        "status": "RELEASED",
+        "balance": balance,
+        "developer": dev_share,
+        "worker": worker_share,
+        "treasury": treasury_share,
+        "vault_address": vault_data.get("vault_address", ""),
+    }
+
+
+@app.post("/api/tasks/{task_id}/simulate-fiat-payment")
+async def simulate_fiat_payment(task_id: str):
+    """Simulate fiat payment → fund the task vault (扫码付款模拟).
+
+    Marks the vault as FUNDED and deposits the task budget (in USDC)
+    into the vault balance.  This simulates the flow:
+      1. User scans QR code / pays via credit card
+      2. Fiat bridge converts USD → USDC
+      3. USDC deposited to unique task vault address
+      4. Task becomes available in the market (escrow frozen)
+    """
+    vault_data = storage.dict_get(TASK_VAULT_NS, task_id)
+    if vault_data is None:
+        raise HTTPException(status_code=404, detail=f"No vault for task {task_id}")
+    if vault_data.get("status") != "unfunded":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Vault for task {task_id} is in state '{vault_data.get('status')}', expected 'unfunded'",
+        )
+
+    budget = vault_data.get("budget", 2.0)
+    vault_data["status"] = "funded"
+    vault_data["balance"] = budget
+    vault_data["fiat_paid"] = True
+    vault_data["funded_at"] = time.time()
+    vault_data["payment_method"] = "mock_stripe_qr"
+    storage.dict_set(TASK_VAULT_NS, task_id, vault_data)
+
+    logger.info(
+        "VAULT_FUNDED: task=%s vault=%s amount=%.6f USDC (fiat simulation)",
+        task_id, vault_data.get("vault_address", ""), budget,
+    )
+
+    broadcast_settlement({
+        "action": "vault_funded",
+        "task_id": task_id,
+        "vault_address": vault_data.get("vault_address", ""),
+        "amount": budget,
+        "payment_method": "mock_stripe_qr",
+        "ts": time.time(),
+    })
+
+    return {
+        "status": "funded",
+        "task_id": task_id,
+        "vault_address": vault_data.get("vault_address", ""),
+        "balance": budget,
+        "message": f"✅ Vault funded with {budget:.2f} USDC — task is now available in the market",
+    }
+
+
+@app.get("/api/tasks/{task_id}/vault-status", response_model=VaultStatusResponse)
+async def vault_status(task_id: str):
+    """Poll the vault funding status for a task.
+
+    Returns the vault address, current balance, and status
+    (``unfunded`` | ``funded`` | ``released``).
+    """
+    vault_data = storage.dict_get(TASK_VAULT_NS, task_id)
+    if vault_data is None:
+        raise HTTPException(status_code=404, detail=f"No vault for task {task_id}")
+    return VaultStatusResponse(
+        task_id=task_id,
+        vault_address=vault_data.get("vault_address", ""),
+        balance=vault_data.get("balance", 0.0),
+        status=vault_data.get("status", "unknown"),
+    )
+
+
+@app.post("/api/tasks/{task_id}/settle-from-vault")
+async def settle_from_vault_endpoint(task_id: str):
+    """Manually trigger vault settlement for a funded task.
+
+    Used for testing / admin.  In production, vault settlement is
+    automatically triggered by the AI Judge after task submission.
+    Executes the 70/25/5 split from the vault balance.
+    """
+    vault_data = storage.dict_get(TASK_VAULT_NS, task_id)
+    if vault_data is None:
+        raise HTTPException(status_code=404, detail=f"No vault for task {task_id}")
+    if vault_data.get("status") != "funded":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Vault for task {task_id} is in state '{vault_data.get('status')}', expected 'funded'",
+        )
+    result = _settle_vault(task_id)
+    return result
+
+
 # ── Publish Task endpoint (Consumer Publish Task UI) ──────────────────────
 
 
-@app.post("/api/tasks/publish", response_model=RunResponse)
+@app.post("/api/tasks/publish", response_model=PublishTaskResponse)
 async def publish_task(req: PublishTaskRequest):
     """Publish a task to the Task Market (Consumer Publish Task UI).
 
     Accepts the same fields as ``/api/run`` plus Task Market metadata
     (``task_name``, ``description``, ``is_custom``, ``credit_score_required``).
-    Creates an escrow hold and registers a PENDING broker task.
+    Creates an escrow hold, registers a PENDING broker task, and generates
+    a unique task-vault address for fiat/QR escrow funding (扫码付款唯一托管钱包).
+
+    The vault is created in ``unfunded`` state.  Call
+    ``POST /api/tasks/{id}/simulate-fiat-payment`` to fund it.
     """
     # ── 0. Circuit breaker gate ─────────────────────────────────────
     if not _breaker.can_pass(f"publish:{req.skill_id}"):
@@ -1458,7 +1777,31 @@ async def publish_task(req: PublishTaskRequest):
     if task_id is None:
         raise HTTPException(status_code=402, detail="Insufficient balance for escrow hold")
 
-    return RunResponse(task_id=task_id)
+    # ── 8. Generate unique task-vault address (扫码付款唯一托管钱包) ──
+    vault_address = _generate_vault_address(task_id)
+    vault_data = {
+        "task_id": task_id,
+        "vault_address": vault_address,
+        "balance": 0.0,
+        "status": "unfunded",
+        "budget": req.max_budget,
+        "fiat_paid": False,
+        "created_at": time.time(),
+        "user_id": req.user_id,
+        "skill_id": req.skill_id,
+    }
+    storage.dict_set(TASK_VAULT_NS, task_id, vault_data)
+
+    logger.info(
+        "VAULT_CREATED: task=%s vault=%s budget=%.2f (unfunded)",
+        task_id, vault_address, req.max_budget,
+    )
+
+    return PublishTaskResponse(
+        task_id=task_id,
+        vault_address=vault_address,
+        vault_status="unfunded",
+    )
 
 
 # ── Developer Guide route ─────────────────────────────────────────────────

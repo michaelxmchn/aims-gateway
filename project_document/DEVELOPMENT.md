@@ -52,6 +52,10 @@
   - **(d) 用户历史账本** — `console.html` Consumer 选项卡新增 User History Ledger 面板（按类型过滤 deposit/withdraw/task）+ `GET /api/wallet/history` 端点，auto-load 钱包连接时
 - [ ] **Phase 6.5: Base Sepolia 多 Agent 测试网联调** — E2E Chain Listener + AI Judge + SSE 闭环验证
 - [x] **品牌名称统一修正** — 全局 `AIMS Network` → `AIMS Gateway`，覆盖 3 个 HTML 文件、2 个 Markdown 文件、4 个 Python 源码文件，共 15 处引用
+- [x] **Phase 11: One-Click Integration + Task-Vault 扫码付款 + AI Judge Vault Settlement**：
+  - [x] **One-Click Integration（一键接入）** — `POST /api/developer/integrate` 自动识别 URL vs Skill 名，绑定钱包地址用于 70% 分润；`GET /api/developer/integration/{wallet}` 查询接入状态；`static/console.html` Developer 选项卡新增一键接入 UI（skill/URL 输入 + 钱包绑定 + 状态展示）
+  - [x] **Task-Vault Model（扫码付款唯一托管钱包）** — 每个发布任务自动生成确定性唯一 vault 地址（`0xV` + SHA256）；`TASK_VAULT_NS` 存储 vault 数据（balance/status/budget）；状态流转 `unfunded → funded → released`；`static/console.html` Consumer 发布后显示 vault 面板（地址/余额/QR 模拟/付款触发/状态轮询）
+  - [x] **Vault Settlement** — `_settle_vault()` 70/25/5 从 vault balance 分账；`submit_task` 中 AI Judge 通过后自动执行 vault settlement（跳过普通 escrow）；`POST /api/tasks/{id}/settle-from-vault` 管理手动触发；SSE `broadcast_settlement` 推送 vault_funded/vault_settle 事件
 
 ## 已完成任务清单
 

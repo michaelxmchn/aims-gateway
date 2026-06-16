@@ -734,3 +734,24 @@ A: 待补充
   - 安全模型（威胁矩阵表）
   - Python SDK 完整示例
 - **`/developer-guide` 路由**：FastAPI `GET /developer-guide` 读取 `AIMS_SKILL_GUIDE.md`，通过 `_render_markdown_as_html()` 简易 Markdown→HTML 渲染器转换后嵌入 Dark 主题 HTML 模板返回
+
+### One-Click Integration（一键接入）模式
+- **`POST /api/developer/integrate`**：接受 `IntegrateRequest(skill_name_or_url, wallet_address)`，自动检测输入类型（URL 开头 `http://`/`https://` 为 URL Proxy，否则为 Skill Mapping）
+- **存储模式**：`DEVELOPER_INTEGRATION_NS = "developer:integration"` namespace，`storage.dict_set(DEVELOPER_INTEGRATION_NS, wallet, integration_data)`，数据含 `{wallet, skills: [{name, url, mapped_at, type}], updated_at}`
+- **自动 70% 分润**：检测到输入为已知 Skill 名时，自动调用 `billing.register_developer(skill_name, wallet)` 注册开发者 70/25/5 分账
+- **防重入**：遍历 `existing_skills` 检查同 URL/Skill 名重复，重复时返回 `{status: "exists"}` 而非覆盖
+- **`GET /api/developer/integration/{wallet}`**：免认证查询，返回 `IntegrationStatusResponse(wallet, skills, count)`
+- **前端 UI**：Developer 选项卡 `#integrateCard` 独立输入行（skill/URL + wallet），`oneClickIntegrate()` EIP-191 签名绑定，`fetchIntegrationStatus()` 自动轮询已映射数量
+- **Discovery 集成**：新增 "Developer Integration" 类别，含 integrate（认证）和 integration status（免认证）两个操作
+
+### Task-Vault（扫码付款唯一托管钱包）模式
+- **确定性 vault 地址**：`hashlib.sha256(f"aims:vault:{task_id}".encode()).hexdigest()` 取前 39 字符，拼接 `0xV` 前缀 → 42 字符 EVM 地址（`V` 前缀区分 vault 地址与用户钱包）
+- **存储**：`TASK_VAULT_NS = "task_vault"` namespace，`storage.dict_set(TASK_VAULT_NS, task_id, vault_data)`，vault_data 含 `{task_id, vault_address, balance, status, budget, fiat_paid, created_at, user_id, skill_id}`
+- **状态流转**：`unfunded`（发布时）→ `funded`（法币充值后）→ `released`（AI Judge 通过后 70/25/5 自动释放）
+- **自动创建**：`publish_task` 中 `_generate_vault_address(task_id)` + `storage.dict_set` → `PublishTaskResponse` 返回 `vault_address` 和 `vault_status`
+- **`POST /api/tasks/{task_id}/simulate-fiat-payment`**：vault `unfunded`→`funded`，`balance = budget`，`fiat_paid = true`，`payment_method = "mock_stripe_qr"`；404 无 vault / 409 非 unfunded 状态
+- **`_settle_vault(task_id)`**：读取 vault balance → `70%/25%/5%` 分账 → vault_data `released` + `split` 字段 → `broadcast_settlement()` 推送 `vault_settle` 事件
+- **submit_task 集成**：在 AI Judge 通过后、普通 escrow 结算前检查 vault 状态，若 `funded` 则直接调用 `_settle_vault()` 并返回 `SubmitResponse`（跳过 `charge_and_settle()`）
+- **`GET /api/tasks/{task_id}/vault-status`**：免认证轮询，返回 `VaultStatusResponse(task_id, vault_address, balance, status)`
+- **`POST /api/tasks/{task_id}/settle-from-vault`**：管理手动触发 vault 结算，用于测试/人工干预
+- **前端 UI**：Consumer 发布任务后 `showVaultPanel()` 展示 vault 地址/余额/QR 模拟 + `simulateVaultPayment()` 法币充值 + `pollVaultStatus()` 状态轮询；FUNDED 时隐藏 QR 面板，RELEASED 时禁用付款按钮

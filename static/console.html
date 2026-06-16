@@ -267,6 +267,37 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .history-type.task_deduction{background:rgba(96,165,250,0.1);color:var(--blue)}
 .history-type.refund{background:rgba(251,191,36,0.1);color:var(--amber)}
 .history-type.worker_payout{background:rgba(222,255,154,0.08);color:var(--neon-dim)}
+
+/* ── One-Click Integration Card ── */
+.integrate-row{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
+.integrate-row .input{flex:1;min-width:180px}
+.integrate-status{font-size:.72rem;margin-top:.5rem;padding:.5rem;border-radius:6px}
+.integrate-status.success{background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.1);color:#22c55e}
+.integrate-status.error{background:rgba(255,107,107,0.06);border:1px solid rgba(255,107,107,0.1);color:var(--red)}
+.integrate-status.info{background:rgba(96,165,250,0.06);border:1px solid rgba(96,165,250,0.1);color:var(--blue)}
+.integrate-badge{display:inline-block;padding:.1rem .4rem;border-radius:3px;font-size:.6rem;font-weight:600}
+.integrate-badge.skill{background:rgba(222,255,154,0.08);color:var(--neon-dim)}
+.integrate-badge.url{background:rgba(96,165,250,0.08);color:var(--blue)}
+
+/* ── Vault / QR Payment Panel ── */
+.vault-panel{background:rgba(15,23,42,0.4);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-top:.75rem}
+.vault-panel .vp-row{display:flex;justify-content:space-between;align-items:center;padding:.35rem 0;font-size:.78rem;border-bottom:1px solid rgba(255,255,255,0.03)}
+.vault-panel .vp-row:last-child{border-bottom:none}
+.vault-panel .vp-label{color:var(--text-dim)}
+.vault-panel .vp-value{color:#fff;font-weight:600;font-family:monospace;font-size:.72rem}
+.vault-panel .vp-value.neon{color:var(--neon)}
+.vault-panel .vp-value.green{color:#22c55e}
+.vault-panel .vp-value.amber{color:var(--amber)}
+.qr-mock{display:flex;align-items:center;justify-content:center;gap:1rem;padding:1rem;background:rgba(255,255,255,0.02);border:1px dashed var(--border);border-radius:8px;margin:.75rem 0}
+.qr-mock .qr-box{width:80px;height:80px;background:linear-gradient(135deg,#fff 25%,#ddd 50%,#fff 75%);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.6rem;color:#333;font-weight:700;text-align:center;padding:.25rem;line-height:1.2;position:relative;overflow:hidden}
+.qr-mock .qr-box::before{content:'';position:absolute;inset:8px;border:2px solid #333;border-radius:4px}
+.qr-mock .qr-box::after{content:'';position:absolute;width:20px;height:20px;background:#333;border-radius:2px}
+.qr-mock .qr-info{font-size:.72rem;color:var(--text-dim)}
+.qr-mock .qr-info strong{color:#fff}
+.vault-status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:.35rem}
+.vault-status-dot.unfunded{background:var(--text-dim)}
+.vault-status-dot.funded{background:#22c55e;box-shadow:0 0 8px rgba(34,197,94,0.5)}
+.vault-status-dot.released{background:var(--neon);box-shadow:0 0 8px var(--neon-glow)}
 </style>
 </head>
 <body>
@@ -487,6 +518,38 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         </div>
       </form>
       <div id="publishResult" style="margin-top:0.5rem;font-size:0.75rem;color:var(--text-dim)"></div>
+      <!-- ── Task Vault QR / Payment Panel (shown after publish) ── -->
+      <div id="vaultPanel" class="vault-panel" style="display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
+          <span style="color:var(--neon);font-weight:700;font-size:.8rem">📱 Task Vault — 扫码付款唯一托管钱包</span>
+          <span id="vaultStatusBadge" style="font-size:.65rem;padding:.15rem .5rem;border-radius:4px;background:rgba(148,163,184,0.1);color:var(--text-dim);border:1px solid var(--border)">UNFUNDED</span>
+        </div>
+        <div class="vp-row">
+          <span class="vp-label">Vault Address</span>
+          <span class="vp-value neon" id="vaultAddressDisplay">—</span>
+        </div>
+        <div class="vp-row">
+          <span class="vp-label">Task ID</span>
+          <span class="vp-value" id="vaultTaskIdDisplay">—</span>
+        </div>
+        <div class="vp-row">
+          <span class="vp-label">Balance</span>
+          <span class="vp-value" id="vaultBalanceDisplay">0.00 USDC</span>
+        </div>
+        <div class="qr-mock" id="qrMockPanel">
+          <div class="qr-box">SCAN<br>TO<br>PAY</div>
+          <div class="qr-info">
+            <strong>📱 Scan to Pay</strong><br>
+            Supports <strong style="color:#60a5fa">Stripe</strong> · <strong style="color:#22c55e">Credit Card</strong> · <strong style="color:#fbbf24">QR Transfer</strong><br>
+            <span style="font-size:.65rem;color:var(--text-dim)">Fiat → USDC auto-conversion via AIMS Fiat Bridge</span>
+          </div>
+        </div>
+        <div style="display:flex;gap:.75rem;margin-top:.5rem;flex-wrap:wrap">
+          <button class="btn btn-sm fiat-deposit-btn" onclick="simulateVaultPayment()" id="vaultPayBtn">💳 Simulate Fiat Payment (扫码付款)</button>
+          <button class="btn btn-sm btn-ghost" onclick="pollVaultStatus()" id="vaultPollBtn">⟳ Check Status</button>
+          <span style="font-size:.65rem;color:var(--text-dim);align-self:center" id="vaultPollResult"></span>
+        </div>
+      </div>
     </div>
 
     <!-- ── Commerce Mode & Buyout ── -->
@@ -641,6 +704,31 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </div>
     </div>
   </div>
+
+    <!-- ── One-Click Integration (一键接入) ── -->
+    <div class="card" style="border-color:rgba(167,139,250,0.15);margin-top:1.25rem">
+      <div class="card-header">
+        <span class="card-title">🔗 One-Click Integration (一键接入)</span>
+        <span style="font-size:0.65rem;color:var(--text-dim);text-align:right">Paste a skill name or API URL — revenue auto-routed</span>
+      </div>
+      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.75rem;line-height:1.5">
+        Enter a <strong style="color:#fff">Skill name</strong> (e.g. <code style="color:var(--neon)">amazon_scraper</code>) or a <strong style="color:#fff">third-party API URL</strong>.
+        The system auto-detects the type and binds <strong style="color:#a78bfa">70%</strong> streaming revenue to your wallet.
+        No CLI, no SDK, no configuration files.
+      </div>
+      <form onsubmit="oneClickIntegrate(event)" style="display:flex;flex-direction:column;gap:.75rem">
+        <div class="integrate-row">
+          <input class="input" id="integrateInput" placeholder="Skill name or API URL (e.g. https://api.example.com/v1)" required>
+          <input class="input" id="integrateWallet" placeholder="Your wallet (0x...)" style="flex:0.6;min-width:280px" value="">
+        </div>
+        <div style="display:flex;gap:.75rem;align-items:center">
+          <button class="btn btn-neon" type="submit" id="integrateBtn">🔗 One-Click Integrate</button>
+          <span style="font-size:0.65rem;color:var(--text-dim)" id="integrateCount">Mapped: —</span>
+          <button class="btn btn-sm btn-ghost" type="button" onclick="fetchIntegrationStatus()">⟳ Refresh</button>
+        </div>
+      </form>
+      <div id="integrateResult"></div>
+    </div>
 
     <!-- ── Task Market (抢单池) ── -->
     <div class="card" style="border-color:rgba(251,191,36,0.15);margin-top:1.25rem">
@@ -1508,6 +1596,10 @@ window.publishTask = async function(event) {
       resultEl.innerHTML = `<span class="pub-success">✅ Published: ${data.task_id} (escrow frozen: ${budget.toFixed(2)} USDC)</span>`;
       consumerLog("success", `📤 Publish Task: ${data.task_id} name="${taskName}" budget=${budget} custom=${isCustom}`);
       toast(`Task published: ${data.task_id}`, "success");
+      // Show vault panel for QR/fiat payment (扫码付款)
+      if (data.vault_address) {
+        showVaultPanel(data.task_id, data.vault_address, data.vault_status);
+      }
       document.getElementById("pubTaskName").value = "";
       document.getElementById("pubDescription").value = "";
       document.getElementById("pubIsCustom").checked = false;
@@ -1638,6 +1730,180 @@ function showCreditBlockModal(creditScore, required, taskId) {
   }
   document.getElementById("depositModal").classList.add("open");
 }
+
+// ════════════════════════════════════════════════════════════════
+//  One-Click Integration (一键接入)
+// ════════════════════════════════════════════════════════════════
+window.oneClickIntegrate = async function(event) {
+  event.preventDefault();
+  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
+
+  const input = document.getElementById("integrateInput").value.trim();
+  if (!input) { toast("Enter a skill name or API URL", "error"); return; }
+
+  const wallet = document.getElementById("integrateWallet").value.trim() || walletAddress;
+  if (!wallet.startsWith("0x") || wallet.length !== 42) {
+    toast("Enter a valid EVM wallet address (0x + 40 hex)", "error");
+    return;
+  }
+
+  const btn = document.getElementById("integrateBtn");
+  btn.disabled = true;
+  btn.textContent = "⏳ Integrating…";
+
+  try {
+    const body = JSON.stringify({
+      skill_name_or_url: input,
+      wallet_address: wallet,
+    });
+    const bodyBytes = new TextEncoder().encode(body);
+    const sig = await eip191SignBody(bodyBytes);
+    const headers = getAuthHeaders(bodyBytes, sig);
+
+    const resp = await fetch(`${API_BASE}/api/developer/integrate`, {
+      method: "POST", headers, body,
+    });
+
+    const result = document.getElementById("integrateResult");
+    if (resp.ok) {
+      const data = await resp.json();
+      const typeLabel = data.type === "url_proxy" ? "URL Proxy" : "Skill Mapping";
+      result.innerHTML = `<div class="integrate-status success">✅ Mapped "${input}" → ${wallet.slice(0,10)}… (${typeLabel})</div>`;
+      toast(`Integrated: ${input} → revenue to wallet`, "success");
+      consumerLog("success", `🔗 One-Click Integrate: ${input} → ${wallet} (${typeLabel})`);
+      document.getElementById("integrateInput").value = "";
+      await fetchIntegrationStatus();
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      result.innerHTML = `<div class="integrate-status error">❌ Integration failed: ${err.detail || resp.statusText}</div>`;
+      toast("Integration failed: " + (err.detail || resp.statusText), "error");
+    }
+  } catch (err) {
+    document.getElementById("integrateResult").innerHTML = `<div class="integrate-status error">❌ Error: ${err.message}</div>`;
+    toast("Integration error: " + err.message, "error");
+  }
+
+  btn.disabled = false;
+  btn.textContent = "🔗 One-Click Integrate";
+};
+
+window.fetchIntegrationStatus = async function() {
+  if (!walletAddress) return;
+  try {
+    const resp = await fetch(`${API_BASE}/api/developer/integration/${walletAddress}`);
+    if (resp.ok) {
+      const data = await resp.json();
+      const count = data.count || 0;
+      const el = document.getElementById("integrateCount");
+      if (el) el.textContent = `Mapped: ${count}`;
+    }
+  } catch(e) { /* silent */ }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  Vault (扫码付款唯一托管钱包) UI helpers
+// ════════════════════════════════════════════════════════════════
+let _currentVaultTaskId = null;
+
+function showVaultPanel(taskId, vaultAddress, vaultStatus) {
+  _currentVaultTaskId = taskId;
+  const panel = document.getElementById("vaultPanel");
+  if (!panel) return;
+  panel.style.display = "block";
+  document.getElementById("vaultAddressDisplay").textContent = vaultAddress;
+  document.getElementById("vaultTaskIdDisplay").textContent = taskId;
+  document.getElementById("vaultBalanceDisplay").textContent = "0.00 USDC";
+  const badge = document.getElementById("vaultStatusBadge");
+  badge.textContent = (vaultStatus || "unfunded").toUpperCase();
+  badge.style.background = "rgba(148,163,184,0.1)";
+  badge.style.color = "var(--text-dim)";
+  badge.style.borderColor = "var(--border)";
+  document.getElementById("vaultPayBtn").disabled = false;
+  document.getElementById("vaultPollResult").textContent = "";
+  document.getElementById("qrMockPanel").style.display = "flex";
+}
+
+window.simulateVaultPayment = async function() {
+  const taskId = _currentVaultTaskId;
+  if (!taskId) { toast("No active vault task", "error"); return; }
+  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
+
+  const btn = document.getElementById("vaultPayBtn");
+  btn.disabled = true;
+  btn.textContent = "⏳ Processing payment…";
+  document.getElementById("vaultPollResult").textContent = "";
+
+  try {
+    const body = JSON.stringify({});
+    const bodyBytes = new TextEncoder().encode(body);
+    const sig = await eip191SignBody(bodyBytes);
+    const headers = getAuthHeaders(bodyBytes, sig);
+
+    const resp = await fetch(`${API_BASE}/api/tasks/${taskId}/simulate-fiat-payment`, {
+      method: "POST", headers, body,
+    });
+
+    if (resp.ok) {
+      const data = await resp.json();
+      document.getElementById("vaultBalanceDisplay").textContent = data.balance.toFixed(2) + " USDC";
+      const badge = document.getElementById("vaultStatusBadge");
+      badge.textContent = "FUNDED";
+      badge.style.background = "rgba(34,197,94,0.1)";
+      badge.style.color = "#22c55e";
+      badge.style.borderColor = "rgba(34,197,94,0.15)";
+      document.getElementById("qrMockPanel").style.display = "none";
+      document.getElementById("vaultPollResult").innerHTML =
+        `<span style="color:#22c55e">✅ Vault funded! ${data.balance.toFixed(2)} USDC locked — task now in market</span>`;
+      toast(`✅ Vault funded: ${data.balance.toFixed(2)} USDC — task is live`, "success");
+      consumerLog("success", `📱 Vault funded: task=${taskId} amount=${data.balance} USDC (fiat simulation)`);
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      document.getElementById("vaultPollResult").innerHTML =
+        `<span style="color:var(--red)">❌ Payment failed: ${err.detail || resp.statusText}</span>`;
+      toast("Payment simulation failed: " + (err.detail || resp.statusText), "error");
+    }
+  } catch (err) {
+    document.getElementById("vaultPollResult").innerHTML =
+      `<span style="color:var(--red)">❌ Error: ${err.message}</span>`;
+    toast("Payment error: " + err.message, "error");
+  }
+
+  btn.disabled = false;
+  btn.textContent = "💳 Simulate Fiat Payment (扫码付款)";
+};
+
+window.pollVaultStatus = async function() {
+  const taskId = _currentVaultTaskId;
+  if (!taskId) { toast("No active vault task", "error"); return; }
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/tasks/${taskId}/vault-status`);
+    if (resp.ok) {
+      const data = await resp.json();
+      document.getElementById("vaultBalanceDisplay").textContent = data.balance.toFixed(2) + " USDC";
+      const badge = document.getElementById("vaultStatusBadge");
+      badge.textContent = data.status.toUpperCase();
+      if (data.status === "funded") {
+        badge.style.background = "rgba(34,197,94,0.1)";
+        badge.style.color = "#22c55e";
+        badge.style.borderColor = "rgba(34,197,94,0.15)";
+        document.getElementById("qrMockPanel").style.display = "none";
+      } else if (data.status === "released") {
+        badge.style.background = "rgba(222,255,154,0.1)";
+        badge.style.color = "var(--neon)";
+        badge.style.borderColor = "var(--neon-glow)";
+        document.getElementById("qrMockPanel").style.display = "none";
+        document.getElementById("vaultPayBtn").disabled = true;
+      }
+      document.getElementById("vaultPollResult").textContent =
+        `Status: ${data.status} | Balance: ${data.balance.toFixed(2)} USDC | Vault: ${data.vault_address.slice(0,14)}…`;
+    } else {
+      document.getElementById("vaultPollResult").textContent = "⚠️ Vault not found";
+    }
+  } catch (err) {
+    document.getElementById("vaultPollResult").textContent = "⚠️ " + err.message;
+  }
+};
 
 // ════════════════════════════════════════════════════════════════
 //  Consumer log
