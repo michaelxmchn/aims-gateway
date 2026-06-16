@@ -735,6 +735,20 @@ A: 待补充
   - Python SDK 完整示例
 - **`/developer-guide` 路由**：FastAPI `GET /developer-guide` 读取 `AIMS_SKILL_GUIDE.md`，通过 `_render_markdown_as_html()` 简易 Markdown→HTML 渲染器转换后嵌入 Dark 主题 HTML 模板返回
 
+### Boost Reward（动态加价催单）模式
+- **端点到逻辑**：`POST /api/tasks/{task_id}/boost-reward` — 仅 vault `funded` 状态可加价，校验 vault 存在且状态为 `funded`，否则 409
+- **状态变更**：`vault_data["balance"]` 和 `vault_data["budget"]` 同时增加 amount，记录 `boost_history[].amount` + `ts` 审计链，`total_boosted` 实时聚合
+- **SSE 广播**：`vault_boosted` 事件推送至全局结算流，`amount`、`new_balance`、`total_boosted` 字段
+- **前端联动**：vault 面板 boost section 在 vault `unfunded` 时 disabled + opacity 0.4，`funded` 后自动启用；`showVaultPanel()` / `pollVaultStatus()` / `simulateVaultPayment()` 均需更新 boost 状态
+- **Task Market 表现**：已加价任务在列表中显示 ⚡ 徽章和总加价金额
+
+### Multi-Contributor Splitter（多贡献者分账）模式
+- **数据结构**：`ContributorSplit(BaseModel)` — `wallet`（EVM 42 字符）+ `share_pct`（0-100 float）；存储在 `DEVELOPER_INTEGRATION_NS` 的 skill entry 中 `skills[].co_contributors[]`
+- **创建路径**：`POST /api/developer/integrate` 可选字段 `co_contributors` 写入；`POST /api/developer/set-contributors` 事后推送到已集成 skill
+- **分账逻辑**：`_settle_vault()` 在 70/25/5 分账时，若 skill 配置了 co_contributors，则 70% 开发者份额按比例分拆给各贡献者；最后一人接收剩余金额（防浮点误差）；`payouts` 数组和 `tx_ledger.record()` 逐钱包记录
+- **连带扣分**：`_penalize_contributors()` 在 AI Judge 失败时遍历开发者 + 所有 unique co-contributor 钱包各 -10 credit（`min(0, score - 10)`）
+- **前端 UI**：一键接入表单下方动态行（wallet/百分比/删除按钮），实时百分比总计，Save Split Config 按钮调 `set-contributors` 端点；`oneClickIntegrate()` 提交时自动收集 DOM 中 co-contributor 行
+
 ### One-Click Integration（一键接入）模式
 - **`POST /api/developer/integrate`**：接受 `IntegrateRequest(skill_name_or_url, wallet_address)`，自动检测输入类型（URL 开头 `http://`/`https://` 为 URL Proxy，否则为 Skill Mapping）
 - **存储模式**：`DEVELOPER_INTEGRATION_NS = "developer:integration"` namespace，`storage.dict_set(DEVELOPER_INTEGRATION_NS, wallet, integration_data)`，数据含 `{wallet, skills: [{name, url, mapped_at, type}], updated_at}`
@@ -755,3 +769,10 @@ A: 待补充
 - **`GET /api/tasks/{task_id}/vault-status`**：免认证轮询，返回 `VaultStatusResponse(task_id, vault_address, balance, status)`
 - **`POST /api/tasks/{task_id}/settle-from-vault`**：管理手动触发 vault 结算，用于测试/人工干预
 - **前端 UI**：Consumer 发布任务后 `showVaultPanel()` 展示 vault 地址/余额/QR 模拟 + `simulateVaultPayment()` 法币充值 + `pollVaultStatus()` 状态轮询；FUNDED 时隐藏 QR 面板，RELEASED 时禁用付款按钮
+
+### Multi-Platform AI Tool Integration Docs 模式
+- **实现方式**：`INTEGRATION_DOCS` 常量字符串（HTML 嵌入），`GET /integration-docs` FastAPI 路由直接返回 `HTMLResponse(content=INTEGRATION_DOCS)`
+- **平台覆盖**：5 个 AI 开发工具 — **Cursor**（`.cursor/mcp.json` 配置）、**Claude Code**（`CLAUDE.md` MCP 服务器声明）、**OpenClaw**（YAML manifest 下载）、**Hermes**（`bootstrap_helper.py` 自动发现）、**Codex**（OpenAPI 自动发现）
+- **One-Key Auth**：统一 EIP-191 personal_sign 认证说明，钱包即 API Key
+- **快速开始**：4 步标准流程（Install → Discover → Invoke → Settle），API Base 生产/本地切换
+- **发现端点**：文档链接至 `/api/discovery`、`/console`、`/developer-guide`

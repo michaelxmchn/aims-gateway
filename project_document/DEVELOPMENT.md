@@ -51,6 +51,10 @@
   - **(c) 数据库隐私隔离** — 链上仅存 balance hash + settlement 记录；用户注册/参数/输入输出保留在 Redis/Docker 层，不写链
   - **(d) 用户历史账本** — `console.html` Consumer 选项卡新增 User History Ledger 面板（按类型过滤 deposit/withdraw/task）+ `GET /api/wallet/history` 端点，auto-load 钱包连接时
 - [ ] **Phase 6.5: Base Sepolia 多 Agent 测试网联调** — E2E Chain Listener + AI Judge + SSE 闭环验证
+- [x] **Phase 12: Pre-Launch 三大功能冲刺**：
+  - [x] **Module 1: Boost Reward (动态加价催单)** — `POST /api/tasks/{id}/boost-reward` 端点（仅 funded 状态 vault 可加价，累加至 balance/budget，记录 boost_history 审计全链路，SSE vault_boosted 事件广播）；`static/console.html` vault 面板新增 boost section（金额输入 + 按钮 + 总加价显示），vault funded 后自动启用
+  - [x] **Module 2: Multi-Platform AI Tool Integration Docs** — `GET /integration-docs` 路由（`INTEGRATION_DOCS` 常量嵌入 HTML）；平台网格卡片（Cursor/Claude Code/OpenClaw/Hermes/Codex）；One-Key Auth 说明 + Quick Start 步骤
+  - [x] **Module 3: Multi-Contributor Splitter + Credit Penalty** — `ContributorSplit(BaseModel)` / `SetContributorsRequest(BaseModel)` / `IntegrateRequest.co_contributors` 扩展；`_settle_vault()` 按比例分拆 70% 开发者份额；`_penalize_contributors()` Judge 失败时连带扣分（开发者 + 所有 co-contributor -10 credit）；`static/console.html` 一键接入表单新增 co-contributor 动态行（添加/删除/保存）；`POST /api/developer/set-contributors` 推送到已集成 skill
 - [x] **品牌名称统一修正** — 全局 `AIMS Network` → `AIMS Gateway`，覆盖 3 个 HTML 文件、2 个 Markdown 文件、4 个 Python 源码文件，共 15 处引用
 - [x] **Phase 11: One-Click Integration + Task-Vault 扫码付款 + AI Judge Vault Settlement**：
   - [x] **One-Click Integration（一键接入）** — `POST /api/developer/integrate` 自动识别 URL vs Skill 名，绑定钱包地址用于 70% 分润；`GET /api/developer/integration/{wallet}` 查询接入状态；`static/console.html` Developer 选项卡新增一键接入 UI（skill/URL 输入 + 钱包绑定 + 状态展示）

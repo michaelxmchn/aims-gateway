@@ -554,9 +554,19 @@ class PendingTasksResponse(BaseModel):
     count: int
 
 
+class ContributorSplit(BaseModel):
+    wallet: str = Field(..., min_length=42, max_length=42, description="Co-contributor EVM wallet")
+    share_pct: float = Field(..., gt=0, le=100, description="Percentage share of the developer's 70% split (e.g. 50 for 50%%)")
+
+
 class IntegrateRequest(BaseModel):
     skill_name_or_url: str = Field(..., min_length=1, max_length=512, description="Skill name or third-party API URL")
     wallet_address: str = Field(..., min_length=42, max_length=42, description="EVM wallet for revenue settlement")
+    co_contributors: list[ContributorSplit] = Field(default_factory=list, description="Optional multi-contributor split configuration")
+
+
+class BoostRewardRequest(BaseModel):
+    amount: float = Field(..., gt=0, le=100000, description="Amount of USDC to add as boost reward")
 
 
 class IntegrationStatusResponse(BaseModel):
@@ -1051,6 +1061,7 @@ async def discovery():
                 "operations": [
                     {"method": "POST", "path": "/api/developer/integrate", "summary": "One-click integrate skill or URL to wallet.", "auth_required": True},
                     {"method": "GET", "path": "/api/developer/integration/{wallet}", "summary": "Get integration status.", "auth_required": False},
+                    {"method": "POST", "path": "/api/developer/set-contributors", "summary": "Set multi-contributor split for an integrated skill.", "auth_required": True},
                 ],
             },
             {
@@ -1059,6 +1070,7 @@ async def discovery():
                 "operations": [
                     {"method": "POST", "path": "/api/tasks/{id}/simulate-fiat-payment", "summary": "Simulate fiat → vault funding.", "auth_required": True},
                     {"method": "GET", "path": "/api/tasks/{id}/vault-status", "summary": "Poll vault funding & release status.", "auth_required": False},
+                    {"method": "POST", "path": "/api/tasks/{id}/boost-reward", "summary": "Boost reward for a funded vault task (动态加价催单).", "auth_required": True},
                     {"method": "POST", "path": "/api/tasks/{id}/settle-from-vault", "summary": "Manually trigger vault settlement (admin).", "auth_required": True},
                 ],
             },
@@ -1229,6 +1241,8 @@ async def submit_task(req: SubmitRequest):
             amount=BillingEngine.COST_PER_TASK_USDC,
             reason=f"AI Judge score {judge_verdict.score}/100: {judge_verdict.reason}",
         )
+        # Penalize credit scores of developer + co-contributors (joint accountability)
+        _penalize_contributors(skill_id, req.task_id, f"Judge score {judge_verdict.score}/100")
         await _run_in_thread(broker.complete_task, req.task_id, "FAILED")
         return SubmitResponse(
             task_id=req.task_id,
@@ -1466,6 +1480,13 @@ async def developer_integrate(req: IntegrateRequest):
         "type": "url_proxy" if is_url else "skill_map",
     }
 
+    # Store multi-contributor split config if provided
+    if req.co_contributors and not is_url:
+        entry["co_contributors"] = [
+            {"wallet": c.wallet.lower(), "share_pct": c.share_pct}
+            for c in req.co_contributors
+        ]
+
     # Prevent duplicates
     for s in existing_skills:
         if (is_url and s.get("url") == req.skill_name_or_url) or (not is_url and s.get("name") == req.skill_name_or_url):
@@ -1510,10 +1531,94 @@ async def developer_integration_status(wallet: str):
     return IntegrationStatusResponse(wallet=wallet, skills=skills, count=len(skills))
 
 
+class SetContributorsRequest(BaseModel):
+    skill_name: str = Field(..., min_length=1, max_length=256)
+    wallet_address: str = Field(..., min_length=42, max_length=42)
+    co_contributors: list[ContributorSplit] = Field(..., min_length=1, max_length=20)
+
+
+@app.post("/api/developer/set-contributors")
+async def set_contributors(req: SetContributorsRequest):
+    """Set multi-contributor split for an integrated skill.
+
+    Allows the lead developer to configure co-contributors and their
+    percentage shares of the developer's 70% revenue split.  When the
+    vault settles, funds are automatically distributed to all parties.
+    """
+    wallet = req.wallet_address.lower()
+    raw = storage.dict_get(DEVELOPER_INTEGRATION_NS, wallet)
+    if not raw or not isinstance(raw, dict):
+        raise HTTPException(status_code=404, detail="No integration found for this wallet. Run One-Click Integration first.")
+
+    skills = raw.get("skills", [])
+    updated = False
+    for s in skills:
+        if s.get("name") == req.skill_name:
+            s["co_contributors"] = [
+                {"wallet": c.wallet.lower(), "share_pct": c.share_pct}
+                for c in req.co_contributors
+            ]
+            updated = True
+            break
+
+    if not updated:
+        raise HTTPException(status_code=404, detail=f"Skill '{req.skill_name}' not found in your integrations.")
+
+    raw["updated_at"] = time.time()
+    storage.dict_set(DEVELOPER_INTEGRATION_NS, wallet, raw)
+
+    total_pct = sum(c.share_pct for c in req.co_contributors)
+    logger.info(
+        "Contributors set: wallet=%s skill=%s count=%d total_pct=%.1f%%",
+        wallet, req.skill_name, len(req.co_contributors), total_pct,
+    )
+
+    return {
+        "status": "ok",
+        "wallet": wallet,
+        "skill": req.skill_name,
+        "co_contributors": [{"wallet": c.wallet, "share_pct": c.share_pct} for c in req.co_contributors],
+        "total_share_pct": total_pct,
+        "message": f"✅ {len(req.co_contributors)} co-contributor(s) configured — {total_pct:.0f}% of developer 70% share allocated.",
+    }
+
+
 # ── Vault (扫码付款唯一托管钱包) endpoints ──────────────────────────────
 
 
 import hashlib
+
+
+def _penalize_contributors(skill_id: str, task_id: str, reason: str) -> None:
+    """Deduct credit score from developer + co-contributors on task failure.
+
+    When a task fails AI Judge, the developer and all co-contributors
+    lose 10 credit score points each.  This enforces joint accountability
+    — co-contributors are incentivized to audit each other's code.
+    """
+    developer_wallet = billing.get_developer(skill_id) if skill_id else ""
+    wallets_to_penalize = []
+
+    if developer_wallet:
+        wallets_to_penalize.append(developer_wallet)
+        int_raw = storage.dict_get(DEVELOPER_INTEGRATION_NS, developer_wallet.lower())
+        if int_raw and isinstance(int_raw, dict):
+            for s in int_raw.get("skills", []):
+                if s.get("name") == skill_id:
+                    for c in s.get("co_contributors", []):
+                        c_wallet = c.get("wallet", "")
+                        if c_wallet and c_wallet.lower() != developer_wallet.lower():
+                            wallets_to_penalize.append(c_wallet.lower())
+                    break
+
+    for w in set(wallets_to_penalize):
+        current = int(storage.dict_get(CREDIT_SCORE_NS, w) or 0)
+        penalized = max(0, current - 10)
+        storage.dict_set(CREDIT_SCORE_NS, w, penalized)
+        logger.info(
+            "CREDIT_PENALTY: wallet=%s skill=%s task=%s score=%d→%d reason=%s",
+            w, skill_id, task_id, current, penalized, reason,
+        )
 
 
 def _generate_vault_address(task_id: str) -> str:
@@ -1533,6 +1638,11 @@ def _settle_vault(task_id: str) -> dict:
     to developer (70%), worker (25%), and treasury (5%), then marks
     the vault as RELEASED.
 
+    If the developer has configured **multi-contributor split** via the
+    One-Click Integration form, the developer's 70% share is further
+    subdivided among all co-contributors according to their configured
+    percentages.
+
     Returns a dict with the split breakdown, or an error status.
     """
     vault_data = storage.dict_get(TASK_VAULT_NS, task_id)
@@ -1546,18 +1656,61 @@ def _settle_vault(task_id: str) -> dict:
     worker_share = round(balance * 0.25, 6)
     treasury_share = round(balance * 0.05, 6)
 
+    # ── Multi-contributor split resolution ──────────────────────────
+    skill_id = vault_data.get("skill_id", "")
+    developer_wallet = billing.get_developer(skill_id) if skill_id else ""
+    co_contributors_raw = []
+
+    if developer_wallet:
+        int_raw = storage.dict_get(DEVELOPER_INTEGRATION_NS, developer_wallet.lower())
+        if int_raw and isinstance(int_raw, dict):
+            for s in int_raw.get("skills", []):
+                if s.get("name") == skill_id or s.get("url", "").endswith(skill_id):
+                    co_contributors_raw = s.get("co_contributors", [])
+                    break
+
+    # ── Build payout map ────────────────────────────────────────────
+    payouts: list[dict] = []
+    if co_contributors_raw and len(co_contributors_raw) > 0:
+        total_pct = sum(float(c.get("share_pct", 0)) for c in co_contributors_raw)
+        if total_pct > 0:
+            remaining_dev = dev_share
+            for i, c in enumerate(co_contributors_raw):
+                c_wallet = c.get("wallet", "")
+                c_pct = float(c.get("share_pct", 0))
+                c_share = round(dev_share * c_pct / total_pct, 6) if i < len(co_contributors_raw) - 1 else remaining_dev
+                remaining_dev = round(remaining_dev - c_share, 6)
+                payouts.append({"wallet": c_wallet, "share_pct": c_pct, "amount": c_share, "role": "co_contributor"})
+                tx_ledger.record(c_wallet, c_share, "settlement", task_id, {"type": "vault_co_contributor"})
+        else:
+            payouts.append({"wallet": developer_wallet, "share_pct": 100, "amount": dev_share, "role": "developer"})
+            tx_ledger.record(developer_wallet, dev_share, "settlement", task_id, {"type": "vault_developer"})
+    else:
+        payouts.append({"wallet": developer_wallet, "share_pct": 100, "amount": dev_share, "role": "developer"})
+        if developer_wallet:
+            tx_ledger.record(developer_wallet, dev_share, "settlement", task_id, {"type": "vault_developer"})
+
+    # Record worker + treasury shares
+    worker_wallet = vault_data.get("worker_id", "")
+    if worker_wallet:
+        tx_ledger.record(worker_wallet, worker_share, "settlement", task_id, {"type": "vault_worker"})
+    tx_ledger.record("treasury", treasury_share, "settlement", task_id, {"type": "vault_treasury"})
+
     vault_data["status"] = "released"
     vault_data["settled_at"] = time.time()
     vault_data["split"] = {
+        "developer_multi": payouts if co_contributors_raw else [],
         "developer_70": dev_share,
         "worker_25": worker_share,
         "treasury_5": treasury_share,
     }
     storage.dict_set(TASK_VAULT_NS, task_id, vault_data)
 
+    payout_detail = "; ".join(f"{p['wallet'][:10]}…={p['amount']:.4f}" for p in payouts)
     logger.info(
-        "VAULT_SETTLE: task=%s balance=%.6f dev=%.6f worker=%.6f treasury=%.6f",
+        "VAULT_SETTLE: task=%s balance=%.6f dev=%.6f worker=%.6f treasury=%.6f multi=%s",
         task_id, balance, dev_share, worker_share, treasury_share,
+        payout_detail if co_contributors_raw else "no",
     )
 
     broadcast_settlement({
@@ -1568,6 +1721,7 @@ def _settle_vault(task_id: str) -> dict:
             "developer_70": dev_share,
             "worker_25": worker_share,
             "treasury_5": treasury_share,
+            "payouts": payouts,
         },
         "ts": time.time(),
     })
@@ -1578,6 +1732,7 @@ def _settle_vault(task_id: str) -> dict:
         "developer": dev_share,
         "worker": worker_share,
         "treasury": treasury_share,
+        "payouts": payouts,
         "vault_address": vault_data.get("vault_address", ""),
     }
 
@@ -1630,6 +1785,67 @@ async def simulate_fiat_payment(task_id: str):
         "vault_address": vault_data.get("vault_address", ""),
         "balance": budget,
         "message": f"✅ Vault funded with {budget:.2f} USDC — task is now available in the market",
+    }
+
+
+@app.post("/api/tasks/{task_id}/boost-reward")
+async def boost_reward(task_id: str, req: BoostRewardRequest):
+    """⚡ Boost Reward (动态加价催单) — add funds to an existing task vault.
+
+    Allows the consumer to increase the reward for a task that's already
+    been published and funded.  The additional funds are deposited into
+    the same unique task vault, bumping the total budget visible in the
+    Task Market.  An SSE ``vault_boosted`` event is broadcast so the
+    global settlement feed picks it up.
+
+    The vault must be in ``funded`` state (i.e. already paid for once).
+    Returns the updated vault balance and total boosted amount.
+    """
+    vault_data = storage.dict_get(TASK_VAULT_NS, task_id)
+    if vault_data is None:
+        raise HTTPException(status_code=404, detail=f"No vault for task {task_id}")
+    if vault_data.get("status") != "funded":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Vault for task {task_id} is in state '{vault_data.get('status')}', expected 'funded'. Initial payment must settle first.",
+        )
+
+    amount = round(req.amount, 6)
+    vault_data["balance"] = round(vault_data.get("balance", 0.0) + amount, 6)
+    vault_data["budget"] = round(vault_data.get("budget", 0.0) + amount, 6)
+    vault_data["boosted_at"] = time.time()
+    vault_data.setdefault("boost_history", []).append({
+        "amount": amount,
+        "ts": time.time(),
+    })
+    vault_data["total_boosted"] = round(
+        sum(b.get("amount", 0) for b in vault_data.get("boost_history", [])), 6
+    )
+    storage.dict_set(TASK_VAULT_NS, task_id, vault_data)
+
+    logger.info(
+        "VAULT_BOOSTED: task=%s vault=%s amount=%.6f USDC total=%.6f",
+        task_id, vault_data.get("vault_address", ""), amount, vault_data["balance"],
+    )
+
+    broadcast_settlement({
+        "action": "vault_boosted",
+        "task_id": task_id,
+        "vault_address": vault_data.get("vault_address", ""),
+        "amount": amount,
+        "new_balance": vault_data["balance"],
+        "total_boosted": vault_data.get("total_boosted", amount),
+        "ts": time.time(),
+    })
+
+    return {
+        "status": "boosted",
+        "task_id": task_id,
+        "vault_address": vault_data.get("vault_address", ""),
+        "balance": vault_data["balance"],
+        "boost_amount": amount,
+        "total_boosted": vault_data.get("total_boosted", amount),
+        "message": f"⚡ Boosted! +{amount:.2f} USDC added — total reward is now {vault_data['balance']:.2f} USDC",
     }
 
 
@@ -1845,7 +2061,133 @@ async def developer_guide():
 </html>""")
 
 
-def _render_markdown_as_html(md: str) -> str:
+INTEGRATION_DOCS = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>AIMS Gateway — AI Tool Integration Docs</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'SF Mono',monospace;background:#0f172a;color:#cbd5e1;line-height:1.7;padding:2rem;max-width:1000px;margin:0 auto}
+  h1{color:#deff9a;font-size:2rem;border-bottom:1px solid rgba(222,255,154,0.2);padding-bottom:.5rem;margin-bottom:1.5rem}
+  h2{color:#a78bfa;margin-top:2.5rem;border-bottom:1px solid rgba(167,139,250,0.1);padding-bottom:.35rem}
+  h3{color:#60a5fa;margin-top:1.5rem}
+  p{margin:1rem 0;color:#94a3b8}
+  code{background:rgba(222,255,154,0.08);padding:.1rem .3rem;border-radius:3px;font-size:.85em;color:#deff9a}
+  pre{background:#0a0f1a;padding:1rem;border-radius:6px;overflow-x:auto;border:1px solid rgba(222,255,154,0.08);margin:.5rem 0}
+  pre code{background:transparent;padding:0;white-space:pre-wrap}
+  a{color:#60a5fa;text-decoration:none}
+  a:hover{color:#deff9a}
+  .platform-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem;margin:1.5rem 0}
+  .platform-card{background:#1e293b;border:1px solid rgba(222,255,154,0.08);border-radius:10px;padding:1.25rem}
+  .platform-card h3{margin-top:0;color:#deff9a}
+  .platform-card .badge{display:inline-block;padding:.15rem .5rem;border-radius:4px;font-size:.65rem;font-weight:600;margin-bottom:.75rem}
+  .badge.claude{background:rgba(167,139,250,0.15);color:#a78bfa}
+  .badge.cursor{background:rgba(52,211,153,0.15);color:#34d399}
+  .badge.openclaw{background:rgba(251,191,36,0.15);color:#fbbf24}
+  .badge.hermes{background:rgba(96,165,250,0.15);color:#60a5fa}
+  .badge.codex{background:rgba(255,107,107,0.15);color:#ff6b6b}
+  ul{margin:.5rem 0 .5rem 1.5rem;color:#94a3b8}
+  li{margin:.25rem 0}
+  em{color:#60a5fa;font-style:normal}
+  .section-link{font-size:.75rem;color:var(--text-dim,#94a3b8)}
+</style>
+</head>
+<body>
+<h1>🔌 AIMS Gateway — AI Tool Integration</h1>
+<p>Connect <strong style="color:#fff">Cursor</strong>, <strong style="color:#fff">Claude Code</strong>, <strong style="color:#fff">OpenClaw</strong>, <strong style="color:#fff">Hermes</strong>, and <strong style="color:#fff">Codex</strong> to AIMS in one line. Register any skill as a tool, then invoke it from your AI agent with automatic 70/25/5 settlement.</p>
+
+<div class="platform-grid">
+  <div class="platform-card">
+    <div class="badge cursor">cursor</div>
+    <h3>Cursor</h3>
+    <p style="font-size:.85rem">Add a custom MCP tool in <code style="font-size:.75rem">.cursor/mcp.json</code>:</p>
+    <pre style="font-size:.72rem"><code>{
+  "mcpServers": {
+    "aims-gateway": {
+      "command": "python3",
+      "args": ["-m", "src.client.mcp_server"]
+    }
+  }
+}</code></pre>
+    <p style="font-size:.75rem">Restart Cursor → skills appear as <code style="font-size:.7rem">@tools</code> in composer.</p>
+  </div>
+
+  <div class="platform-card">
+    <div class="badge claude">claude code</div>
+    <h3>Claude Code</h3>
+    <p style="font-size:.85rem">One-liner MCP registration in <code style="font-size:.75rem">CLAUDE.md</code>:</p>
+    <pre style="font-size:.72rem"><code># MCP
+aims-gateway: python3 -m src.client.mcp_server</code></pre>
+    <p style="font-size:.75rem">Then <code style="font-size:.7rem">/mcp aims-gateway</code> from chat — all skills load automatically.</p>
+  </div>
+
+  <div class="platform-card">
+    <div class="badge openclaw">openclaw</div>
+    <h3>OpenClaw</h3>
+    <p style="font-size:.85rem">Register the AIMS manifest in your OpenClaw config:</p>
+    <pre style="font-size:.72rem"><code>tools:
+  - name: aims-gateway
+    manifest: https://api.aimsgateway.com/manifests/openclaw_skill.json</code></pre>
+    <p style="font-size:.75rem">Agent auto-discovers all skills via the manifest endpoint.</p>
+  </div>
+
+  <div class="platform-card">
+    <div class="badge hermes">hermes</div>
+    <h3>Hermes Protocol</h3>
+    <p style="font-size:.85rem">Agent-to-agent via Hermes bootstrap:</p>
+    <pre style="font-size:.72rem"><code>from bootstrap_helper import AIMSClient
+aims = AIMSClient("https://api.aimsgateway.com")
+skills = aims.discover()
+aims.run(skills[0]["id"], {"url": "..."})</code></pre>
+    <p style="font-size:.75rem">See <a href="/developer-guide">Developer Guide</a> for full Hermes tutorial.</p>
+  </div>
+
+  <div class="platform-card">
+    <div class="badge codex">codex</div>
+    <h3>Codex / GPTs</h3>
+    <p style="font-size:.85rem">OpenAPI-compatible discovery for GPT Action:</p>
+    <pre style="font-size:.72rem"><code># In GPT Actions config:
+openapi: https://api.aimsgateway.com/api/discovery
+# Skills appear as callable functions automatically.</code></pre>
+    <p style="font-size:.75rem">GPT discovers all endpoints via <code style="font-size:.7rem">/api/discovery</code> — zero manual config.</p>
+  </div>
+</div>
+
+<h2>🔐 One-Key Auth</h2>
+<p>Every platform uses the same <strong style="color:#fff">EIP-191 personal_sign</strong> auth flow — no API keys, no secrets:</p>
+<pre><code>X-Wallet-Address: 0xYourWallet
+X-Signature: &lt;EIP-191 personal_sign of request body&gt;
+X-Timestamp: &lt;UNIX seconds&gt;</code></pre>
+<p>Your wallet IS your API key. Sign once per request via MetaMask or <code style="color:#deff9a">eth_account</code>.</p>
+
+<h2>🚀 Quick Start</h2>
+<ol style="color:#94a3b8;margin-left:1.5rem;margin-bottom:1rem">
+  <li><strong style="color:#fff">Install</strong>: <code style="color:#deff9a">pip install aims-cli</code> (coming soon) or use the MCP server directly via <code style="color:#deff9a">python3 -m src.client.mcp_server</code>.</li>
+  <li><strong style="color:#fff">Discover</strong>: <code style="color:#deff9a">curl https://api.aimsgateway.com/api/discovery</code> to list all available skills.</li>
+  <li><strong style="color:#fff">Invoke</strong>: The MCP server exposes each skill as a callable tool — your AI agent calls them like native functions.</li>
+  <li><strong style="color:#fff">Settle</strong>: 70% developer / 25% worker / 5% treasury — automatic on-chain after AI Judge passes. See <a href="/developer-guide">Developer Guide</a>.</li>
+</ol>
+
+<h2>📡 API Base</h2>
+<pre><code>https://api.aimsgateway.com     # Production (Base Mainnet)
+http://127.0.0.1:8000            # Local dev (Hardhat/Anvil)</code></pre>
+<p>Set <code style="color:#deff9a">localStorage.aims_api_base</code> in your browser console to switch environments.</p>
+
+<p style="margin-top:2rem;padding-top:1rem;border-top:1px solid rgba(222,255,154,0.08);font-size:.78rem;color:#94a3b8">
+📖 <a href="/developer-guide">Full Developer Guide</a> ·
+🖥️ <a href="/console">Web3 Console</a> ·
+⚙️ <a href="/api/discovery">API Discovery</a>
+</p>
+</body>
+</html>"""
+
+
+@app.get("/integration-docs", response_class=HTMLResponse)
+async def integration_docs():
+    """Serve the multi-platform AI tool integration docs page."""
+    return HTMLResponse(content=INTEGRATION_DOCS)(md: str) -> str:
     """Basic markdown→HTML renderer for the developer guide."""
     import re
     lines = md.split("\n")

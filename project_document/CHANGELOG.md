@@ -7,6 +7,20 @@
 
 ## [2026-06-16]
 ### 新增
+- feat(boost): `POST /api/tasks/{id}/boost-reward` — 动态加价催单端点（vault funded 状态可追加奖励金，boost_history 审计链，SSE vault_boosted 广播）
+- feat(docs): `GET /integration-docs` — 多平台 AI 工具集成文档路由（Cursor/Claude Code/OpenClaw/Hermes/Codex 平台卡片，One-Key Auth）
+- feat(splitter): `POST /api/developer/set-contributors` — 多贡献者分账配置端点，支持按比例拆分 70% 开发者份额
+- feat(splitter): `_settle_vault()` 多贡献者分账 — 自动解析集成数据的 co_contributors，按比例分配 70% 开发者份额至各钱包
+- feat(splitter): `_penalize_contributors()` — AI Judge 失败时连带扣分机制（开发者 + 所有 co-contributor 各 -10 credit）
+- feat(console): `static/console.html` — vault 面板新增 Boost Reward ⚡ 加价 UI（金额输入/按钮/总加价显示），vault funded 后自动启用 boost section
+- feat(console): `static/console.html` — 一键接入表单新增 Co-Contributors Split 多贡献者配置 UI（动态行添加/删除/保存，实时百分比总计）
+- feat(console): `static/console.html` — Task Market 抢单池新增 boost 徽章（已加价任务显示 ⚡ 标签）
+- feat(discovery): `/api/discovery` — 新增 boost-reward 和 set-contributors 操作记录
+### 修改
+- feat(server): `IntegrateRequest` 扩展 co_contributors 可选字段 — 一键接入时附带多贡献者配置
+- feat(server): `Discovery` 端点 — Task Vault 分类新增 boost-reward，Developer Integration 分类新增 set-contributors
+- feat(console): `oneClickIntegrate()` — 提交时自动收集 DOM 中 co-contributor 行数据
+- feat(console): `showVaultPanel()` / `pollVaultStatus()` / `simulateVaultPayment()` — boost section 状态联动（非 funded 禁用/opacity 0.4）
 - feat(test): `scripts/test_trigger_biz.py` — E2E 业务触发测试脚本，跨境贸易结算全链路（POST /api/run → DeepSeek AI Judge → Worker claim/submit → on-chain settlement）
 - feat(vault): `src/gateway/server.py` — `DEVELOPER_INTEGRATION_NS` + `TASK_VAULT_NS` 常量，`_generate_vault_address()` 确定性唯一 vault 地址生成（`0xV` + SHA256），`_settle_vault()` 70/25/5 分账，`POST /api/developer/integrate` 一键接入端点（自动识别 URL vs Skill），`POST /api/tasks/{id}/simulate-fiat-payment` 法币充值模拟，`GET /api/tasks/{id}/vault-status` 状态轮询，`POST /api/tasks/{id}/settle-from-vault` 管理手动结算
 - feat(vault): `src/gateway/server.py` — `publish_task` 响应升级为 `PublishTaskResponse`，新增 vault 自动生成（`unfunded` 状态）；`submit_task` 插入 vault settlement 门控（AI Judge 通过后 vault-funded 优先结算）
