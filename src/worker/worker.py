@@ -140,22 +140,85 @@ def execute_task(task: dict[str, Any]) -> dict[str, Any]:
             # Fall through to mock execution
 
     # ── Mock execution (legacy / static skills) ──────────────────────────
-    asin = task.get("asin", "UNKNOWN-ASIN")
     compute_tier = task.get("compute_tier", 1)
+    search_term = (payload.get("search_term", "") if isinstance(payload, dict) else "")
 
     delay = random.uniform(0.1, 0.5) * compute_tier
     time.sleep(delay)
 
     logger.info(
-        "executed (mock) task %s (tier=%s, asin=%s) in %.2fs",
-        task_id, compute_tier, asin, delay,
+        "executed (mock) task %s (tier=%s, search='%s') in %.2fs",
+        task_id, compute_tier, search_term, delay,
     )
 
-    return {
-        "products": [{"asin": asin, "price": round(random.uniform(5.0, 50.0), 2)}],
-        "total_found": random.randint(1, 5),
-        "search_term": f"product-{asin}",
+    # Realistic Amazon-style mock data — uses search_term context
+    all_products = {
+        "electronics": [
+            ("B09G9D7K7P", "Wireless Bluetooth Headphones Noise Cancelling Over-Ear", 59.99, 4.6),
+            ("B0B1V7K9Z3", "USB-C Fast Charging Cable 6ft 3-Pack Nylon Braided", 12.99, 4.8),
+            ("B0C1H2J3K4", "Portable External SSD 1TB USB 3.2 Gen 2 Up to 1050MB/s", 89.99, 4.7),
+            ("B0D2F3G4H5", "Smart Home WiFi Router AX6000 Dual Band 6-Stream", 129.99, 4.5),
+            ("B0E3R4T5Y6", "Mechanical Gaming Keyboard RGB Hot-Swappable Switch", 79.99, 4.6),
+            ("B0F4G5H6J7", "27英寸 4K IPS 显示器 USB-C 90W 供电 HDR400", 349.99, 4.7),
+            ("B0G5H6J7K8", "100W GaN 充电器 4口 快速充电站 兼容全设备", 45.99, 4.8),
+        ],
+        "wholesale": [
+            ("B0K1L2M3N4", "Wholesale Lot 50x Bluetooth 5.3 Earbuds Bulk Packaging OEM", 299.99, 4.3),
+            ("B0L2M3N4O5", "Bulk USB-C to Lightning Cable 100-Pack Wholesale White", 189.99, 4.5),
+            ("B0M3N4O5P6", "Wholesale Portable Power Bank 10000mAh 20-Pack Lot", 459.99, 4.4),
+            ("B0N4O5P6Q7", "Bulk Order Mini Wireless Speaker 50-Pack OEM White Label", 599.99, 4.2),
+            ("B0O5P6Q7R8", "Wholesale Smart Plug WiFi 4-Pack 100 Units Lot", 1299.99, 4.6),
+            ("B0P6Q7R8S9", "Bulk Mechanical Keyboard Switch Set 500-Pack OEM",
+             249.99, 4.5),
+        ],
+        "components": [
+            ("B0Q7R8S9T1", "Resistor Kit 0603 0805 1206 SMD 5000-Piece Assortment", 24.99, 4.7),
+            ("B0R8S9T1U2", "Raspberry Pi 5 8GB Single Board Computer", 79.99, 4.8),
+            ("B0S9T1U2V3", "Arduino Mega 2560 Rev3 Development Board Official", 48.99, 4.6),
+            ("B0T1U2V3W4", "ESP32 WiFi BLE Development Board 10-Pack", 89.99, 4.7),
+            ("B0U2V3W4X5", "FPGA Development Board Artix-7 XC7A35T", 169.99, 4.4),
+            ("B0V3W4X5Y6", "Raspberry Pi 5 Active Cooler Official Aluminum Heatsink",
+             5.99, 4.5),
+        ],
     }
+
+    # Select product pool based on search term
+    term_lower = search_term.lower()
+    if any(w in term_lower for w in ["wholesale", "bulk", "lot", "oem", "bulk order"]):
+        pool = all_products["wholesale"] + all_products["electronics"][:3]
+    elif any(w in term_lower for w in ["component", "board", "chip", "fpga", "raspberry", "arduino"]):
+        pool = all_products["components"] + all_products["electronics"][2:5]
+    else:
+        pool = all_products["electronics"]
+
+    product_count = min(len(pool), random.randint(3, len(pool)))
+    sampled = random.sample(pool, product_count)
+    products = []
+    for asin, title, price, rating in sampled:
+        products.append({
+            "asin": asin,
+            "title": title,
+            "price": price,
+            "rating": rating,
+            "review_count": random.randint(50, 15000),
+            "in_stock": True,
+            "fulfilled_by_amazon": True,
+            "shipping_info": "FREE Prime delivery",
+        })
+
+    result = {
+        "products": products,
+        "total_found": product_count,
+        "search_term": search_term,
+        "page": 1,
+        "results_per_page": 20,
+    }
+
+    # Pass through canary watermark from payload (anti-piracy)
+    if isinstance(payload, dict) and "_canary_token" in payload:
+        result["_canary_token"] = payload["_canary_token"]
+
+    return result
 
 
 def submit_result(task_id: str, result_data: dict[str, Any]) -> dict[str, Any] | None:

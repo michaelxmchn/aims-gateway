@@ -5,6 +5,19 @@
 > **格式要求**: 严格遵循 `.claude/output-styles/bullet-points.md` 格式规范  
 > **提交规范**: 遵循 commitlint 规范（type(scope): subject）
 
+## [2026-06-16]
+### 新增
+- feat(test): `scripts/test_trigger_biz.py` — E2E 业务触发测试脚本，跨境贸易结算全链路（POST /api/run → DeepSeek AI Judge → Worker claim/submit → on-chain settlement）
+### 修改
+- feat(worker): `src/worker/utils/signer.py` — HMAC-SHA256 → EIP-191 personal_sign，Worker 通过 `AIMS_WORKER_KEY`/`AIMS_WORKER_WALLET` 环境变量 EIP-191 签名，HMAC 保留为向后兼容回退
+- feat(worker): `src/worker/worker.py` — 搜索词感知三池 Mock（electronics/wholesale/components），Canary `_canary_token` 透传修复 DeepSeek 低分问题
+- fix(judge): `src/judge/judge_agent.py` — `max_tokens` 256→1024 适配 DeepSeek v4 推理长回复，增加截断 JSON 修复启发式
+- feat(server): `src/gateway/server.py` — JudgeEngine 模型名从 `LLM_MODEL_NAME` 环境变量读取，生产切换 `deepseek-v4-flash`
+- fix(config): `docker-compose.prod.yml` — `LLM_MODEL_NAME` 修正为 `deepseek-v4-flash`（原 `deepseek-chat` 被 DeepSeek API 拒绝）
+- docs(deploy): `DEPLOY.md` — 追加入《AIMS 2.0 系统业务与功能梳理报告》9 大板块
+### 验证
+- **E2E 全链路通过**: task-0006 (worker-002) → DeepSeek Score ≥80 → SETTLED → on-chain settlement 执行成功 ✓
+
 ## [2026-06-15]
 ### 新增
 - feat(circuit_breaker): `src/gateway/circuit_breaker.py` — 三阶智能熔断隔离（CLOSED/HALF_OPEN/OPEN），3 连续失败→降级，6 累积→熔断，120s 冷却自愈，持久化计数器，SSE 黄/红警回调

@@ -150,6 +150,7 @@ _judge_engine = JudgeEngine(
     contract_client=_contract,
     gateway_private_key=AIMS_GATEWAY_PRIVATE_KEY,
     on_refund_alert=broadcast_settlement,
+    model=os.getenv("LLM_MODEL_NAME", "deepseek-chat"),
 )
 
 # ── Circuit Breaker — 3-state fault isolation with SSE alerts ───────

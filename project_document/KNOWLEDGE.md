@@ -654,7 +654,9 @@ A: 待补充
 - **点火后健康轮询**：`/api/admin/listener` 端点 5 轮轮询，同时验证 `ChainListener.status=running` 和 `CircuitBreaker.state=CLOSED`
 
 ### DeepSeek AI Judge 生产切换模式
-- **零代码变更**：`JudgeEngine` 使用 `openai` Python 包，自动读取 `OPENAI_BASE_URL` 环境变量；只需设置 `OPENAI_BASE_URL=https://api.deepseek.com/v1` + `OPENAI_API_KEY=<DeepSeek Key>` 即完成切换
-- **硬编码兜底**：`deploy_mainnet.sh` 脚本内写死 `export OPENAI_BASE_URL="https://api.deepseek.com/v1"` 和 `export LLM_MODEL_NAME="deepseek-chat"`，杜绝人为配错
-- **生产模型**：`deepseek-chat` 完全兼容 OpenAI Chat Completions API，`temperature=0.1` + `max_tokens=256` 保持评分一致性
+- **零代码变更**：`JudgeEngine` 使用 `openai` Python 包，自动读取 `OPENAI_BASE_URL` 环境变量；只需设置 `OPENAI_BASE_URL=https://api.deepseek.com/v1` + `OPENAI_API_KEY=<DeepSeek Key>` + `LLM_MODEL_NAME=deepseek-v4-flash` 即完成切换
+- **模型名严格校验**：DeepSeek API 拒绝 `deepseek-chat`/`gpt-4o-mini`，生产必须使用 `deepseek-v4-flash`（v4 快速版）或 `deepseek-v4-pro`（专业版），通过 `JudgeEngine(model=os.getenv("LLM_MODEL_NAME"))` 从环境变量注入
+- **max_tokens 调优**：DeepSeek v4 推理链较长，`max_tokens=256` 导致 JSON 评分被截断无法解析；生产设为 `1024` 确保评分 JSON 完整返回
+- **截断 JSON 修复**：DeepSeek v4 可能在 `reason` 字段中间截断，`if not cleaned.endswith("}"): cleaned += '" }'` 补全缺失的右引号和闭合括号，提高 JSON 解析成功率
+- **硬编码兜底**：`deploy_mainnet.sh` 脚本内写死 `export OPENAI_BASE_URL="https://api.deepseek.com/v1"` + `LLM_MODEL_NAME="deepseek-v4-flash"`，杜绝人为配错
 - **生产监控**：`/api/admin/judge` 端点返回当前 model 名称验证，`/api/admin/judge/verdicts` 回溯最近评分记录

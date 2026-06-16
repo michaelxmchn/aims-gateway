@@ -219,6 +219,12 @@
 参见下方 Fly.io 部署命令。
 
 ## 最近完成
+- docs(deploy): `DEPLOY.md` — 追加入《AIMS 2.0 系统业务与功能梳理报告》，涵盖 9 大板块：核心定位、系统拓扑、业务流程、商业模式、安全架构、E2E 联调结果、部署架构、风险控制、快速运维命令
+- feat(test): `scripts/test_trigger_biz.py` — E2E 业务触发测试脚本，模拟跨境贸易结算：POST /api/run → DeepSeek AI Judge 合规评分 → Worker claim/submit → 链上结算全链路验证通过
+- feat(worker): `src/worker/utils/signer.py` — HMAC-SHA256 → EIP-191 personal_sign 重写，支持 `AIMS_WORKER_KEY`/`AIMS_WORKER_WALLET` 环境变量，HMAC 保留为向后兼容回退
+- feat(worker): `src/worker/worker.py` — 搜索词感知的三池 Mock 数据（electronics/wholesale/components），Canary `_canary_token` 透传，修复 DeepSeek 评分过低问题
+- fix(judge): `src/judge/judge_agent.py` — `max_tokens=256` → `1024`（DeepSeek v4 推理长回复截断），增加截断 JSON 修复启发式
+- fix(server): `src/gateway/server.py` — JudgeEngine 从 `LLM_MODEL_NAME` 环境变量读取模型名，硬编码 `gpt-4o-mini` → `deepseek-v4-flash`
 - 初始化 Git 仓库（main 分支，Git Flow 策略）
 - 运行 ADS scaffold 脚本，生成 .project.agents/ 治理框架（17 个文件）
 - 确定技术方向：Base L2 + 智能合约（仅结算/计数）+ 本地 Append-only Log

@@ -278,7 +278,7 @@ class JudgeEngine:
                     {"role": "user", "content": prompt},
                 ],
                 temperature=0.1,
-                max_tokens=256,
+                max_tokens=1024,
             )
             raw = response.choices[0].message.content or ""
         except Exception as exc:
@@ -299,6 +299,9 @@ class JudgeEngine:
                 cleaned = cleaned.rsplit("```", 1)[0]
             if cleaned.startswith("json"):
                 cleaned = cleaned[4:].strip()
+            # Heal truncated JSON (DeepSeek v4 may hit token limit mid-reason)
+            if not cleaned.endswith("}"):
+                cleaned += '" }'  # patch missing reason close + outer close
             data = json.loads(cleaned)
             score = int(data.get("score", JUDGE_DETERMINISTIC_THRESHOLD))
             reason = str(data.get("reason", ""))
