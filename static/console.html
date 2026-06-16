@@ -198,6 +198,35 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 /* ── Empty state ── */
 .empty-state{text-align:center;padding:2rem;color:var(--text-dim);font-size:0.85rem}
 .empty-state .big-icon{font-size:2.5rem;margin-bottom:0.75rem;opacity:0.3}
+
+/* ── Drag & Drop Upload ── */
+.drop-zone{border:2px dashed var(--border);border-radius:10px;padding:2rem;text-align:center;cursor:pointer;transition:all .3s;background:rgba(15,23,42,0.3)}
+.drop-zone:hover,.drop-zone.drag-over{border-color:var(--neon);background:var(--neon-glow)}
+.drop-zone .dz-icon{font-size:2.5rem;margin-bottom:.5rem;opacity:0.4}
+.drop-zone .dz-text{color:var(--text-dim);font-size:.8rem}
+.drop-zone .dz-text strong{color:var(--neon)}
+.drop-zone .dz-hint{font-size:.65rem;color:var(--text-dim);margin-top:.3rem;opacity:0.5}
+.drop-zone .dz-file{display:none;padding:.5rem;background:rgba(52,211,153,0.06);border-radius:6px;margin-top:.5rem;font-size:.75rem;color:#34d399}
+.drop-zone.has-file{border-color:#34d399;border-style:solid;background:rgba(52,211,153,0.04)}
+.drop-zone.has-file .dz-icon{opacity:1;color:#34d399}
+
+/* ── Recharge panel ── */
+.recharge-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:.5rem}
+.recharge-amt{padding:.6rem;border-radius:8px;border:1px solid var(--border);background:rgba(15,23,42,0.4);color:var(--neon);font-family:inherit;font-size:.85rem;font-weight:700;cursor:pointer;transition:all .2s;text-align:center}
+.recharge-amt:hover{border-color:var(--neon);background:var(--neon-glow);transform:translateY(-1px)}
+.recharge-amt .currency{font-size:.6rem;color:var(--text-dim);font-weight:400;display:block;margin-top:.1rem}
+
+/* ── Audit Ledger ── */
+.audit-table{font-size:.72rem;max-height:260px;overflow-y:auto}
+.audit-table::-webkit-scrollbar{width:3px}
+.audit-table::-webkit-scrollbar-thumb{background:rgba(222,255,154,0.15);border-radius:2px}
+.audit-table table{font-size:.72rem}
+.audit-table td{padding:.35rem .5rem;font-size:.65rem;vertical-align:top}
+.audit-table .tx-pass{color:#22c55e;font-weight:600}
+.audit-table .tx-refund{color:var(--red);font-weight:600}
+.audit-table .tx-role{color:var(--text-dim);font-size:.6rem}
+.audit-filter{display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap}
+.audit-filter .input{flex:1;min-width:120px;font-size:.72rem}
 </style>
 </head>
 <body>
@@ -419,6 +448,61 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <div class="log-entry info"><span class="time">—</span><span class="msg">Connect your wallet to begin. <strong style="color:#34d399">First task is always free!</strong></span></div>
       </div>
     </div>
+
+    <!-- ── Recharge Reserves ── -->
+    <div class="card" style="border-color:rgba(222,255,154,0.1)">
+      <div class="card-header">
+        <span class="card-title">💰 Recharge Reserves</span>
+        <span style="font-size:0.65rem;color:var(--text-dim)">USDC &middot; instant on-chain deposit</span>
+      </div>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap">
+        <div style="flex:1;min-width:200px">
+          <div class="recharge-grid">
+            <button class="recharge-amt" onclick="rechargeReserves(10)">10 <span class="currency">USDC</span></button>
+            <button class="recharge-amt" onclick="rechargeReserves(25)">25 <span class="currency">USDC</span></button>
+            <button class="recharge-amt" onclick="rechargeReserves(50)" style="border-color:var(--neon)">50 <span class="currency">USDC ★</span></button>
+            <button class="recharge-amt" onclick="rechargeReserves(100)">100 <span class="currency">USDC</span></button>
+            <button class="recharge-amt" onclick="rechargeReserves(250)">250 <span class="currency">USDC</span></button>
+            <button class="recharge-amt" onclick="rechargeReserves(500)">500 <span class="currency">USDC</span></button>
+          </div>
+          <div style="display:flex;gap:.5rem;margin-top:.5rem">
+            <input class="input" id="customRechargeAmt" type="number" placeholder="Custom amount" min="1" style="width:120px">
+            <button class="btn btn-sm btn-neon" onclick="rechargeReserves(parseFloat(document.getElementById('customRechargeAmt').value))">Deposit</button>
+          </div>
+        </div>
+        <div style="flex:1;min-width:200px;font-size:.78rem;color:var(--text-dim);line-height:1.6">
+          <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)">
+            <span>Available</span><span class="stat-value neon" style="font-size:1rem" id="rechargeBalance">0.00 USDC</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)">
+            <span>Total Deposited</span><span id="rechargeTotal" style="color:#fff;font-weight:600">0.00 USDC</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;padding:.35rem 0">
+            <span>Contract</span><span style="color:var(--text-dim);font-size:.65rem;word-break:break-all" id="rechargeContract">—</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Audit Ledger ── -->
+    <div class="card" style="border-color:rgba(96,165,250,0.1)">
+      <div class="card-header">
+        <span class="card-title">📜 Audit Ledger</span>
+        <div style="display:flex;gap:.35rem">
+          <button class="btn btn-sm btn-ghost" onclick="fetchAudit('')">All</button>
+          <button class="btn btn-sm btn-ghost" onclick="fetchAudit('settle')">Settlements</button>
+          <button class="btn btn-sm btn-ghost" onclick="fetchAudit('refund')">Refunds</button>
+        </div>
+      </div>
+      <div class="audit-filter">
+        <input class="input" id="auditTaskFilter" placeholder="Filter by task ID…" style="max-width:200px">
+        <button class="btn btn-sm btn-outline" onclick="fetchAudit(document.getElementById('auditTaskFilter').value.trim())">🔍 Search</button>
+        <button class="btn btn-sm btn-ghost" onclick="fetchHealth();refreshBalance()">⟳ Refresh</button>
+      </div>
+      <div class="audit-table" id="auditLedgerBody">
+        <div class="empty-state"><div class="big-icon">📜</div>Connect wallet and execute tasks to see the audit trail</div>
+      </div>
+    </div>
   </div>
 
   <!-- ════════════════════════════════════════════════════════ -->
@@ -449,6 +533,31 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </div>
     </div>
   </div>
+
+    <!-- ── Skill Upload (Drag & Drop) ── -->
+    <div class="card" style="margin-top:1.25rem;border-color:rgba(222,255,154,0.1)">
+      <div class="card-header">
+        <span class="card-title">📦 Upload Skill (ZIP)</span>
+        <span style="font-size:0.65rem;color:var(--text-dim)">.zip &middot; max 10 MB</span>
+      </div>
+      <div style="font-size:0.78rem;color:var(--text-dim);margin-bottom:1rem;line-height:1.6">
+        Package your Python Skill into a <strong style="color:#fff">ZIP archive</strong> with a <code style="color:var(--neon)">manifest.json</code> and <code style="color:var(--neon)">main.py</code>. The gateway auto-registers the Skill, extracts metadata, and makes it available for invocation. <strong>DRM obfuscation</strong> via <code style="color:var(--neon)">aims-cli publish</code> recommended for production.
+      </div>
+      <div class="drop-zone" id="skillDropZone">
+        <div class="dz-icon">📦</div>
+        <div class="dz-text"><strong>Click to select</strong> or drag &amp; drop your Skill ZIP here</div>
+        <div class="dz-hint">Requires manifest.json + main.py (or .pyc) at the root</div>
+        <div class="dz-file" id="dzFileInfo"></div>
+        <input type="file" id="skillFileInput" accept=".zip" style="display:none">
+      </div>
+      <div style="display:flex;gap:.75rem;margin-top:.75rem;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-neon btn-sm" id="uploadSkillBtn" disabled onclick="uploadSkill()">⬆ Upload Skill</button>
+        <span id="uploadStatus" style="font-size:.72rem;color:var(--text-dim)">Select a ZIP file to upload</span>
+      </div>
+      <div style="margin-top:.75rem;padding:.6rem;background:rgba(251,191,36,0.04);border:1px solid rgba(251,191,36,0.08);border-radius:6px;font-size:.7rem;color:var(--text-dim);line-height:1.5">
+        <strong style="color:var(--amber);">⚠️ Dev-mode upload:</strong> Skills are registered in-memory. For DRM-protected publishing with AES-256 encryption, EIP-191 signing, and on-chain registration, use <code style="color:var(--neon)">aims-cli publish</code> from the CLI SDK.
+      </div>
+    </div>
 
   <!-- ════════════════════════════════════════════════════════ -->
   <!--  TAB: Worker                                           -->
@@ -1401,12 +1510,221 @@ function switchRole(role) {
 })();
 
 // ════════════════════════════════════════════════════════════════
+//  Skill Upload — Drag & Drop + API
+// ════════════════════════════════════════════════════════════════
+(function(){
+  const zone = document.getElementById('skillDropZone');
+  const input = document.getElementById('skillFileInput');
+  const btn = document.getElementById('uploadSkillBtn');
+  const status = document.getElementById('uploadStatus');
+  const info = document.getElementById('dzFileInfo');
+  let selectedFile = null;
+
+  if (!zone) return;
+
+  zone.addEventListener('click', () => input.click());
+
+  zone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    zone.classList.add('drag-over');
+  });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    if (e.dataTransfer.files.length > 0) {
+      handleFile(e.dataTransfer.files[0]);
+    }
+  });
+  input.addEventListener('change', () => {
+    if (input.files.length > 0) handleFile(input.files[0]);
+  });
+
+  function handleFile(file) {
+    if (!file.name.endsWith('.zip')) {
+      toast('Only .zip files are accepted', 'error');
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast('File exceeds 10 MB limit', 'error');
+      return;
+    }
+    selectedFile = file;
+    zone.classList.add('has-file');
+    info.style.display = 'block';
+    info.textContent = '📎 ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
+    btn.disabled = false;
+    status.textContent = 'Ready to upload — ' + file.name;
+    status.style.color = 'var(--neon)';
+    toast('Selected: ' + file.name, 'info');
+  }
+
+  window.handleSkillFile = handleFile;
+})();
+
+window.uploadSkill = async function() {
+  const fileInput = document.getElementById('skillFileInput');
+  const btn = document.getElementById('uploadSkillBtn');
+  const status = document.getElementById('uploadStatus');
+  const file = fileInput.files[0];
+
+  if (!file) { toast('Select a ZIP file first', 'error'); return; }
+  if (!walletAddress) { toast('Connect your wallet first', 'error'); return; }
+
+  btn.disabled = true;
+  btn.textContent = '⏳ Uploading…';
+  status.textContent = 'Uploading ' + file.name + ' …';
+  status.style.color = 'var(--text-dim)';
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('user_id', walletAddress);
+
+    // EIP-191 sign the filename as simple auth proof
+    const authMsg = 'AIMS_UPLOAD:' + walletAddress + ':' + file.name;
+    const sig = await signer.signMessage(authMsg);
+    const sigHex = sig.startsWith('0x') ? sig.slice(2) : sig;
+
+    const resp = await fetch(API_BASE + '/api/skills/upload', {
+      method: 'POST',
+      headers: {
+        'X-Wallet-Address': walletAddress,
+        'X-Signature': sigHex,
+        'X-Timestamp': Math.floor(Date.now() / 1000).toString(),
+      },
+      body: formData,
+    });
+
+    if (resp.ok) {
+      const data = await resp.json();
+      toast('✅ Skill uploaded: ' + (data.skill_id || 'registered'), 'success');
+      status.textContent = '✅ Uploaded — refresh skills list';
+      status.style.color = '#22c55e';
+      btn.textContent = '⬆ Upload Another';
+      btn.disabled = false;
+      consumerLog('success', '📦 Skill uploaded: ' + (data.skill_id || file.name));
+      await fetchDiscovery();
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      toast('Upload failed: ' + (err.detail || resp.statusText), 'error');
+      status.textContent = '❌ Upload failed — ' + (err.detail || resp.statusText);
+      status.style.color = 'var(--red)';
+      btn.textContent = '⬆ Upload Skill';
+      btn.disabled = false;
+    }
+  } catch (err) {
+    toast('Upload error: ' + err.message, 'error');
+    status.textContent = '❌ Error: ' + err.message;
+    status.style.color = 'var(--red)';
+    btn.textContent = '⬆ Upload Skill';
+    btn.disabled = false;
+  }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  Recharge Reserves
+// ════════════════════════════════════════════════════════════════
+window.rechargeReserves = async function(amount) {
+  if (!walletAddress) { toast('Connect your wallet first', 'error'); return; }
+  if (!amount || amount <= 0) { toast('Enter a valid amount', 'error'); return; }
+
+  toast('Depositing ' + amount.toFixed(2) + ' USDC…', 'info');
+  try {
+    const body = JSON.stringify({ user_id: walletAddress, amount: amount });
+    const bodyBytes = new TextEncoder().encode(body);
+    const sig = await eip191SignBody(bodyBytes);
+    const headers = getAuthHeaders(bodyBytes, sig);
+    const resp = await fetch(API_BASE + '/api/wallet/deposit', {
+      method: 'POST', headers, body,
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      consumerDepositedUsdc += amount;
+      document.getElementById('rechargeTotal').textContent = consumerDepositedUsdc.toFixed(2) + ' USDC';
+      toast('✅ Deposited ' + amount.toFixed(2) + ' USDC — balance: ' + (data.new_balance || '?').toFixed(2), 'success');
+      consumerLog('success', '💰 Recharge ' + amount.toFixed(2) + ' USDC → balance ' + (data.new_balance || '?').toFixed(2));
+      await refreshBalance();
+      if (document.getElementById('rechargeBalance')) {
+        document.getElementById('rechargeBalance').textContent = (data.new_balance || 0).toFixed(2) + ' USDC';
+      }
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      toast('Deposit failed: ' + (err.detail || resp.statusText), 'error');
+    }
+  } catch (err) {
+    toast('Deposit error: ' + err.message, 'error');
+  }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  Audit Ledger
+// ════════════════════════════════════════════════════════════════
+window.fetchAudit = async function(taskFilter) {
+  const container = document.getElementById('auditLedgerBody');
+  if (!container) return;
+
+  try {
+    let url = API_BASE + '/api/admin/audit';
+    if (taskFilter) {
+      url += '?task_id=' + encodeURIComponent(taskFilter);
+    }
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      container.innerHTML = '<div class="empty-state"><div class="big-icon">⚠️</div>Audit API unavailable (HTTP ' + resp.status + ')</div>';
+      return;
+    }
+    const data = await resp.json();
+    const ledger = data.ledger || data.audit_ledger || [];
+
+    if (ledger.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="big-icon">📭</div>No audit entries yet — execute and settle tasks to populate the ledger</div>';
+      return;
+    }
+
+    container.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Action</th><th>Task</th><th>Amount</th><th>Roles</th>
+        </tr></thead>
+        <tbody>
+          ${ledger.slice(0, 50).map(e => {
+            const ts = e.ts ? new Date(e.ts * 1000).toLocaleTimeString() : '—';
+            const action = (e.action || '—');
+            const isPass = action !== 'refund';
+            const amt = e.amounts
+              ? ((e.amounts.total_deducted || e.amounts.user_deduction || 0) / 1000000).toFixed(4)
+              : (e.amount || 0).toFixed(4);
+            const taskId = (e.task_id || e.taskId || '').slice(0, 12);
+            const roles = e.roles || {};
+            const roleStr = Object.values(roles).slice(0, 2).map(a => (a || '').slice(0, 6)).join('…');
+            return `<tr>
+              <td style="color:var(--text-dim);font-size:.6rem">${ts}</td>
+              <td class="${isPass ? 'tx-pass' : 'tx-refund'}">${action}</td>
+              <td style="font-family:monospace;font-size:.6rem">${taskId || '—'}</td>
+              <td style="color:var(--neon)">${amt}</td>
+              <td class="tx-role">${roleStr || '—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      ${ledger.length > 50 ? '<div style="text-align:center;padding:.5rem;font-size:.65rem;color:var(--text-dim)">… showing 50 of ' + ledger.length + ' entries</div>' : ''}
+    `;
+  } catch (err) {
+    container.innerHTML = '<div class="empty-state"><div class="big-icon">⚠️</div>Error loading audit: ' + err.message + '</div>';
+  }
+};
+
+// ════════════════════════════════════════════════════════════════
 //  Init
 // ════════════════════════════════════════════════════════════════
 fetchHealth();
 fetchDiscovery();
 
-// Initialize commerce panel and canary status display
+// Initialize: contract address display, commerce panel, canary
+if (document.getElementById('rechargeContract')) {
+  document.getElementById('rechargeContract').textContent = CONTRACT_ADDRESS;
+}
 switchBillingMode('pay_per_task');
 updateCanaryStatus(true);
 

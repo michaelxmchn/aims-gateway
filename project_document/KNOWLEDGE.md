@@ -230,6 +230,15 @@ A: 待补充
 - **例外**：`AIMS Protocol` 仅在法律/版权声明（footer Copyright）中使用，`AIMS` 作为缩写仅用于代码标识符
 - **上次全局修正**：2026-06-16，覆盖 15 处引用于 HTML/MD/Python 文件
 
+### 前端 UI 模式
+- **无构建流水线**：所有 HTML 文件（`index.html`, `console.html`, `docs.html`）为纯内联 HTML+CSS+JS，零构建步骤，FastAPI `StaticFiles` 挂载 + 显式 GET 路由直接服务
+- **Console 荧光绿主题**（`Theme_4`）：`--neon: #deff9a` 荧光绿强调色，深色 `#0f172a` 背景，`SF Mono` 等宽字体，终端风格 UI
+- **拖拽上传模式**：`drop-zone` CSS class + `dragover/dragdrop/change` 事件监听 + `FormData` multipart 上传至 `POST /api/skills/upload`，EIP-191 签名认证头部
+- **充值面板**：6 档预设金额（10/25/50/100/250/500 USDC）+ 自定义输入，调用 `POST /api/wallet/deposit`
+- **审计账本**：`GET /api/admin/audit` 端点返回的 `ledger` 数组前端渲染为表格，支持 `?task_id=` 过滤和 `action` 分类显示
+- **统一钱包连接**：所有页面通过 `ethers.BrowserProvider` + `eth_requestAccounts` 连接 MetaMask，签名使用 `signer.signMessage()`（EIP-191 personal_sign）
+- **SSE 实时数据流**：通过 `EventSource` 连接 `/api/v2/feed/stream`，驱动首页结算大屏和控制台 Feed
+
 ## 技术决策记录
 
 ### 决策1：链上架构最小化

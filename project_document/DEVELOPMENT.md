@@ -35,6 +35,9 @@
   - **Deliverable 1 (Listener)**: `src/gateway/chain_listener.py` — 异步后台线程轮询合约 `TaskSettled`/`TaskRefunded` 事件；双模式（InMemory 从 `_event_buffer` 读取 + Web3 从 `w3.eth.get_logs` 轮询）；事件日志 ABI 解码（`eth_abi`），SSE 回调桥接；`last_processed_block` Redis 持久化；`GET /api/admin/listener` 健康检查端点
   - **Deliverable 2 (Judge)**: `src/judge/judge_agent.py` — `JudgeEngine` 类；LLM-as-a-Judge（OpenAI `gpt-4o-mini`）评分 0-100；确定性回退（Schema 字段缺失/空值/错误关键词检测）；`score < 80` 自动 `refund_on_chain()` + SSE 红警广播；`POST /api/admin/judge` 测试端点
   - **Integration**: `src/gateway/server.py` — `lifespan` 启动时 `_chain_listener.start()`；`submit_task` 中插入 AI Judge 门（Schema 验证后/结算前），评分 < 80 触发合约 `refundTask` + 返回 `REFUNDED`；`_event_buffer` 追加至 `InMemorySettlementContract.settle_task()`/`refund_task()`
+- [x] **品牌名称统一修正** — 全局 `AIMS Network` → `AIMS Gateway`，覆盖 3 个 HTML 文件、2 个 Markdown 文件、4 个 Python 源码文件，共 15 处引用
+- [x] **首页 Dashboard 增强** — `static/index.html` 新增金丝雀（Canary）三层反盗版水印防御展示区 + 双钱包 Treasury 隔离架构区 + 4+1 Commerce Matrix 升级（新增 Free Trial 模式卡片，数量统计 3→4+1）
+- [x] **Console 三大功能新增** — `static/console.html` 新增拖拽上传 Skill ZIP（Developer 选项卡）、快速充值面板（Consumer 选项卡 6 档预设+自定义）、审计账本查询器（支持 task_id 过滤 + settle/refund 分类）
 - [ ] **Phase 6.5: Base Sepolia 多 Agent 测试网联调** — E2E Chain Listener + AI Judge + SSE 闭环验证
 - [x] **品牌名称统一修正** — 全局 `AIMS Network` → `AIMS Gateway`，覆盖 3 个 HTML 文件、2 个 Markdown 文件、4 个 Python 源码文件，共 15 处引用
 

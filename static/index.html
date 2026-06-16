@@ -216,6 +216,37 @@ table.compact{max-width:700px}
 .plg-banner .plg-content p{font-size:.9rem;margin-bottom:0}
 .plg-banner .plg-badge{background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.2);color:#34d399;padding:.4rem 1rem;border-radius:100px;font-size:.8rem;font-weight:600;white-space:nowrap}
 
+/* ── Canary Anti-Piracy ── */
+.canary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1.25rem}
+.canary-card{background:rgba(251,191,36,0.03);border:1px solid rgba(251,191,36,0.08);border-radius:14px;padding:1.5rem;transition:border-color .3s}
+.canary-card:hover{border-color:rgba(251,191,36,0.2)}
+.canary-card .canary-layer{font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.4rem}
+.canary-card .canary-layer.l1{color:#fbbf24}
+.canary-card .canary-layer.l2{color:#f59e0b}
+.canary-card .canary-layer.l3{color:#ef4444}
+.canary-card .canary-icon{font-size:1.8rem;margin-bottom:.6rem}
+.canary-card h3{color:#fff;font-size:1rem;margin-bottom:.3rem}
+.canary-card p{font-size:.82rem;color:#a1a1aa;margin:0}
+.canary-summary{display:flex;gap:1rem;margin-top:1.5rem;flex-wrap:wrap}
+.canary-stat{background:rgba(239,68,68,0.04);border:1px solid rgba(239,68,68,0.08);border-radius:10px;padding:.75rem 1.25rem;display:flex;flex-direction:column;gap:.15rem}
+.canary-stat .val{font-size:1.1rem;font-weight:700;color:#ef4444}
+.canary-stat .lbl{font-size:.72rem;color:#71717a}
+
+/* ── Treasury Isolation ── */
+.treasury-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem}
+.treasury-card{background:rgba(34,211,238,0.02);border:1px solid rgba(34,211,238,0.06);border-radius:14px;padding:1.5rem;transition:border-color .3s}
+.treasury-card:hover{border-color:rgba(34,211,238,0.15)}
+.treasury-card .wallet-label{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.3rem}
+.treasury-card .wallet-label.large{color:#22d3ee}
+.treasury-card .wallet-label.small{color:#fbbf24}
+.treasury-card .wallet-addr{font-family:'SF Mono','Fira Code',monospace;font-size:.78rem;color:#71717a;margin-bottom:.5rem;word-break:break-all}
+.treasury-card .wallet-bal{font-size:1.5rem;font-weight:700;color:#fff;margin-bottom:.2rem}
+.treasury-card .wallet-desc{font-size:.82rem;color:#a1a1aa;margin:0}
+.treasury-card .wallet-desc .strong{color:#22d3ee;font-weight:600}
+.treasury-isolation-note{background:rgba(34,211,238,0.03);border:1px solid rgba(34,211,238,0.08);border-radius:10px;padding:.75rem 1rem;font-size:.8rem;color:#71717a;margin-top:.75rem}
+.treasury-isolation-note strong{color:#34d399}
+@media(max-width:768px){.treasury-grid{grid-template-columns:1fr}}
+
 /* ── Provider/Access Table ── */
 .access-table{background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.06);border-radius:12px;overflow:hidden;margin:1rem 0}
 .access-table td{padding:.75rem 1rem;vertical-align:top}
@@ -286,7 +317,7 @@ footer .copy{color:#71717a;font-size:.85rem}
       <div class="stat"><div class="number">6+</div><div class="label">Seed Skills</div></div>
       <div class="stat"><div class="number">0.05</div><div class="label">USDC per Task</div></div>
       <div class="stat"><div class="number">70/25/5</div><div class="label">Q1 Revenue Split</div></div>
-      <div class="stat"><div class="number">3</div><div class="label">Commerce Modes</div></div>
+      <div class="stat"><div class="number">4+1</div><div class="label">Commerce Modes</div></div>
     </div>
   </div>
 </section>
@@ -515,14 +546,81 @@ footer .copy{color:#71717a;font-size:.85rem}
   </div>
 </section>
 
+<!-- ── Canary Anti-Piracy Watermark ── -->
+<section style="background:rgba(251,191,36,0.01)">
+  <div class="container">
+    <span class="section-label">Copy Protection</span>
+    <h2>Canary <span class="gradient-text">Anti-Piracy Watermark</span></h2>
+    <p class="section-desc">Every task payload carries a cryptographic watermark. Unauthorized re-distributors are detected, blacklisted, and economically cut off — no DRM server, no phone-home, no false positives.</p>
+    <div class="canary-grid">
+      <div class="canary-card">
+        <div class="canary-icon">&#9997;</div>
+        <span class="canary-layer l1">Layer 1 &mdash; Injection</span>
+        <h3>ECDSA <code style="color:#fbbf24;font-size:.78rem">_canary_token</code></h3>
+        <p>At task submission, the gateway ECDSA-signs a unique canary token into the task parameters using the gateway's private key. The token is bound to the specific task ID and worker address — it cannot be extracted or reused on a different task.</p>
+      </div>
+      <div class="canary-card">
+        <div class="canary-icon">&#128270;</div>
+        <span class="canary-layer l2">Layer 2 &mdash; Verification</span>
+        <h3>On-Submit Signature Verification</h3>
+        <p>When the worker submits the result, the gateway recovers the signer from the canary token and verifies it matches the gateway key. Replay detection ensures the same token cannot be submitted twice. Failed verification = immediate rejection.</p>
+      </div>
+      <div class="canary-card">
+        <div class="canary-icon">&#128308;</div>
+        <span class="canary-layer l3">Layer 3 &mdash; Meltdown</span>
+        <h3><code style="color:#ef4444;font-size:.78rem">FORBIDDEN_PIRACY</code> Circuit Breaker</h3>
+        <p>On canary verification failure, the worker enters a 3-strike blacklist: strikes 1-2 issue warnings; strike 3 triggers permanent <code>FORBIDDEN_PIRACY</code> status — no future tasks, no claims, no payouts. The Worker's collateral is slashed and the protocol treasury absorbs the loss.</p>
+      </div>
+    </div>
+    <div class="canary-summary">
+      <div class="canary-stat"><span class="val">ECDSA-256</span><span class="lbl">Signature algorithm</span></div>
+      <div class="canary-stat"><span class="val">3-Strike</span><span class="lbl">Blacklist before meltdown</span></div>
+      <div class="canary-stat"><span class="val">FORBIDDEN_PIRACY</span><span class="lbl">Final circuit-breaker state</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Treasury Isolation ── -->
+<section style="background:rgba(34,211,238,0.01)">
+  <div class="container">
+    <span class="section-label">Risk Management</span>
+    <h2>Treasury <span class="gradient-text">Isolation Architecture</span></h2>
+    <p class="section-desc">Two wallets, one purpose: keep protocol assets safe. The treasury operates a strict separation-of-concerns model that prevents a single point of compromise from draining the entire pool.</p>
+    <div class="treasury-grid">
+      <div class="treasury-card">
+        <span class="wallet-label large">&#128273; LARGE WALLET &mdash; HOLDINGS</span>
+        <div class="wallet-addr">Treasury / Contract Owner</div>
+        <div class="wallet-bal">Assets at Rest</div>
+        <p class="wallet-desc">Holds the accumulated protocol revenue (developer shares, Worker collateral, platform fees). <span class="strong">Never initiates transactions.</span> Its private key is stored offline — no hot signing, no gas balance, no attack surface. Assets move only via multisig governance for protocol upgrades or emergency migration.</p>
+      </div>
+      <div class="treasury-card">
+        <span class="wallet-label small">&#9889; SMALL WALLET &mdash; GAS RELAYER</span>
+        <div class="wallet-addr">settlement signer / gas payer</div>
+        <div class="wallet-bal">~0.015 ETH</div>
+        <p class="wallet-desc">The only hot wallet in the system. Carries just enough ETH to cover ~1000 Base L2 settlement transactions (<strong style="color:#22d3ee">~$0.0002 gas/tx</strong>). If compromised, the attacker gains control of gas forwarding — not assets. Auto-refueled from the large wallet via a separate monitoring process with hard caps.</p>
+      </div>
+    </div>
+    <div class="treasury-isolation-note">
+      &#9432; <strong>Isolation Guarantee:</strong> Even if the gateway server is fully compromised (including the small-wallet private key), the attacker <strong>cannot</strong> drain the large wallet. The small wallet holds <strong>no USDC</strong> and insufficient ETH for meaningful extraction. The large wallet requires a separate offline key that never touches the server.
+    </div>
+  </div>
+</section>
+
 <!-- ── Commerce Matrix ── -->
 <section id="commerce" style="background:rgba(255,255,255,0.01)">
   <div class="container">
-    <span class="section-label">Commerce Matrix 2.0</span>
-    <h2>Metered &middot; Subscription &middot; <span class="gradient-text">Buyout</span></h2>
-    <p class="section-desc">AIMS 2.0 introduces a three-dimensional pricing fabric. Every Skill author chooses their commercial strategy; every consumer picks the plan that fits their scale.</p>
+    <span class="section-label">4+1 Commerce Matrix 2.0</span>
+    <h2>Free &middot; Metered &middot; Subscription &middot; <span class="gradient-text">Buyout</span></h2>
+    <p class="section-desc">AIMS 2.0 introduces a four-dimensional pricing fabric with a perpetual buyout option. Every Skill author chooses their commercial strategy; every consumer pays only for what fits their usage pattern. <strong style="color:#34d399">Every wallet starts free.</strong></p>
 
     <div class="commerce-grid">
+      <div class="commerce-card" style="border-color:rgba(52,211,153,0.15)">
+        <div class="mode-icon">&#9733;</div>
+        <div class="mode-name">免费试用 <span class="en">Free Trial</span></div>
+        <span class="mode-tag metered" style="background:rgba(52,211,153,0.1);color:#34d399;border-color:rgba(52,211,153,0.15)">PLG</span>
+        <div class="mode-desc">Every wallet receives <strong style="color:#34d399">one free invocation per Skill</strong> — no USDC required, no gas, no approval. If the result fails quality arbitration, the trial is not consumed. Zero-risk evaluation for every Skill on the network.</div>
+        <div class="mode-price">Free <span class="sub">per Skill / first use</span></div>
+      </div>
       <div class="commerce-card">
         <div class="mode-icon">&#9889;</div>
         <div class="mode-name">按次计费 <span class="en">Metered</span></div>
@@ -544,6 +642,9 @@ footer .copy{color:#71717a;font-size:.85rem}
         <div class="mode-desc">One-time payment for a perpetual license. No recurring fees, no rate limits, no expiration. Best for enterprises embedding AIMS Skills into their infrastructure.</div>
         <div class="mode-price">One-time <span class="sub">perpetual license</span></div>
       </div>
+    </div>
+    <div style="text-align:center;margin-top:1.5rem">
+      <span style="display:inline-block;background:rgba(34,211,238,0.04);border:1px solid rgba(34,211,238,0.06);border-radius:100px;padding:.25rem 1rem;font-size:.78rem;color:#22d3ee;font-weight:500">&#43;1 Buyout &mdash; perpetual license for enterprise embedding</span>
     </div>
 
     <div class="split-table" style="margin:2rem auto;max-width:700px">

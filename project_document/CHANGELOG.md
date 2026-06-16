@@ -16,6 +16,9 @@
 - fix(config): `docker-compose.prod.yml` — `LLM_MODEL_NAME` 修正为 `deepseek-v4-flash`（原 `deepseek-chat` 被 DeepSeek API 拒绝）
 - docs(deploy): `DEPLOY.md` — 追加入《AIMS 2.0 系统业务与功能梳理报告》9 大板块
 - chore(brand): 全局 `AIMS Network` → `AIMS Gateway` — 修正 3 个 HTML、2 个 Markdown、4 个 Python 源码共 15 处品牌引用
+- feat(frontend): `static/index.html` — 新增 Canary 反盗版三层防御、Treasury Isolation 双钱包架构、4+1 Commerce Matrix Free Trial 模式
+- feat(console): `static/console.html` — 新增拖拽上传 ZIP Skill、快速充值面板（6 档预设+自定义）、审计账本查询器（task_id 过滤 + 分类）
+- docs(deploy): `project_document/FLYIO_DOMAIN_GUIDE.md` — Fly.io 域名绑定指南（CNAME www.aimsgateway.com → aims-gateway.fly.dev）
 ### 验证
 - **E2E 全链路通过**: task-0006 (worker-002) → DeepSeek Score ≥80 → SETTLED → on-chain settlement 执行成功 ✓
 
