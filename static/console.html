@@ -355,6 +355,12 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   <!-- ═══ Top Bar ═══ -->
   <header class="topbar">
     <div class="logo">AIMS Gateway <span>Console</span></div>
+    <nav class="top-nav" style="display:flex;gap:.75rem;align-items:center;font-size:.72rem;margin-left:1.5rem;flex:1">
+      <a href="/console" style="color:var(--neon);text-decoration:none;font-weight:600">Console</a>
+      <a href="/integration-docs" style="color:var(--text-dim);text-decoration:none">Integration</a>
+      <a href="/rules-and-docs" style="color:var(--text-dim);text-decoration:none">Rules & Docs</a>
+      <a href="/api/discovery" style="color:var(--text-dim);text-decoration:none">API</a>
+    </nav>
     <div class="wallet-area">
       <span class="plg-badge" id="trialBadge" style="display:none">&#9733; 1 Free Trial / Skill</span>
       <span class="network-badge ok" id="networkBadge">● Base L2</span>
@@ -484,6 +490,34 @@ tr:hover td{background:rgba(255,255,255,0.02)}
             <button class="btn btn-sm btn-plg" id="trialBtn" type="button" onclick="document.getElementById('billingMode').value='trial'" title="Use free trial">🎁 Free</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- ── Credit Score Card (Consumer) ── -->
+    <div class="card" style="border-color:rgba(251,191,36,0.1)">
+      <div class="card-header">
+        <span class="card-title">🛡️ Credit Score &amp; Level</span>
+        <span id="creditLevelBadge" style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600">—</span>
+      </div>
+      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
+        <div class="stat">
+          <span class="stat-label">Credit Score</span>
+          <span class="stat-value neon" id="creditScoreDisplay">—</span>
+        </div>
+        <div style="flex:1;min-width:150px">
+          <div style="position:relative;height:8px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden">
+            <div class="fill" id="creditScoreBar" style="height:100%;border-radius:4px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e);transition:width 0.8s ease"></div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.6rem;color:var(--text-dim);margin-top:0.2rem">
+            <span>0</span><span style="color:var(--amber)">50</span><span style="color:#22c55e">100</span>
+          </div>
+        </div>
+        <div style="font-size:0.72rem;color:var(--text-dim);max-width:240px;line-height:1.5">
+          <strong style="color:#fbbf24">AI Judge Accountability</strong><br>
+          Failed tasks deduct <strong style="color:var(--red)">10 points</strong> (developer + co-contributors).<br>
+          High score → <strong style="color:#22c55e">priority task routing</strong>.
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="fetchCreditScore()">⟳ Refresh</button>
       </div>
     </div>
 
@@ -712,8 +746,20 @@ tr:hover td{background:rgba(255,255,255,0.02)}
         <p style="font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">Auto-distributed on each settled task via 70/25/5 split (Q1) / 95/0/5 (Q2-Q5)</p>
       </div>
       <div class="card">
-        <div class="card-header"><span class="card-title">📊 Last Settlements</span></div>
-        <div id="devSettlements"><div class="empty-state"><div class="big-icon">📭</div>No settlements yet — deploy a skill and await task execution. Use <code style="color:var(--neon)">aims-cli publish</code> to deploy.</div></div>
+        <div class="card-header"><span class="card-title">🛡️ Credit Score</span></div>
+        <div style="display:flex;gap:1rem;align-items:center">
+          <div class="stat">
+            <span class="stat-label">Score</span>
+            <span class="stat-value neon" id="devCreditScore">—</span>
+          </div>
+          <div style="flex:1;min-width:80px">
+            <div style="position:relative;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden">
+              <div class="fill" id="devCreditScoreBar" style="height:100%;border-radius:3px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e)"></div>
+            </div>
+            <span style="font-size:0.6rem;color:var(--text-dim)" id="devCreditLevel">—</span>
+          </div>
+          <button class="btn btn-sm btn-ghost" onclick="fetchCreditScore()">⟳</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1072,6 +1118,7 @@ async function connectWallet() {
     toast(`Wallet connected: ${walletAddress}`, "success");
     await refreshBalance();
     await fetchDiscovery();
+    await fetchCreditScore();
     await fetchHealth();
     await fetchHistory('');
 
@@ -1476,6 +1523,53 @@ async function invokeSkill(event) {
   invokeBtn.textContent = "▶ Execute & Settle";
 }
 
+}
+
+// ════════════════════════════════════════════════════════════════
+//  Credit Score & Level
+// ════════════════════════════════════════════════════════════════
+function getCreditLevel(score) {
+  if (score >= 95) return { level: "AAA", color: "#22c55e", label: "Elite" };
+  if (score >= 85) return { level: "AA", color: "#34d399", label: "Excellent" };
+  if (score >= 70) return { level: "A", color: "var(--neon)", label: "Good" };
+  if (score >= 50) return { level: "B", color: "var(--amber)", label: "Fair" };
+  return { level: "C", color: "var(--red)", label: "Poor" };
+}
+
+window.fetchCreditScore = async function() {
+  if (!walletAddress) return;
+  try {
+    const resp = await fetch(`${API_BASE}/api/worker/credit-score/${walletAddress}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    const score = data.score || 0;
+    const level = getCreditLevel(score);
+
+    // Consumer tab
+    const scoreEl = document.getElementById("creditScoreDisplay");
+    if (scoreEl) scoreEl.textContent = score;
+    const barEl = document.getElementById("creditScoreBar");
+    if (barEl) barEl.style.width = score + "%";
+    const badgeEl = document.getElementById("creditLevelBadge");
+    if (badgeEl) {
+      badgeEl.textContent = `${level.level} — ${level.label}`;
+      badgeEl.style.background = score >= 70
+        ? "rgba(34,197,94,0.1)" : score >= 50
+        ? "rgba(251,191,36,0.1)" : "rgba(255,107,107,0.1)";
+      badgeEl.style.color = score >= 70 ? "#22c55e" : score >= 50 ? "var(--amber)" : "var(--red)";
+      badgeEl.style.border = `1px solid ${level.color}`;
+    }
+
+    // Developer tab
+    const devScore = document.getElementById("devCreditScore");
+    if (devScore) devScore.textContent = score;
+    const devBar = document.getElementById("devCreditScoreBar");
+    if (devBar) devBar.style.width = score + "%";
+    const devLevel = document.getElementById("devCreditLevel");
+    if (devLevel) devLevel.textContent = `${level.level} — ${level.label}`;
+  } catch (e) { /* silent */ }
+};
+
 function updateTrialDisplay() {
   const used = Object.keys(usedTrials).length;
   const total = skillsCache.length || 1;
@@ -1688,9 +1782,12 @@ window.fetchPendingTasks = async function() {
         <span class="mt-skill">${t.skill_id || "—"}</span>
         <span class="mt-budget">$${(t.max_budget || 0).toFixed(2)}</span>
         ${creditLabel}
-        <span class="mt-action"><button class="btn btn-sm ${isCustom ? 'btn-plg' : 'btn-outline'}" onclick="claimTask('${t.task_id}', ${creditReq}, ${isCustom})">
-          ${isCustom ? '🔒 Claim' : '⚡ Claim'}
-        </button></span>
+        <span class="mt-action" style="display:flex;gap:.25rem;align-items:center;min-width:140px;justify-content:flex-end">
+          <button class="btn btn-sm boost-btn" onclick="boostFromMarket('${t.task_id}')" title="Boost Reward" style="padding:.25rem .5rem;font-size:.6rem">⚡</button>
+          <button class="btn btn-sm ${isCustom ? 'btn-plg' : 'btn-outline'}" onclick="claimTask('${t.task_id}', ${creditReq}, ${isCustom})" style="font-size:.6rem;padding:.25rem .5rem;white-space:nowrap">
+            ${isCustom ? 'Claim' : 'Claim'}
+          </button>
+        </span>
       </div>`;
     }).join("");
   } catch (err) {
@@ -2685,6 +2782,19 @@ if (document.getElementById('rechargeContract')) {
 }
 switchBillingMode('pay_per_task');
 updateCanaryStatus(true);
+
+window.boostFromMarket = async function(taskId) {
+  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
+  try {
+    const vaultPanel = document.getElementById("vaultPanel");
+    if (vaultPanel) { showVaultPanel(taskId); vaultPanel.scrollIntoView({ behavior: "smooth" }); }
+    const boostSection = document.querySelector(".boost-section") || document.querySelector("#boostAmount");
+    if (boostSection) boostSection.style.display = "block";
+    toast("Ready to boost " + taskId.slice(0,12), "info");
+  } catch(e) {
+    toast("boostFromMarket error: " + e.message, "error");
+  }
+};
 
 // Auto-connect if MetaMask already authorized
 if (typeof window.ethereum !== "undefined") {

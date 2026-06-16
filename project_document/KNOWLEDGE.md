@@ -776,3 +776,29 @@ A: 待补充
 - **One-Key Auth**：统一 EIP-191 personal_sign 认证说明，钱包即 API Key
 - **快速开始**：4 步标准流程（Install → Discover → Invoke → Settle），API Base 生产/本地切换
 - **发现端点**：文档链接至 `/api/discovery`、`/console`、`/developer-guide`
+
+### Credit Score Dashboard UI 模式
+- **实现方式**：`fetchCreditScore()` 异步函数通过 `GET /api/worker/credit-score/{wallet}` 获取信用分，`getCreditLevel()` 映射 0-100 分为 AAA/AA/A/B/C 五级（AAA ≥95，AA ≥85，A ≥70，B ≥50，C <50）
+- **Consumer 仪表盘**：`#consumerCreditScore` 容器，渐变进度条（前端 JS 动态宽度），等级徽章（颜色编码：绿色 AAA/AA、青色 A、琥珀色 B、红色 C）
+- **Developer 仪表盘**：`#developerCreditScore` 替代原 "Last Settlements" 卡片，同 Consumer 一致的信用分展示
+
+### Task Market Boost Button 模式
+- **实现方式**：每行 `mt-action` 容器左侧新增小型 ⚡ 按钮，`onclick="boostFromMarket('${t.task_id}')"`，`boostBadge-{taskId}` 元素显示加价状态
+- **boostFromMarket()**：调用 `showVaultPanel(taskId)` 并 `scrollIntoView` 平滑滚动至 vault 面板，自动启用 boost section（`style.display = "block"`）
+- **设计**：flex 布局 `display:flex;gap:.25rem`，boost 按钮 `font-size:.6rem`，不干扰原 Claim 流程
+
+### Topbar Navigation 模式
+- **实现方式**：`<nav class="top-nav">` 嵌入在 `.logo` 与 `.wallet-area` 之间的 flex 容器
+- **链接**：Console（neon 高亮）、Integration（/integration-docs）、Rules & Docs（/rules-and-docs）、API（/api/discovery）
+- **样式**：`font-size:.72rem`，未选中状态 `var(--text-dim)`，选中状态 `var(--neon)`
+
+### Unified Agent/CLI 端点模式（POST /api/skill/task-action）
+- **实现方式**：FastAPI `@app.post("/api/skill/task-action")` 路由，`TaskActionRequest`（action/skill_id/task_id/params）+ `TaskActionResponse`（action/success/data/error）
+- **支持动作**：`publish_task`（包装 `/api/tasks/publish`）、`boost_reward`（包装 `POST /api/tasks/{id}/boost-reward`）、`query_account`（查询余额+信用分）、`claim_task`（包装 `/api/tasks/claim-specific`）、`submit_task`（包装 `/api/tasks/submit`）
+- **认证**：依赖 `request.state.verified_wallet`（middleware 注入），缺失则 401
+- **错误处理**：已知 `HTTPException` 直接传播，未知异常捕获返回 `success=False` + error 消息体
+
+### AIMS Network Behavior Rules 模式
+- **实现方式**：`RULES_AND_DOCS` 常量字符串（HTML 嵌入），`GET /rules-and-docs` 路由返回 `HTMLResponse(content=RULES_AND_DOCS)`
+- **8 条规则**：Fair Settlement（70/25/5）、Proof-of-Task（ECDSA 签名）、Credit Score Accountability（±1/-5/-10）、Anti-Piracy（Canary 水印）、Slashing & Misconduct（-25+）、Boost Reward Fairness、Free Trial & PLG、Rate Limiting（100/60s）
+- **页面结构**：导航链接栏（Console/Integration/API/Dev Guide）→ 规则卡片（color-coded: ok=绿色, 默认=琥珀色, err=红色）→ 多平台集成指南 → One-Key Auth → Unified API 文档

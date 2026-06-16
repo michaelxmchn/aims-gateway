@@ -26,6 +26,12 @@
 - feat(vault): `src/gateway/server.py` — `publish_task` 响应升级为 `PublishTaskResponse`，新增 vault 自动生成（`unfunded` 状态）；`submit_task` 插入 vault settlement 门控（AI Judge 通过后 vault-funded 优先结算）
 - feat(console): `static/console.html` — One-Click Integration 一键接入 UI（Developer 选项卡，skill/URL 输入 + 钱包绑定 + 状态展示 + 自动注册 70% 分润）；Task Vault 扫码付款面板（Consumer 发布后展示 vault 地址/余额/QR 模拟/付款触发按钮/状态轮询）；新增 `oneClickIntegrate()`/`fetchIntegrationStatus()`/`showVaultPanel()`/`simulateVaultPayment()`/`pollVaultStatus()` JS 函数
 ### 新增
+- feat(api): `POST /api/skill/task-action` — Agent/CLI 统一端点（publish_task/boost_reward/query_account/claim_task/submit_task 五个动作）
+- feat(docs): `GET /rules-and-docs` — 网络规则 + 集成指南合一路由（8 条行为规则 + 多平台卡片 + One-Key Auth + Unified API 文档）
+- feat(console): `static/console.html` — Task Market 每行 ⚡ 加价按钮（`boostFromMarket()` 一键跳转 vault 面板）
+- feat(console): `static/console.html` — topbar 导航栏新增 Console/Integration/Rules & Docs/API 链接
+- feat(console): `static/console.html` — Consumer/Developer 信用分仪表盘（渐变进度条 + AAA/AA/A/B/C 等级徽章）
+- feat(discovery): `/api/discovery` — 新增 Agent/CLI unified 分类 + Web Pages 分类（rules-and-docs/integration-docs/developer-guide）
 - feat(api): `POST /api/wallet/withdraw` — 用户提现端点，Deduct 余额 + tx_ledger 追溯记录
 - feat(api): `POST /api/wallet/fiat-deposit` — 法币充值中继桥（mock Stripe），USD→USDC 自动兑换 + tx_ledger 记录
 - feat(api): `GET /api/wallet/history` — 用户历史账本查询，支持 type/deposit/withdraw/task_deduction 分类

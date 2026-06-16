@@ -38,6 +38,11 @@
 - [x] **品牌名称统一修正** — 全局 `AIMS Network` → `AIMS Gateway`，覆盖 3 个 HTML 文件、2 个 Markdown 文件、4 个 Python 源码文件，共 15 处引用
 - [x] **首页 Dashboard 增强** — `static/index.html` 新增金丝雀（Canary）三层反盗版水印防御展示区 + 双钱包 Treasury 隔离架构区 + 4+1 Commerce Matrix 升级（新增 Free Trial 模式卡片，数量统计 3→4+1）
 - [x] **Console 三大功能新增** — `static/console.html` 新增拖拽上传 Skill ZIP（Developer 选项卡）、快速充值面板（Consumer 选项卡 6 档预设+自定义）、审计账本查询器（支持 task_id 过滤 + settle/refund 分类）
+- [x] **Credit Score UI** — Consumer/Developer 仪表盘信用分显示（渐变进度条 + AAA/AA/A/B/C 等级徽章），`fetchCreditScore()` 自动获取
+- [x] **Boost Reward 市场按钮** — Task Market 每行 ⚡ 按钮直达 vault 加价面板，`boostFromMarket()` 平滑滚动 + 自动启用 boost section
+- [x] **导航栏重构** — topbar 新增 Console/Integration/Rules & Docs/API 导航链接
+- [x] **`POST /api/skill/task-action` 统一端点** — Agent/CLI 双入口合一，支持 publish_task/boost_reward/query_account/claim_task/submit_task 五个动作
+- [x] **`/rules-and-docs` 规则文档页** — 8 条 AIMS 网络行为规则（公平结算/PoT/信用分/反盗版/罚没/加价/试用/限流）+ 多平台集成指南 + One-Key Auth + Unified API 文档
 - [x] **联调冲刺 4 项全栈补齐**：
   - [x] **Consumer Publish Task UI** — `static/console.html` Consumer 选项卡新增发布任务表单（task_name/budget/custom toggle/description），`POST /api/tasks/publish` 端点含 escrow freeze 逻辑
   - [x] **Developer Task Market (抢单池)** — `static/console.html` Developer 选项卡新增任务集市表格，`GET /api/tasks/pending` 列出 PENDING 任务，`claim_specific_task()` 含 credit score 验证门控，`POST /api/tasks/claim-specific` 端点

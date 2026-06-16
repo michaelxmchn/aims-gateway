@@ -1065,7 +1065,22 @@ async def discovery():
                 ],
             },
             {
-                "category": "Task Vault (扫码付款)",
+                "category": "Agent / CLI (Unified)",
+                "description": "Single endpoint for agent and CLI tool dual-entry parity.",
+                "operations": [
+                    {"method": "POST", "path": "/api/skill/task-action", "summary": "Unified action: publish_task, boost_reward, query_account, claim_task, submit_task.", "auth_required": True},
+                ],
+            },
+            {
+                "category": "Web Pages",
+                "description": "Human-readable documentation and console pages.",
+                "operations": [
+                    {"method": "GET", "path": "/rules-and-docs", "summary": "Network behavior rules + multi-platform integration guide.", "auth_required": False},
+                    {"method": "GET", "path": "/integration-docs", "summary": "Multi-platform AI tool integration docs.", "auth_required": False},
+                    {"method": "GET", "path": "/developer-guide", "summary": "Developer guide for building and publishing skills.", "auth_required": False},
+                ],
+            },
+            {
                 "description": "Unique escrow vault per task — fiat/QR funded, AI Judge released.",
                 "operations": [
                     {"method": "POST", "path": "/api/tasks/{id}/simulate-fiat-payment", "summary": "Simulate fiat → vault funding.", "auth_required": True},
@@ -2187,7 +2202,10 @@ http://127.0.0.1:8000            # Local dev (Hardhat/Anvil)</code></pre>
 @app.get("/integration-docs", response_class=HTMLResponse)
 async def integration_docs():
     """Serve the multi-platform AI tool integration docs page."""
-    return HTMLResponse(content=INTEGRATION_DOCS)(md: str) -> str:
+    return HTMLResponse(content=INTEGRATION_DOCS)
+
+
+def _render_markdown_as_html(md: str) -> str:
     """Basic markdown→HTML renderer for the developer guide."""
     import re
     lines = md.split("\n")
@@ -3045,3 +3063,308 @@ async def auth_precheck(req: PreCheckRequest):
         verified=verified,
         ts=time.time(),
     )
+
+
+# ── Unified Agent/CLI task-action endpoint ──────────────────────────
+
+
+class TaskActionRequest(BaseModel):
+    action: str = Field(..., description="one of: publish_task, boost_reward, query_account, claim_task, submit_task")
+    skill_id: str | None = None
+    task_id: str | None = None
+    params: dict[str, Any] | None = None
+
+
+class TaskActionResponse(BaseModel):
+    action: str
+    success: bool
+    data: dict[str, Any] = {}
+    error: str | None = None
+
+
+@app.post("/api/skill/task-action", response_model=TaskActionResponse)
+async def skill_task_action(req: TaskActionRequest, request: Request):
+    """Unified endpoint for Agent/CLI dual-entry parity.
+
+    Supports five actions:
+    - publish_task    — create a new task (wraps /api/tasks/publish)
+    - boost_reward    — add boost reward to a vault (wraps /api/tasks/{id}/boost-reward)
+    - query_account   — get wallet balance + credit score
+    - claim_task      — claim a pending task (wraps /api/tasks/claim-specific)
+    - submit_task     — submit a completed task (wraps /api/tasks/submit)
+    """
+    wallet = getattr(request.state, "verified_wallet", None)
+    if not wallet:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    try:
+        if req.action == "publish_task":
+            return await _action_publish_task(req, wallet)
+        elif req.action == "boost_reward":
+            return await _action_boost_reward(req, wallet)
+        elif req.action == "query_account":
+            return await _action_query_account(req, wallet, request)
+        elif req.action == "claim_task":
+            return await _action_claim_task(req, wallet)
+        elif req.action == "submit_task":
+            return await _action_submit_task(req, wallet, request)
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown action: {req.action}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("task-action %s failed", req.action)
+        return TaskActionResponse(action=req.action, success=False, error=str(exc))
+
+
+async def _action_publish_task(req: TaskActionRequest, wallet: str) -> TaskActionResponse:
+    """Publish a new skill task via unified endpoint."""
+    p_req = PublishTaskRequest(
+        skill_id=req.params.get("skill_id", req.skill_id or ""),
+        params=req.params.get("params", req.params or {}),
+    )
+    result = await publish_task(p_req)
+    return TaskActionResponse(action="publish_task", success=True, data=result.model_dump())
+
+
+async def _action_boost_reward(req: TaskActionRequest, wallet: str) -> TaskActionResponse:
+    """Add boost reward to task vault."""
+    task_id = req.task_id or (req.params or {}).get("task_id", "")
+    amount = (req.params or {}).get("amount", 10.0)
+    b_req = BoostRewardRequest(amount=amount)
+    result = await boost_reward(task_id, b_req)
+    return TaskActionResponse(action="boost_reward", success=True, data=result.model_dump())
+
+
+async def _action_query_account(req: TaskActionRequest, wallet: str, request: Request) -> TaskActionResponse:
+    """Return wallet balance + credit score."""
+    storage: Storage = request.app.state.storage
+    balance = await storage.hget("wallet:balances", wallet) or "0"
+    cs_val = await storage.hget("CREDIT_SCORE_NS", wallet) or "50"
+    credit_score = int(cs_val)
+    return TaskActionResponse(action="query_account", success=True, data={
+        "wallet": wallet,
+        "balance": float(balance),
+        "credit_score": credit_score,
+    })
+
+
+async def _action_claim_task(req: TaskActionRequest, wallet: str) -> TaskActionResponse:
+    """Claim a pending task."""
+    task_id = req.task_id or (req.params or {}).get("task_id", "")
+    c_req = ClaimSpecificRequest(
+        task_id=task_id,
+        worker_id=wallet,
+        credit_score=(req.params or {}).get("credit_score", 0),
+    )
+    result = await claim_specific_task(c_req)
+    return TaskActionResponse(action="claim_task", success=True, data=result.model_dump())
+
+
+async def _action_submit_task(req: TaskActionRequest, wallet: str, request: Request) -> TaskActionResponse:
+    """Submit a completed task."""
+    task_id = req.task_id or (req.params or {}).get("task_id", "")
+    s_req = SubmitRequest(
+        task_id=task_id,
+        worker_id=wallet,
+        result_data=(req.params or {}).get("result", {}),
+    )
+    result = await submit_task(s_req, request)
+    return TaskActionResponse(action="submit_task", success=True, data=result.model_dump() if hasattr(result, "model_dump") else {"status": str(result)})
+
+
+# ── Rules & Docs page ───────────────────────────────────────────────
+
+
+RULES_AND_DOCS = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>AIMS Network — Rules & Documentation</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'SF Mono',monospace;background:#0f172a;color:#cbd5e1;line-height:1.7;padding:2rem;max-width:1000px;margin:0 auto}
+  h1{color:#deff9a;font-size:2rem;border-bottom:1px solid rgba(222,255,154,0.2);padding-bottom:.5rem;margin-bottom:1.5rem}
+  h2{color:#a78bfa;margin-top:2.5rem;border-bottom:1px solid rgba(167,139,250,0.1);padding-bottom:.35rem}
+  h3{color:#60a5fa;margin-top:1.5rem}
+  p{margin:1rem 0;color:#94a3b8}
+  code{background:rgba(222,255,154,0.08);padding:.1rem .3rem;border-radius:3px;font-size:.85em;color:#deff9a}
+  pre{background:#0a0f1a;padding:1rem;border-radius:6px;overflow-x:auto;border:1px solid rgba(222,255,154,0.08);margin:.5rem 0}
+  pre code{background:transparent;padding:0;white-space:pre-wrap}
+  a{color:#60a5fa;text-decoration:none}
+  a:hover{color:#deff9a}
+  ul{margin:.5rem 0 .5rem 1.5rem;color:#94a3b8}
+  li{margin:.25rem 0}
+  .rule-card{background:#1e293b;border:1px solid rgba(251,191,36,0.12);border-radius:10px;padding:1.25rem;margin:1rem 0}
+  .rule-card h3{color:#fbbf24;margin-top:0}
+  .rule-card .badge{display:inline-block;padding:.15rem .5rem;border-radius:4px;font-size:.65rem;font-weight:600;margin-bottom:.75rem;background:rgba(251,191,36,0.15);color:#fbbf24}
+  .rule-card.ok{border-color:rgba(52,211,153,0.2)}
+  .rule-card.ok h3{color:#34d399}
+  .rule-card.ok .badge{background:rgba(52,211,153,0.15);color:#34d399}
+  .rule-card.err{border-color:rgba(255,107,107,0.2)}
+  .rule-card.err h3{color:#ff6b6b}
+  .rule-card.err .badge{background:rgba(255,107,107,0.15);color:#ff6b6b}
+  table{border-collapse:collapse;width:100%;margin:1rem 0}
+  th,td{border:1px solid rgba(222,255,154,0.15);padding:.5rem;text-align:left;font-size:.85rem}
+  th{background:rgba(222,255,154,0.06);color:#deff9a}
+  .nav-links{margin-bottom:1.5rem;font-size:.78rem;display:flex;gap:1rem}
+  .nav-links a{color:#60a5fa}
+  em{color:#60a5fa;font-style:normal}
+  .platform-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:1rem;margin:1.5rem 0}
+  .platform-card{background:#1e293b;border:1px solid rgba(222,255,154,0.08);border-radius:10px;padding:1.25rem}
+  .platform-card h3{margin-top:0;color:#deff9a}
+  .badge.claude{background:rgba(167,139,250,0.15);color:#a78bfa}
+  .badge.cursor{background:rgba(52,211,153,0.15);color:#34d399}
+  .badge.openclaw{background:rgba(251,191,36,0.15);color:#fbbf24}
+  .badge.hermes{background:rgba(96,165,250,0.15);color:#60a5fa}
+  .badge.codex{background:rgba(255,107,107,0.15);color:#ff6b6b}
+  .section-link{font-size:.75rem;color:var(--text-dim,#94a3b8);display:block;margin-top:.25rem}
+</style>
+</head>
+<body>
+
+<div class="nav-links">
+  <a href="/console">Console</a>
+  <a href="/integration-docs">Integration</a>
+  <a href="/api/discovery">API Discovery</a>
+  <a href="/developer-guide">Dev Guide</a>
+</div>
+
+<h1>AIMS Network — Rules & Documentation</h1>
+
+<h2>Network Behavior Rules</h2>
+<p>The AIMS Network enforces fair, secure, and reliable operation through these core rules:</p>
+
+<div class="rule-card ok">
+  <div class="badge">RULE 1</div>
+  <h3>Fair Settlement</h3>
+  <p>Every completed task is subject to <strong style="color:#34d399">70/25/5</strong> split: 70% to developer/contributors, 25% to worker, 5% to network treasury. Settlements occur automatically after AI Judge passes. Disputes are resolved through on-chain governance.</p>
+</div>
+
+<div class="rule-card ok">
+  <div class="badge">RULE 2</div>
+  <h3>Proof-of-Task (PoT)</h3>
+  <p>Workers receive an ECDSA-signed PoT receipt upon task submission. The PoT is required to claim on-chain rewards. Each PoT is single-use — replay attacks are prevented through nonce tracking. Store your PoT securely; lost receipts cannot be reissued.</p>
+</div>
+
+<div class="rule-card">
+  <div class="badge">RULE 3</div>
+  <h3>Credit Score Accountability</h3>
+  <p>Participants earn and lose credit scores based on behavior:<br>
+  <strong style="color:#34d399">+1</strong> per successful task completion &bull;
+  <strong style="color:#ff6b6b">-5</strong> per claim without submission &bull;
+  <strong style="color:#ff6b6b">-10</strong> per AI Judge failure (including co-contributors)<br>
+  Scores range 0&ndash;100. Tasks may require a minimum score (credit gate).</p>
+</div>
+
+<div class="rule-card">
+  <div class="badge">RULE 4</div>
+  <h3>Anti-Piracy & Canary Tokens</h3>
+  <p>All task results are watermarked with ECDSA-signed Canary tokens. Unauthorized redistribution triggers the <strong style="color:#ff6b6b">FORBIDDEN_PIRACY</strong> circuit breaker and permanent worker blacklist. The Canary runs at the gateway level — no client-side changes needed.</p>
+</div>
+
+<div class="rule-card err">
+  <div class="badge">RULE 5</div>
+  <h3>Slashing & Misconduct</h3>
+  <p>Malicious behavior — duplicate claims, result forgery, collusion, or network abuse — results in credit slashing (<strong style="color:#ff6b6b">-25 or more</strong>), temporary suspension, or permanent expulsion from the network. Slashing decisions are logged in the audit trail.</p>
+</div>
+
+<div class="rule-card">
+  <div class="badge">RULE 6</div>
+  <h3>Boost Reward Fairness</h3>
+  <p>Consumers may boost rewards on any funded vault. Boosted tasks are broadcast via SSE (<code>vault_boosted</code> event). Workers see the boost amount before claiming. Boost rewards are non-refundable once a worker has claimed the task.</p>
+</div>
+
+<div class="rule-card ok">
+  <div class="badge">RULE 7</div>
+  <h3>Free Trial & PLG</h3>
+  <p>New users receive <strong style="color:#34d399">one free trial per skill</strong> (no wallet deposit needed). PLG (Product-Led Growth) pools are seeded with 100 USDC each month. The <strong style="color:#34d399">Universal First-Task-Free</strong> protocol offers zero-cost first tasks to new wallets.</p>
+</div>
+
+<div class="rule-card err">
+  <div class="badge">RULE 8</div>
+  <h3>Rate Limiting</h3>
+  <p>All endpoints are rate-limited to <strong style="color:#fbbf24">100 requests per 60 seconds</strong> per wallet address. Excessive requests trigger a 120-second cool-down. Batch operations should use the task-action unified endpoint for efficiency.</p>
+</div>
+
+<h2>Multi-Platform Integration Guide</h2>
+<p>Connect Cursor, Claude Code, OpenClaw, Hermes, and Codex to AIMS Network with zero configuration.</p>
+
+<div class="platform-grid">
+  <div class="platform-card">
+    <div class="badge cursor">cursor</div>
+    <h3>Cursor</h3>
+    <p style="font-size:.85rem">Add to <code style="font-size:.75rem">.cursor/mcp.json</code>:</p>
+    <pre style="font-size:.72rem"><code>{
+  "mcpServers": {
+    "aims-gateway": {
+      "command": "python3",
+      "args": ["-m", "src.client.mcp_server"]
+    }
+  }
+}</code></pre>
+  </div>
+  <div class="platform-card">
+    <div class="badge claude">claude code</div>
+    <h3>Claude Code</h3>
+    <p style="font-size:.85rem">One-liner in <code style="font-size:.75rem">CLAUDE.md</code>:</p>
+    <pre style="font-size:.72rem"><code># MCP
+aims-gateway: python3 -m src.client.mcp_server</code></pre>
+  </div>
+  <div class="platform-card">
+    <div class="badge openclaw">openclaw</div>
+    <h3>OpenClaw</h3>
+    <p style="font-size:.85rem">Register the manifest:</p>
+    <pre style="font-size:.72rem"><code>tools:
+  - name: aims-gateway
+    manifest: https://api.aimsgateway.com/manifests/openclaw_skill.json</code></pre>
+  </div>
+  <div class="platform-card">
+    <div class="badge hermes">hermes</div>
+    <h3>Hermes Protocol</h3>
+    <p style="font-size:.85rem">Agent-to-agent bootstrap:</p>
+    <pre style="font-size:.72rem"><code>from bootstrap_helper import AIMSClient
+aims = AIMSClient("https://api.aimsgateway.com")
+skills = aims.discover()
+aims.run(skills[0]["id"], {"url": "..."})</code></pre>
+  </div>
+  <div class="platform-card">
+    <div class="badge codex">codex</div>
+    <h3>Codex / GPTs</h3>
+    <p style="font-size:.85rem">OpenAPI discovery for GPT Action:</p>
+    <pre style="font-size:.72rem"><code># GPT Actions config:
+openapi: https://api.aimsgateway.com/api/discovery</code></pre>
+  </div>
+</div>
+
+<h2>One-Key Auth</h2>
+<p>Your EVM wallet is your API key. Every request is authenticated via <strong style="color:#fff">EIP-191 personal_sign</strong>:</p>
+<pre><code>X-Wallet-Address: 0xYourWallet
+X-Signature: &lt;EIP-191 personal_sign of request body&gt;
+X-Timestamp: &lt;UNIX seconds&gt;</code></pre>
+
+<h2>Unified API Endpoint</h2>
+<p>Agents and CLI tools use a single endpoint for all operations:</p>
+<pre><code>POST /api/skill/task-action
+{
+  "action": "publish_task|boost_reward|query_account|claim_task|submit_task",
+  "skill_id": "optional",
+  "task_id": "optional",
+  "params": {}
+}</code></pre>
+
+<p style="margin-top:2rem;padding-top:1rem;border-top:1px solid rgba(222,255,154,0.08);font-size:.78rem;color:#94a3b8">
+  <a href="/console">Console</a> &middot;
+  <a href="/integration-docs">Integration Docs</a> &middot;
+  <a href="/developer-guide">Developer Guide</a> &middot;
+  <a href="/api/discovery">API Discovery</a>
+</p>
+</body>
+</html>"""
+
+
+@app.get("/rules-and-docs", response_class=HTMLResponse)
+async def rules_and_docs():
+    """Serve the unified Rules & Documentation page."""
+    return HTMLResponse(content=RULES_AND_DOCS)
