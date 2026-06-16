@@ -250,12 +250,6 @@ def execute_dynamic_skill(
         The dict returned by the skill's ``execute()``.
     """
     payload = preprocess_multimodal(payload)
-
-    Raises:
-        ``requests.RequestException`` if the fetch fails.
-        ``ValueError`` if the skill has no ``execute()`` function.
-        ``ImportError`` if the module cannot be loaded.
-    """
     source = fetch_logic(gateway_url, skill_id, worker_id)
     module_name = f"aims_dynamic_{skill_id.replace('-', '_')}"
     return _load_and_execute(source, module_name, payload)

@@ -28,14 +28,13 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis-data:/data
+      - /tmp/aims-redis-data:/data
     command:
       [
         "redis-server",
         "--appendonly", "yes",
         "--save", "60", "1",
         "--requirepass", "${REDIS_PASSWORD}",
-        "--rename-command", "FLUSHALL", "",
       ]
     healthcheck:
       test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
@@ -48,15 +47,10 @@ services:
     # Production hardening
     security_opt:
       - no-new-privileges:true
-    cap_drop:
-      - ALL
-    cap_add:
-      - SETUID
-      - SETGID
 
   # ── Gateway Server ────────────────────────────────────────────────────────
   gateway-server:
-    image: python:3.11-slim
+    image: aims-gateway:latest
     container_name: aims-prod-gateway
     ports:
       - "8000:8000"
@@ -78,7 +72,7 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
     volumes:
-      - gateway-data:/app/data
+      - /tmp/aims-gateway-data:/app/data
     depends_on:
       redis-coordinator:
         condition: service_healthy
@@ -102,7 +96,7 @@ services:
 
   # ── Worker Node 1 ──────────────────────────────────────────────────────────
   worker-node-1:
-    image: python:3.11-slim
+    image: aims-gateway:latest
     container_name: aims-prod-worker-1
     environment:
       # ── AIMS Core (gateway connection) ─────────────────────────────────
@@ -150,7 +144,7 @@ services:
 
   # ── Worker Node 2 ──────────────────────────────────────────────────────────
   worker-node-2:
-    image: python:3.11-slim
+    image: aims-gateway:latest
     container_name: aims-prod-worker-2
     environment:
       AIMS_GATEWAY_PRIVATE_KEY: "${AIMS_GATEWAY_PRIVATE_KEY}"
@@ -188,7 +182,7 @@ services:
 
   # ── Worker Node 3 ──────────────────────────────────────────────────────────
   worker-node-3:
-    image: python:3.11-slim
+    image: aims-gateway:latest
     container_name: aims-prod-worker-3
     environment:
       AIMS_GATEWAY_PRIVATE_KEY: "${AIMS_GATEWAY_PRIVATE_KEY}"
