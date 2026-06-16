@@ -798,6 +798,32 @@ A: 待补充
 - **认证**：依赖 `request.state.verified_wallet`（middleware 注入），缺失则 401
 - **错误处理**：已知 `HTTPException` 直接传播，未知异常捕获返回 `success=False` + error 消息体
 
+### Auth Guard 双轨登录/注册模式
+- **实现方式**：`static/login.html` 独立页面，双 Tab 切换（Sign In / Register），Email+密码传统表单 + MetaMask Web3 一键连接
+- **后端端点**：`POST /api/auth/register`（bcrypt 密码哈希 + `create_user()` + `create_jwt()` JWT 发放）、`POST /api/auth/login`（`authenticate_user()` + JWT）、`POST /api/auth/wallet-login`（EIP-191 `personal_sign` 签名恢复地址 + 自动创建/查找用户 + JWT）、`POST /api/auth/link-wallet`（绑定钱包至已有账户）
+- **JWT 规格**：HS256 算法，`jwt_secret` 每用户独立（32 字节 hex），7 天有效期，payload 含 `sub`(user_id)/`email`/`wallet`/`iat`/`exp`
+- **密码强度**：前端实时评分（长度/大小写/数字/特殊字符），后端 8 位最小长度 + bcrypt rounds
+
+### JWT + API Key 中间件鉴权模式
+- **实现方式**：在原有 `verify_wallet_middleware` 中前置注入 Bearer token 检查
+- **鉴权优先级**：`Authorization: Bearer <token>` header → 检查是否为 `sk-aims-` 前缀（API Key）→ `verify_api_key()` bcrypt 遍历匹配 → 否则 JWT `verify_jwt()` 验签 → 均失败则回退 EIP-191 headers（CLI 兼容）
+- **状态注入**：验签成功后设置 `request.state.verified_wallet` + `request.state.user_id` + `request.state.auth_method`（jwt/api_key/eip191）
+- **页面守卫**：`/` 和 `/console` 路由读取 `request.cookies` + `Authorization` header 中的 JWT，无效/缺失返回 HTML 重定向至 `/login`
+- **API Key 格式**：`sk-aims-` + `secrets.token_hex(36)` = 48 字符，bcrypt 哈希存储，`key_prefix` 前 12 字符+"..."用于 UI 展示
+
+### Off-Chain User & Payment Database 模式
+- **实现方式**：`src/gateway/database.py` 模块，SQLite（`aiosqlite`）+ `DATABASE_URL` 环境变量可切换 PostgreSQL
+- **三表结构**：`users`（email/password_hash/wallet_address/jwt_secret/display_name）、`api_keys`（key_hash/key_prefix/label/is_revoked）、`payments`（user_id/action/amount_usdc/wallet_address/tx_ref）
+- **安全设计**：密码 `bcrypt.hashpw(gensalt())` 哈希，JWT 密钥每用户独立 32 字节 hex，API Key bcrypt 哈希，WAL 模式写性能
+- **Fly.io 持久化**：`[mounts] source = "aims_gateway_data" destination = "/data"`，volume 挂载确保重启/重部署数据不丢失
+- **初始化**：`lifespan` 启动时调用 `await init_db()` 自动建表
+
+### API Key 管理控制台模式
+- **UI 位置**：Developer 标签页，入口在 One-Click Integration 与 Task Market 之间
+- **功能**：输入标签 + 点击 Generate → 弹出一次性明文密钥（点击复制）+ 自动刷新列表；列表表格（Label/Key Prefix/Created/Last Used/Revoke 按钮）；撤销前 confirm() 确认
+- **鉴权**：所有 `/api/auth/api-keys` 端点依赖 `request.state.user_id`（JWT 中间件注入）
+- **密钥使用**：外部 AI 工具（Cursor/Claude Code/OpenClaw）调用 `POST /api/skill/task-action` 时携带 `Authorization: Bearer <sk-aims-xxx>` 即可通过鉴权
+
 ### AIMS Network Behavior Rules 模式
 - **实现方式**：`RULES_AND_DOCS` 常量字符串（HTML 嵌入），`GET /rules-and-docs` 路由返回 `HTMLResponse(content=RULES_AND_DOCS)`
 - **8 条规则**：Fair Settlement（70/25/5）、Proof-of-Task（ECDSA 签名）、Credit Score Accountability（±1/-5/-10）、Anti-Piracy（Canary 水印）、Slashing & Misconduct（-25+）、Boost Reward Fairness、Free Trial & PLG、Rate Limiting（100/60s）

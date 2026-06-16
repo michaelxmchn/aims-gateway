@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>AIMS Gateway — Login</title>
+<style>
+  :root {
+    --bg: #0b1120; --surface: #0f172a; --surface-2: #1e293b;
+    --neon: #deff9a; --purple: #a78bfa; --blue: #60a5fa;
+    --red: #ff6b6b; --amber: #fbbf24; --text: #cbd5e1; --text-dim: #64748b;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'SF Mono',monospace;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center}
+  .auth-container{width:100%;max-width:440px;padding:1.5rem}
+  .logo{text-align:center;margin-bottom:2rem}
+  .logo h1{color:var(--neon);font-size:1.5rem;letter-spacing:-.5px}
+  .logo span{color:var(--text-dim);font-size:.8rem;display:block;margin-top:.25rem}
+  .card{background:var(--surface);border:1px solid rgba(222,255,154,0.08);border-radius:12px;padding:2rem}
+  .tabs{display:flex;gap:0;margin-bottom:1.5rem;background:var(--surface-2);border-radius:8px;overflow:hidden}
+  .tab{flex:1;text-align:center;padding:.6rem;cursor:pointer;font-size:.8rem;color:var(--text-dim);transition:.2s;border:none;background:transparent}
+  .tab.active{background:var(--neon);color:#0b1120;font-weight:700}
+  .form-group{margin-bottom:1rem}
+  label{display:block;font-size:.72rem;color:var(--text-dim);margin-bottom:.35rem}
+  input{width:100%;background:var(--bg);border:1px solid rgba(222,255,154,0.1);border-radius:6px;padding:.65rem .75rem;color:var(--text);font-size:.82rem;outline:none;transition:.2s;font-family:inherit}
+  input:focus{border-color:var(--neon)}
+  .btn{width:100%;padding:.7rem;border:none;border-radius:6px;font-size:.82rem;font-weight:600;cursor:pointer;transition:.2s;font-family:inherit}
+  .btn-primary{background:var(--neon);color:#0b1120}
+  .btn-primary:hover{opacity:.85}
+  .btn-outline{background:transparent;border:1px solid rgba(222,255,154,0.2);color:var(--neon);display:flex;align-items:center;justify-content:center;gap:.5rem}
+  .btn-outline:hover{background:rgba(222,255,154,0.06)}
+  .divider{display:flex;align-items:center;gap:.75rem;margin:1.25rem 0}
+  .divider::before,.divider::after{content:"";flex:1;height:1px;background:rgba(222,255,154,0.08)}
+  .divider span{font-size:.7rem;color:var(--text-dim)}
+  .error-msg{font-size:.72rem;color:var(--red);margin-top:.35rem;display:none}
+  .success-msg{font-size:.72rem;color:#34d399;margin-top:.35rem;display:none}
+  .wallet-info{background:var(--bg);border-radius:6px;padding:.5rem .75rem;font-size:.72rem;color:var(--blue);margin-bottom:1rem;word-break:break-all;display:none}
+  .loader{display:inline-block;width:14px;height:14px;border:2px solid var(--surface-2);border-top-color:var(--neon);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:.35rem}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .footer{text-align:center;margin-top:1rem;font-size:.7rem;color:var(--text-dim)}
+  .footer a{color:var(--blue);text-decoration:none}
+  .strength{height:3px;border-radius:2px;margin-top:.25rem;transition:.3s;width:0%}
+</style>
+</head>
+<body>
+<div class="auth-container">
+  <div class="logo">
+    <h1>AIMS Gateway</h1>
+    <span>AI-Mediated Skill Network</span>
+  </div>
+  <div class="card">
+    <div class="tabs">
+      <button class="tab active" id="tabLogin" onclick="switchTab('login')">Sign In</button>
+      <button class="tab" id="tabRegister" onclick="switchTab('register')">Register</button>
+    </div>
+
+    <!-- ═══ Login Form ═══ -->
+    <form id="loginForm" onsubmit="return handleLogin(event)">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="loginEmail" placeholder="you@example.com" required>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="loginPassword" placeholder="••••••••" required minlength="8">
+      </div>
+      <div class="error-msg" id="loginError"></div>
+      <button type="submit" class="btn btn-primary" id="loginBtn">Sign In</button>
+    </form>
+
+    <!-- ═══ Register Form ═══ -->
+    <form id="registerForm" style="display:none" onsubmit="return handleRegister(event)">
+      <div class="form-group">
+        <label>Email</label>
+        <input type="email" id="regEmail" placeholder="you@example.com" required>
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="regPassword" placeholder="At least 8 characters" required minlength="8" oninput="updateStrength()">
+        <div class="strength" id="pwStrength"></div>
+      </div>
+      <div class="form-group">
+        <label>Display Name (optional)</label>
+        <input type="text" id="regName" placeholder="Your name or alias">
+      </div>
+      <div class="error-msg" id="regError"></div>
+      <div class="success-msg" id="regSuccess"></div>
+      <button type="submit" class="btn btn-primary" id="regBtn">Create Account</button>
+    </form>
+
+    <div class="divider"><span>or continue with</span></div>
+
+    <!-- Web3 Wallet -->
+    <button class="btn btn-outline" id="web3Btn" onclick="connectWeb3()">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none"><rect x="2" y="2" width="20" height="20" rx="4" fill="rgba(222,255,154,0.15)"/><path d="M7 10h10v7H7z" fill="var(--neon)" opacity=".4"/><path d="M7 7h10v3H7z" fill="var(--neon)"/></svg>
+      Connect MetaMask (Web3)
+    </button>
+    <div class="wallet-info" id="walletInfo"></div>
+
+    <p class="footer" style="margin-top:1rem">
+      By continuing, you agree to the <a href="/rules-and-docs">Terms of Service</a>.
+    </p>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let walletAddress = "";
+
+// ── Tab switching ──
+function switchTab(tab) {
+  document.getElementById("tabLogin").classList.toggle("active", tab==="login");
+  document.getElementById("tabRegister").classList.toggle("active", tab==="register");
+  document.getElementById("loginForm").style.display = tab==="login" ? "block" : "none";
+  document.getElementById("registerForm").style.display = tab==="register" ? "block" : "none";
+  document.getElementById("loginError").style.display = "none";
+  document.getElementById("regError").style.display = "none";
+}
+
+// ── Password strength ──
+function updateStrength() {
+  const pw = document.getElementById("regPassword").value;
+  const bar = document.getElementById("pwStrength");
+  if (!pw) { bar.style.width = "0%"; bar.style.background = "transparent"; return; }
+  let score = 0;
+  if (pw.length >= 8) score += 25;
+  if (pw.length >= 12) score += 15;
+  if (/[A-Z]/.test(pw)) score += 20;
+  if (/[a-z]/.test(pw)) score += 15;
+  if (/[0-9]/.test(pw)) score += 15;
+  if (/[^A-Za-z0-9]/.test(pw)) score += 10;
+  bar.style.width = Math.min(score, 100) + "%";
+  if (score < 40) bar.style.background = "var(--red)";
+  else if (score < 70) bar.style.background = "var(--amber)";
+  else bar.style.background = "#34d399";
+}
+
+// ── Register ──
+async function handleRegister(e) {
+  e.preventDefault();
+  const email = document.getElementById("regEmail").value.trim();
+  const password = document.getElementById("regPassword").value;
+  const name = document.getElementById("regName").value.trim();
+  const btn = document.getElementById("regBtn");
+  const errEl = document.getElementById("regError");
+  const okEl = document.getElementById("regSuccess");
+  errEl.style.display = "none"; okEl.style.display = "none";
+
+  btn.disabled = true; btn.innerHTML = '<span class="loader"></span>Creating…';
+  try {
+    const resp = await fetch(API + "/api/auth/register", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({email, password, display_name: name, wallet_address: walletAddress}),
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      okEl.textContent = "Account created! Redirecting…";
+      okEl.style.display = "block";
+      if (data.token) localStorage.setItem("aims_jwt", data.token);
+      setTimeout(() => window.location.href = "/console", 800);
+    } else {
+      errEl.textContent = data.detail || "Registration failed";
+      errEl.style.display = "block";
+    }
+  } catch(e) {
+    errEl.textContent = "Network error: " + e.message;
+    errEl.style.display = "block";
+  }
+  btn.disabled = false; btn.textContent = "Create Account";
+}
+
+// ── Login ──
+async function handleLogin(e) {
+  e.preventDefault();
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  const btn = document.getElementById("loginBtn");
+  const errEl = document.getElementById("loginError");
+  errEl.style.display = "none";
+
+  btn.disabled = true; btn.innerHTML = '<span class="loader"></span>Signing in…';
+  try {
+    const resp = await fetch(API + "/api/auth/login", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({email, password}),
+    });
+    const data = await resp.json();
+    if (resp.ok) {
+      localStorage.setItem("aims_jwt", data.token);
+      if (walletAddress && data.wallet_address !== walletAddress) {
+        // Prompt to link wallet
+        await fetch(API + "/api/auth/link-wallet", {
+          method: "POST",
+          headers: {"Content-Type":"application/json", "Authorization":"Bearer " + data.token},
+          body: JSON.stringify({wallet: walletAddress}),
+        });
+      }
+      window.location.href = "/console";
+    } else {
+      errEl.textContent = data.detail || "Invalid email or password";
+      errEl.style.display = "block";
+    }
+  } catch(e) {
+    errEl.textContent = "Network error: " + e.message;
+    errEl.style.display = "block";
+  }
+  btn.disabled = false; btn.textContent = "Sign In";
+}
+
+// ── Web3 connect ──
+async function connectWeb3() {
+  if (!window.ethereum) {
+    alert("MetaMask not detected. Please install MetaMask or use Email login.");
+    return;
+  }
+  const btn = document.getElementById("web3Btn");
+  btn.disabled = true; btn.innerHTML = '<span class="loader"></span>Connecting…';
+  try {
+    const accounts = await window.ethereum.request({method:"eth_requestAccounts"});
+    walletAddress = accounts[0];
+    document.getElementById("walletInfo").style.display = "block";
+    document.getElementById("walletInfo").textContent = "Connected: " + walletAddress;
+
+    // Try to login via wallet
+    const ts = Math.floor(Date.now()/1000);
+    const msg = "AIMS_GATEWAY_AUTH:" + walletAddress + ":" + ts;
+    const sig = await window.ethereum.request({
+      method:"personal_sign", params:[msg, walletAddress],
+    });
+    const resp = await fetch(API + "/api/auth/wallet-login", {
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({wallet: walletAddress, signature: sig, message: msg, timestamp: ts}),
+    });
+    const data = await resp.json();
+    if (resp.ok && data.token) {
+      localStorage.setItem("aims_jwt", data.token);
+      window.location.href = "/console";
+    } else {
+      // No account linked — show register hint
+      document.getElementById("walletInfo").textContent += " — Not registered. Use Email tab to create account first.";
+    }
+  } catch(e) {
+    alert("Web3 connection failed: " + e.message);
+  }
+  btn.disabled = false; btn.innerHTML = 'Connect MetaMask (Web3)';
+}
+
+// ── Check for existing session ──
+if (localStorage.getItem("aims_jwt")) {
+  window.location.href = "/console";
+}
+</script>
+</body>
+</html>

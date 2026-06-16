@@ -43,6 +43,13 @@
 - [x] **导航栏重构** — topbar 新增 Console/Integration/Rules & Docs/API 导航链接
 - [x] **`POST /api/skill/task-action` 统一端点** — Agent/CLI 双入口合一，支持 publish_task/boost_reward/query_account/claim_task/submit_task 五个动作
 - [x] **`/rules-and-docs` 规则文档页** — 8 条 AIMS 网络行为规则（公平结算/PoT/信用分/反盗版/罚没/加价/试用/限流）+ 多平台集成指南 + One-Key Auth + Unified API 文档
+- [x] **全栈安全重构 — Auth Guard + 用户数据库 + API Key 机制**：
+  - [x] **双轨登录/注册** — `static/login.html`（Email+密码 + Web3 钱包 MetaMask 签名），`POST /api/auth/register` / `/login` / `/wallet-login` / `/link-wallet`
+  - [x] **JWT 令牌鉴权** — `create_jwt()` / `verify_jwt()` 基于 bcrypt+HS256，中间件自动验证 `Authorization: Bearer <JWT>`，`/` 和 `/console` 页面强制 JWT 重定向
+  - [x] **链下用户数据库** — `src/gateway/database.py` SQLite（Fly.io volume 持久化）+ DATABASE_URL 可切换 PostgreSQL；users 表（bcrypt 哈希 + jwt_secret 隔离）+ api_keys 表（bcrypt 哈希）+ payments 表（充值/加价流水）
+  - [x] **API Key 管理** — `sk-aims-` 前缀 48 字符随机密钥，console 面板（生成/复制/撤销）+ `POST /api/auth/api-keys` + `GET /api/auth/api-keys` + `DELETE /api/auth/api-keys/{id}`
+  - [x] **API Key 鉴权** — 中间件自动识别 `sk-aims-` Bearer token，`POST /api/skill/task-action` 支持 API Key + JWT + EIP-191 三种鉴权
+  - [x] **Fly.io 持久化** — `fly.toml` `[mounts]` 段 `aims_gateway_data` volume → `/data`，`Dockerfile` 创建 `/data` 目录
 - [x] **联调冲刺 4 项全栈补齐**：
   - [x] **Consumer Publish Task UI** — `static/console.html` Consumer 选项卡新增发布任务表单（task_name/budget/custom toggle/description），`POST /api/tasks/publish` 端点含 escrow freeze 逻辑
   - [x] **Developer Task Market (抢单池)** — `static/console.html` Developer 选项卡新增任务集市表格，`GET /api/tasks/pending` 列出 PENDING 任务，`claim_specific_task()` 含 credit score 验证门控，`POST /api/tasks/claim-specific` 端点

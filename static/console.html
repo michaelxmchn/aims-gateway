@@ -811,6 +811,28 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </div>
     </div>
 
+    <!-- ── API Key Management (安全密钥) ── -->
+    <div class="card" style="border-color:rgba(167,139,250,0.15);margin-top:1.25rem">
+      <div class="card-header">
+        <span class="card-title">🔑 API Key Management</span>
+        <span style="font-size:0.65rem;color:var(--text-dim)">Generate keys for AI tool integration (Cursor, Claude Code, etc.)</span>
+      </div>
+      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.75rem;line-height:1.5">
+        API Keys allow external AI agents to invoke AIMS skills via
+        <code style="color:var(--neon)">Authorization: Bearer &lt;API_KEY&gt;</code>.
+        <strong style="color:#fbbf24">Treat keys like passwords — do not share them publicly.</strong>
+      </div>
+      <div style="display:flex;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap">
+        <input class="input" id="apiKeyLabel" placeholder="Label (e.g. Cursor, My Agent)" style="max-width:260px;font-size:.78rem">
+        <button class="btn btn-sm btn-neon" onclick="createApiKey()">+ Generate New Key</button>
+        <button class="btn btn-sm btn-ghost" onclick="fetchApiKeys()">⟳ Refresh</button>
+      </div>
+      <div id="apiKeyResult" style="margin-bottom:.5rem"></div>
+      <div id="apiKeyList" style="font-size:.75rem">
+        <div style="color:var(--text-dim);padding:.5rem">No API keys generated yet.</div>
+      </div>
+    </div>
+
     <!-- ── Task Market (抢单池) ── -->
     <div class="card" style="border-color:rgba(251,191,36,0.15);margin-top:1.25rem">
       <div class="card-header">
@@ -996,6 +1018,16 @@ Content-Type: application/json</pre>
 
 <script>
 // ════════════════════════════════════════════════════════════════
+//  Auth Guard — redirect to login if no JWT
+// ════════════════════════════════════════════════════════════════
+(function() {
+  const jwt = localStorage.getItem("aims_jwt");
+  if (!jwt) {
+    window.location.href = "/login";
+  }
+})();
+
+// ════════════════════════════════════════════════════════════════
 //  Configuration
 // ════════════════════════════════════════════════════════════════
 const API_BASE = localStorage.getItem("aims_api_base") || "http://127.0.0.1:8000";
@@ -1170,12 +1202,21 @@ async function eip191SignBody(bodyBytes) {
 
 function getAuthHeaders(bodyBytes, signature) {
   const sigHex = signature.startsWith("0x") ? signature.slice(2) : signature;
-  return {
+  const headers = {
     "X-Wallet-Address": walletAddress,
     "X-Signature": sigHex,
     "X-Timestamp": Math.floor(Date.now() / 1000).toString(),
     "Content-Type": "application/json",
   };
+  // Attach JWT for routes that need user_id context
+  const jwt = localStorage.getItem("aims_jwt");
+  if (jwt) headers["Authorization"] = "Bearer " + jwt;
+  return headers;
+}
+
+function jwtHeaders() {
+  const jwt = localStorage.getItem("aims_jwt");
+  return jwt ? { "Authorization": "Bearer " + jwt, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -2793,6 +2834,84 @@ window.boostFromMarket = async function(taskId) {
     toast("Ready to boost " + taskId.slice(0,12), "info");
   } catch(e) {
     toast("boostFromMarket error: " + e.message, "error");
+  }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  API Key Management (安全密钥)
+// ════════════════════════════════════════════════════════════════
+window.fetchApiKeys = async function() {
+  const container = document.getElementById("apiKeyList");
+  const jwt = localStorage.getItem("aims_jwt");
+  if (!jwt) { container.innerHTML = '<div style="color:var(--text-dim);padding:.5rem">Not authenticated.</div>'; return; }
+  try {
+    const resp = await fetch(API_BASE + "/api/auth/api-keys", { headers: jwtHeaders() });
+    if (!resp.ok) { container.innerHTML = '<div style="color:var(--red);padding:.5rem">Failed to load keys.</div>'; return; }
+    const data = await resp.json();
+    if (!data.keys || data.keys.length === 0) {
+      container.innerHTML = '<div style="color:var(--text-dim);padding:.5rem">No API keys generated yet.</div>';
+      return;
+    }
+    container.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr>' +
+      '<th style="text-align:left;padding:.4rem .5rem;border-bottom:1px solid rgba(222,255,154,0.08);color:var(--text-dim);font-weight:400">Label</th>' +
+      '<th style="text-align:left;padding:.4rem .5rem;border-bottom:1px solid rgba(222,255,154,0.08);color:var(--text-dim);font-weight:400">Key Prefix</th>' +
+      '<th style="text-align:left;padding:.4rem .5rem;border-bottom:1px solid rgba(222,255,154,0.08);color:var(--text-dim);font-weight:400">Created</th>' +
+      '<th style="text-align:left;padding:.4rem .5rem;border-bottom:1px solid rgba(222,255,154,0.08);color:var(--text-dim);font-weight:400">Last Used</th>' +
+      '<th style="padding:.4rem .5rem;border-bottom:1px solid rgba(222,255,154,0.08)"></th></tr></thead><tbody>' +
+      data.keys.map(k => '<tr>' +
+        '<td style="padding:.35rem .5rem;color:var(--text)">' + (k.label || "—") + '</td>' +
+        '<td style="padding:.35rem .5rem"><code style="color:var(--neon);font-size:.7rem">' + k.key_prefix + '</code></td>' +
+        '<td style="padding:.35rem .5rem;color:var(--text-dim)">' + new Date(k.created_at * 1000).toLocaleDateString() + '</td>' +
+        '<td style="padding:.35rem .5rem;color:var(--text-dim)">' + (k.last_used_at ? new Date(k.last_used_at * 1000).toLocaleDateString() : "Never") + '</td>' +
+        '<td style="padding:.35rem .5rem"><button class="btn btn-sm" style="background:rgba(255,107,107,0.1);color:var(--red);border:1px solid rgba(255,107,107,0.15);padding:.15rem .5rem;font-size:.65rem" onclick="revokeApiKey(' + k.id + ')">Revoke</button></td>' +
+      '</tr>').join("") + '</tbody></table>';
+  } catch(e) {
+    container.innerHTML = '<div style="color:var(--red);padding:.5rem">Error: ' + e.message + '</div>';
+  }
+};
+
+window.createApiKey = async function() {
+  const label = document.getElementById("apiKeyLabel").value.trim();
+  const resultDiv = document.getElementById("apiKeyResult");
+  const jwt = localStorage.getItem("aims_jwt");
+  if (!jwt) { toast("Not authenticated", "error"); return; }
+  try {
+    const resp = await fetch(API_BASE + "/api/auth/api-keys", {
+      method: "POST",
+      headers: jwtHeaders(),
+      body: JSON.stringify({ label }),
+    });
+    if (!resp.ok) { toast("Failed to create API key", "error"); return; }
+    const data = await resp.json();
+    resultDiv.innerHTML = '<div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.15);border-radius:6px;padding:.75rem;margin-bottom:.5rem">' +
+      '<div style="color:#34d399;font-weight:600;font-size:.75rem;margin-bottom:.35rem">✅ API Key Generated</div>' +
+      '<div style="font-size:.72rem;color:var(--text-dim);margin-bottom:.25rem">Copy this key now — it will not be shown again:</div>' +
+      '<div style="background:var(--bg);padding:.5rem;border-radius:4px;word-break:break-all;font-family:monospace;color:var(--neon);font-size:.72rem;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast(\'Copied!\',\'success\')">' + data.api_key + '</div>' +
+      '<div style="font-size:.65rem;color:var(--text-dim);margin-top:.35rem">Click to copy | Prefix: <code style="color:var(--neon)">' + data.key_prefix + '</code></div></div>';
+    document.getElementById("apiKeyLabel").value = "";
+    fetchApiKeys();
+  } catch(e) {
+    resultDiv.innerHTML = '<div style="color:var(--red);font-size:.75rem">Error: ' + e.message + '</div>';
+  }
+};
+
+window.revokeApiKey = async function(keyId) {
+  if (!confirm("Revoke this API key? It will stop working immediately.")) return;
+  const jwt = localStorage.getItem("aims_jwt");
+  if (!jwt) { toast("Not authenticated", "error"); return; }
+  try {
+    const resp = await fetch(API_BASE + "/api/auth/api-keys/" + keyId, {
+      method: "DELETE",
+      headers: jwtHeaders(),
+    });
+    if (resp.ok) {
+      toast("API key revoked", "success");
+      fetchApiKeys();
+    } else {
+      toast("Failed to revoke key", "error");
+    }
+  } catch(e) {
+    toast("Error: " + e.message, "error");
   }
 };
 

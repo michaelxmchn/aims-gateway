@@ -10,7 +10,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-RUN mkdir -p /app/skills/uploaded /app/.aims && chown -R 1000:1000 /app/skills /app/.aims
+RUN mkdir -p /app/skills/uploaded /app/.aims /data && chown -R 1000:1000 /app/skills /app/.aims /data
 
 EXPOSE 8000
 

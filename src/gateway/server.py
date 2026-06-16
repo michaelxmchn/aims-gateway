@@ -42,6 +42,7 @@ from src.gateway.billing import BillingEngine, CommerceEngine, BillingMode, Reve
 from src.gateway.chain_listener import ChainListener
 from src.gateway.ledger import TransactionLedger
 from src.judge.judge_agent import JudgeEngine
+from src.gateway.database import init_db, create_user, authenticate_user, get_user_by_wallet, get_user_by_id, link_wallet_to_user, create_jwt, verify_jwt, generate_api_key, verify_api_key, list_api_keys, revoke_api_key, record_payment, get_payment_history
 
 logger = logging.getLogger(__name__)
 
@@ -201,7 +202,8 @@ _heartbeat_lock = Lock()
 @asynccontextmanager
 async def lifespan(app_instance: FastAPI) -> AsyncIterator[None]:
     """Start background services on startup, clean up on shutdown."""
-    # Startup: start the chain event listener
+    # Startup: init off-chain user database + chain listener
+    await init_db()
     _chain_listener.start()
     yield
     # Shutdown: stop background threads
@@ -261,15 +263,27 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/")
-async def index():
-    """Serve the AIMS Gateway landing page."""
+async def index(request: Request):
+    """Serve the AIMS Gateway landing page, or redirect to login."""
+    jwt_token = request.cookies.get("aims_jwt") or _extract_bearer(request)
+    if not jwt_token:
+        return _login_redirect()
+    payload = await verify_jwt(jwt_token)
+    if not payload:
+        return _login_redirect()
     with open("static/index.html", "r") as f:
         return HTMLResponse(content=f.read())
 
 
 @app.get("/console")
-async def console():
-    """Serve the AIMS Web3 Console — wallet-connected dashboard."""
+async def console(request: Request):
+    """Serve the AIMS Web3 Console — requires valid JWT."""
+    jwt_token = request.cookies.get("aims_jwt") or _extract_bearer(request)
+    if not jwt_token:
+        return _login_redirect()
+    payload = await verify_jwt(jwt_token)
+    if not payload:
+        return _login_redirect()
     with open("static/console.html", "r") as f:
         return HTMLResponse(content=f.read())
 
@@ -287,6 +301,9 @@ EXEMPT_PATHS = {
     "/api/discovery",
     "/api/skills/upload",
     "/api/auth/pre-check",
+    "/api/auth/register",
+    "/api/auth/login",
+    "/api/auth/wallet-login",
     "/api/v2/feed/stream",
 }
 
@@ -295,18 +312,18 @@ EXEMPT_PATHS = {
 async def verify_wallet_middleware(request: Request, call_next):
     """Verify EIP-191 wallet signature on all ``/api/*`` requests.
 
-    Required headers:
+    Also supports JWT Bearer tokens (web UI sessions) and API Key
+    Bearer tokens (external AI tool integrations).
+
+    Required headers (EIP-191):
       - ``X-Wallet-Address`` — EVM wallet address (0x-prefixed, 42 chars)
       - ``X-Signature``      — EIP-191 ``personal_sign`` hex signature
       - ``X-Timestamp``      — UNIX epoch seconds as string (300 s window)
 
-    The middleware:
-    1. Validates ``X-Wallet-Address`` is a valid EVM address.
-    2. Checks the timestamp is within the 300 s window.
-    3. Recovers the signer by EIP-191 ``personal_sign`` over the raw body.
-    4. Verifies the signer matches ``X-Wallet-Address``.
+    Or (JWT): ``Authorization: Bearer <jwt>``
+    Or (API Key): ``Authorization: Bearer <sk-aims-...>``
 
-    Exempt paths: ``/api/health``, ``/api/discovery``, ``/api/skills/upload``.
+    Exempt paths: ``/api/health``, ``/api/discovery``, ``/api/auth/*``.
     """
     path = request.url.path
 
@@ -328,10 +345,32 @@ async def verify_wallet_middleware(request: Request, call_next):
     if not path.startswith("/api/"):
         return await call_next(request)
 
-    # ── Debug: log all incoming headers ──────────────────────────────
+    # ── Check for JWT / API Key Bearer token FIRST ────────────────
+    auth_header = request.headers.get("Authorization") or ""
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        # Check if it's a JWT (for web UI sessions)
+        if not token.startswith("sk-aims-"):
+            jwt_payload = await verify_jwt(token)
+            if jwt_payload is not None:
+                request.state.verified_wallet = jwt_payload.get("wallet", "")
+                request.state.user_id = jwt_payload.get("sub", 0)
+                request.state.auth_method = "jwt"
+                return await call_next(request)
+        else:
+            # API Key auth (for AI tool integrations)
+            key_info = await verify_api_key(token)
+            if key_info is not None:
+                user = await get_user_by_id(key_info["user_id"])
+                if user:
+                    request.state.verified_wallet = user.get("wallet_address", "")
+                    request.state.user_id = user["id"]
+                    request.state.auth_method = "api_key"
+                    return await call_next(request)
+
+    # ── Fall back to legacy EIP-191 wallet auth (CLI workers) ─────
     headers_dict = dict(request.headers)
     logger.debug("Incoming headers: %s", headers_dict)
-    print(f"[AIMS] Incoming headers for {request.method} {path}: {headers_dict}")
 
     # ── Read headers (case-insensitive fallback chain) ───────────────
     # Fly.io/Nginx reverse proxies may forward headers with different
@@ -1020,6 +1059,22 @@ async def discovery():
                 "operations": [
                     {"method": "GET", "path": "/api/health", "summary": "Return system health.", "auth_required": False},
                     {"method": "GET", "path": "/api/discovery", "summary": "This document.", "auth_required": False},
+                ],
+            },
+            {
+                "category": "Auth & Security",
+                "description": "User registration, login, JWT, API Key management.",
+                "operations": [
+                    {"method": "POST", "path": "/api/auth/register", "summary": "Register with email + password (optional Web3).", "auth_required": False},
+                    {"method": "POST", "path": "/api/auth/login", "summary": "Email + password login → JWT.", "auth_required": False},
+                    {"method": "POST", "path": "/api/auth/wallet-login", "summary": "EIP-191 wallet signature login → JWT.", "auth_required": False},
+                    {"method": "POST", "path": "/api/auth/link-wallet", "summary": "Link EVM wallet to current JWT user.", "auth_required": True},
+                    {"method": "GET", "path": "/api/auth/me", "summary": "Get current user info from JWT.", "auth_required": True},
+                    {"method": "POST", "path": "/api/auth/api-keys", "summary": "Generate new API Key (sk-aims-*).", "auth_required": True},
+                    {"method": "GET", "path": "/api/auth/api-keys", "summary": "List non-revoked API keys.", "auth_required": True},
+                    {"method": "DELETE", "path": "/api/auth/api-keys/{id}", "summary": "Revoke an API key.", "auth_required": True},
+                    {"method": "GET", "path": "/api/auth/payments", "summary": "Get user payment history (DB-backed).", "auth_required": True},
+                    {"method": "GET", "path": "/login", "summary": "Dual-track login/register page.", "auth_required": False},
                 ],
             },
             {
@@ -3368,3 +3423,248 @@ X-Timestamp: &lt;UNIX seconds&gt;</code></pre>
 async def rules_and_docs():
     """Serve the unified Rules & Documentation page."""
     return HTMLResponse(content=RULES_AND_DOCS)
+
+
+# ── Auth guard helpers ───────────────────────────────────────────────
+
+
+def _extract_bearer(request: Request) -> str:
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:]
+    return ""
+
+
+def _login_redirect() -> HTMLResponse:
+    return HTMLResponse(
+        content="""<!DOCTYPE html>
+<html><head><meta charset="UTF-8">
+<script>window.location.href="/login"</script>
+</head><body><a href="/login">Please log in</a></body></html>""",
+        status_code=200,
+    )
+
+
+@app.get("/login", response_class=HTMLResponse)
+async def login_page():
+    """Serve the dual-track login/register page."""
+    with open("static/login.html", "r") as f:
+        return HTMLResponse(content=f.read())
+
+
+# ── Auth request/response models ─────────────────────────────────────
+
+
+class RegisterRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+    password: str = Field(..., min_length=8, max_length=128)
+    display_name: str = Field(default="", max_length=100)
+    wallet_address: str = Field(default="", max_length=42)
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class WalletLoginRequest(BaseModel):
+    wallet: str = Field(..., min_length=42, max_length=42)
+    signature: str = Field(..., min_length=130)
+    message: str = Field(..., min_length=1)
+    timestamp: int = Field(..., ge=0)
+
+
+class LinkWalletRequest(BaseModel):
+    wallet: str = Field(..., min_length=42, max_length=42)
+
+
+class AuthResponse(BaseModel):
+    token: str
+    user_id: int
+    email: str
+    wallet_address: str = ""
+    display_name: str = ""
+
+
+# ── Auth endpoints ───────────────────────────────────────────────────
+
+
+@app.post("/api/auth/register", response_model=AuthResponse)
+async def auth_register(req: RegisterRequest):
+    """Register a new user with email + password (and optional wallet)."""
+    try:
+        user = await create_user(
+            email=req.email,
+            password=req.password,
+            wallet_address=req.wallet_address,
+            display_name=req.display_name,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+    jwt_token = await create_jwt(user)
+    resp = AuthResponse(
+        token=jwt_token,
+        user_id=user["id"],
+        email=user["email"],
+        wallet_address=user.get("wallet_address", ""),
+        display_name=user.get("display_name", ""),
+    )
+    return resp
+
+
+@app.post("/api/auth/login", response_model=AuthResponse)
+async def auth_login(req: LoginRequest):
+    """Authenticate with email + password, returns JWT."""
+    user = await authenticate_user(email=req.email, password=req.password)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+
+    jwt_token = await create_jwt(user)
+    return AuthResponse(
+        token=jwt_token,
+        user_id=user["id"],
+        email=user["email"],
+        wallet_address=user.get("wallet_address", ""),
+        display_name=user.get("display_name", ""),
+    )
+
+
+@app.post("/api/auth/wallet-login", response_model=AuthResponse)
+async def auth_wallet_login(req: WalletLoginRequest):
+    """Authenticate via EIP-191 wallet signature. Links wallet on first use."""
+    # Recover signer
+    try:
+        signable = encode_defunct(primitive=req.message.encode())
+        recovered = Account.recover_message(signable, signature=req.signature)
+    except Exception as exc:
+        raise HTTPException(status_code=403, detail=f"Signature verification failed: {exc}")
+
+    if recovered.lower() != req.wallet.lower():
+        raise HTTPException(status_code=403, detail="Signer does not match wallet")
+
+    # Check timestamp (5 min window)
+    if abs(time.time() - req.timestamp) > SIGNATURE_TIMEOUT:
+        raise HTTPException(status_code=403, detail="Signature expired")
+
+    # Find or create user by wallet
+    user = await get_user_by_wallet(req.wallet)
+    if user is None:
+        # Auto-create account with wallet
+        import secrets
+        temp_pw = secrets.token_hex(16)
+        try:
+            user = await create_user(
+                email=f"wallet-{req.wallet[:8]}@aims.gateway",
+                password=temp_pw,
+                wallet_address=req.wallet,
+                display_name=f"Wallet-{req.wallet[:6]}",
+            )
+        except ValueError:
+            # Race condition — another request created it
+            user = await get_user_by_wallet(req.wallet)
+            if user is None:
+                raise HTTPException(status_code=500, detail="Failed to create wallet account")
+
+    jwt_token = await create_jwt(user)
+    return AuthResponse(
+        token=jwt_token,
+        user_id=user["id"],
+        email=user["email"],
+        wallet_address=user.get("wallet_address", ""),
+        display_name=user.get("display_name", ""),
+    )
+
+
+@app.post("/api/auth/link-wallet")
+async def auth_link_wallet(req: LinkWalletRequest, request: Request):
+    """Link an EVM wallet to the current user account."""
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    await link_wallet_to_user(user_id, req.wallet)
+    return {"status": "ok", "wallet": req.wallet}
+
+
+@app.get("/api/auth/me")
+async def auth_me(request: Request):
+    """Return current user info from JWT."""
+    user_id = getattr(request.state, "user_id", None)
+    wallet = getattr(request.state, "verified_wallet", "")
+    if not user_id and not wallet:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    if user_id:
+        user = await get_user_by_id(user_id)
+        if user:
+            return user
+    return {"wallet": wallet}
+
+
+# ── API Key management ───────────────────────────────────────────────
+
+
+class CreateAPIKeyRequest(BaseModel):
+    label: str = Field(default="", max_length=100)
+
+
+class CreateAPIKeyResponse(BaseModel):
+    api_key: str
+    key_prefix: str
+    label: str = ""
+
+
+class APIKeyItem(BaseModel):
+    id: int
+    key_prefix: str
+    label: str = ""
+    is_revoked: int = 0
+    created_at: float = 0
+    last_used_at: float | None = None
+
+
+class APIKeyListResponse(BaseModel):
+    keys: list[APIKeyItem]
+
+
+@app.post("/api/auth/api-keys", response_model=CreateAPIKeyResponse)
+async def create_api_key(req: CreateAPIKeyRequest, request: Request):
+    """Generate a new API key for the authenticated user."""
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    result = await generate_api_key(user_id, label=req.label)
+    return CreateAPIKeyResponse(**result)
+
+
+@app.get("/api/auth/api-keys", response_model=APIKeyListResponse)
+async def list_api_keys_endpoint(request: Request):
+    """List all non-revoked API keys for the authenticated user."""
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    keys = await list_api_keys(user_id)
+    return APIKeyListResponse(keys=[APIKeyItem(**k) for k in keys])
+
+
+@app.delete("/api/auth/api-keys/{key_id}")
+async def revoke_api_key_endpoint(key_id: int, request: Request):
+    """Revoke an API key by ID."""
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    ok = await revoke_api_key(key_id, user_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="API key not found or not owned by user")
+    return {"status": "revoked", "key_id": key_id}
+
+
+# ── Payment history endpoint (backed by secure DB) ───────────────────
+
+
+@app.get("/api/auth/payments")
+async def auth_payments(request: Request, limit: int = 50):
+    """Get payment history for the authenticated user."""
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return {"payments": await get_payment_history(user_id, limit=limit)}

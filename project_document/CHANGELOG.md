@@ -26,6 +26,23 @@
 - feat(vault): `src/gateway/server.py` — `publish_task` 响应升级为 `PublishTaskResponse`，新增 vault 自动生成（`unfunded` 状态）；`submit_task` 插入 vault settlement 门控（AI Judge 通过后 vault-funded 优先结算）
 - feat(console): `static/console.html` — One-Click Integration 一键接入 UI（Developer 选项卡，skill/URL 输入 + 钱包绑定 + 状态展示 + 自动注册 70% 分润）；Task Vault 扫码付款面板（Consumer 发布后展示 vault 地址/余额/QR 模拟/付款触发按钮/状态轮询）；新增 `oneClickIntegrate()`/`fetchIntegrationStatus()`/`showVaultPanel()`/`simulateVaultPayment()`/`pollVaultStatus()` JS 函数
 ### 新增
+- feat(auth): `static/login.html` — 双轨登录注册页面（Email+密码表单 + MetaMask Web3 一键连接）
+- feat(auth): `POST /api/auth/register` — 用户注册端点（bcrypt 密码哈希 + JWT 发放）
+- feat(auth): `POST /api/auth/login` — 邮箱密码登录端点（JWT 令牌 + 钱包绑定）
+- feat(auth): `POST /api/auth/wallet-login` — EIP-191 钱包签名免密登录（自动创建钱包账户）
+- feat(auth): `POST /api/auth/link-wallet` — 钱包地址关联至已有 JWT 账户
+- feat(auth): `GET /api/auth/me` — 当前用户信息查询（JWT 保护）
+- feat(auth): `GET /login` — 登录页路由
+- feat(auth): JWT 中间件 — 自动验证 `Authorization: Bearer <JWT>`，`/` 和 `/console` 页面强制登录重定向
+- feat(db): `src/gateway/database.py` — 链下 SQLite 安全数据库（users/api_keys/payments 三表，bcrypt 密码 + WAL 模式）
+- feat(apikey): `POST /api/auth/api-keys` — 生成 `sk-aims-` 前缀 API 密钥
+- feat(apikey): `GET /api/auth/api-keys` — 列出非撤销密钥（仅前缀）
+- feat(apikey): `DELETE /api/auth/api-keys/{id}` — 撤销 API 密钥
+- feat(apikey): console 面板 — Developer 标签新增 API Key 管理 UI（生成/复制/撤销表格）
+- feat(apikey): API Key 中间件鉴权 — 自动识别 `sk-aims-` Bearer token，适配 `POST /api/skill/task-action`
+- feat(deploy): `fly.toml` — 新增 `[mounts]` volume 段（`aims_gateway_data` → `/data`）+ `DATABASE_URL` 环境变量
+- feat(deploy): `Dockerfile` — 创建 `/data` 目录用于数据库持久化
+- feat(discovery): `/api/discovery` — 新增 Auth & Security 分类（10 个端点）
 - feat(api): `POST /api/skill/task-action` — Agent/CLI 统一端点（publish_task/boost_reward/query_account/claim_task/submit_task 五个动作）
 - feat(docs): `GET /rules-and-docs` — 网络规则 + 集成指南合一路由（8 条行为规则 + 多平台卡片 + One-Key Auth + Unified API 文档）
 - feat(console): `static/console.html` — Task Market 每行 ⚡ 加价按钮（`boostFromMarket()` 一键跳转 vault 面板）
