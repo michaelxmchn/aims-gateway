@@ -84,6 +84,17 @@
 - **自动入账路径**：`wallet_deposit` → `tx_ledger.record(type="deposit")`；`wallet_withdraw` → `tx_ledger.record(type="withdraw")`；`submit_task` → 计费结算（`type="task_deduction"`，由 `CommerceEngine`/`BillingEngine` 的 `_record()` 录入）
 - **前端过滤**：`console.html` User History Ledger 面板支持 4 类过滤器（All/Deposits/Withdrawals/Tasks），`fetchHistory(typeFilter)` 通过 JS 端 filter 实现
 
+### AIMS 2.0 免质押政策（2026-06-16 生效）
+- **核心原则**：Worker/卖方 **0 门槛加入**，彻底去除质押（Staking/Collateral）概念
+- **前端 UI 净化**：所有 HTML 页面移除 "Worker Staking"、"质押余额"、"节点激活费"、"抵押金" 等元素和文案
+- **防滥用替代机制**：
+  - 纯 API/自动化脚本节点保留极低钱包余额验证（~0.1 USDC，仅验证不扣款），仅在后端执行，前端不展示为"质押惩罚"
+  - 前端展示为 `防恶意 DDoS 验证`，非质押概念
+- **质量保障**：AI Judge（LLM-as-a-Judge）评分 80/100 阈值 + 买方 Escrow 资金托管，替代传统质押抵押：
+  - 卖家 0 门槛加入，靠 AI Judge 评分证明实力
+  - 买家发单冻结 Escrow 防白嫖，AI Judge 仲裁失败自动退款
+- **文档更新**：`index.html` Worker 角色卡 "3-strike collateral" → "Zero-barrier entry"；Worker 策略卡去除 staking 条款
+
 ### Hardhat 测试账户映射（关键）
 - **Account #0 (Gateway EOA)**: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` — 私钥: `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
 - **Account #1 (User)**: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` — 私钥: `0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d`

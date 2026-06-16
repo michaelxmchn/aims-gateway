@@ -449,7 +449,7 @@ signature_hex = signed.signature.hex()</code></pre>
     <p><strong>Q1 (worker_collab):</strong> 70% to the Skill contributor, 25% to the worker, 5% to the protocol treasury. <strong>Q2-Q5 (direct_skill):</strong> 95% to the contributor, 5% to the treasury. The split is enforced as immutable bytecode on the settlement contract..</p>
 
     <h3>What if a Skill fails?</h3>
-    <p>Your USDC is never deducted. The escrow is automatically refunded. The worker receives a strike — three strikes = $1.00 slashed from their staked collateral. For the free trial, LLM-as-a-Judge automatically arbitrates — if the result fails schema validation, the trial is not consumed.</p>
+    <p>Your USDC is never deducted. The escrow is automatically refunded. The worker receives a quality strike — repeated low AI Judge scores can lead to temporary suspension. For the free trial, LLM-as-a-Judge automatically arbitrates — if the result fails schema validation, the trial is not consumed.</p>
 
     <h3>Can I run this from a browser?</h3>
     <p>Yes — the <a href="/console.html">AIMS Console</a> is a full Web3 dashboard. Connect MetaMask, sign EIP-191 messages, and invoke Skills directly from the browser. The console supports all three roles: Consumer, Developer, and Worker.</p>

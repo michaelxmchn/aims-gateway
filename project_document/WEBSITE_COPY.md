@@ -67,7 +67,7 @@ Turn your residential bandwidth and compute into a 24/7 USDC faucet. Route encry
 - **Commission:** 25% on every Q1 task
 - Real residential IP routing — no datacenter blacklists
 - ECDSA Proof-of-Task: cryptographic payout guarantee
-- 3-strike collateral system ensures network integrity
+- **Zero-barrier entry:** no staking, no bonding, no fees — just connect and earn
 
 ---
 
@@ -221,9 +221,9 @@ Every wallet gets **1 free invocation per Skill** — no USDC required. After th
 
 ### Workers & Node Operators
 - Heartbeat every 30s (60s silence = inactive)
-- 5.0 USDT staked collateral required
-- 3-strike rule: every 3rd fail = $1.00 slash
-- Zero collateral = de-registration
+- Zero-barrier entry — no staking, no bonding fees
+- AI Judge verifies result quality — low scores = no payout
+- Low wallet balance guard (~0.1 USDC, anti-DDoS, never deducted)
 - Geographic routing with region declaration
 
 ### Consumers

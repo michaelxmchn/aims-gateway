@@ -396,7 +396,7 @@ footer .copy{color:#71717a;font-size:.85rem}
         <ul>
           <li>Real residential IP routing — no datacenter blacklists</li>
           <li>ECDSA Proof-of-Task: cryptographic payout guarantee</li>
-          <li>3-strike collateral system ensures network integrity</li>
+          <li>Zero-barrier entry — no staking, no bonding, no fees</li>
           <li>Geographic routing with region declaration</li>
         </ul>
       </div>
@@ -569,12 +569,12 @@ footer .copy{color:#71717a;font-size:.85rem}
         <div class="canary-icon">&#128308;</div>
         <span class="canary-layer l3">Layer 3 &mdash; Meltdown</span>
         <h3><code style="color:#ef4444;font-size:.78rem">FORBIDDEN_PIRACY</code> Circuit Breaker</h3>
-        <p>On canary verification failure, the worker enters a 3-strike blacklist: strikes 1-2 issue warnings; strike 3 triggers permanent <code>FORBIDDEN_PIRACY</code> status — no future tasks, no claims, no payouts. The Worker's collateral is slashed and the protocol treasury absorbs the loss.</p>
+        <p>On canary verification failure, the worker enters a 3-strike blacklist: strikes 1-2 issue warnings; strike 3 triggers permanent <code>FORBIDDEN_PIRACY</code> status — no future tasks, no claims, no payouts. The protocol treasury absorbs the loss and the worker is permanently removed from the execution mesh.</p>
       </div>
     </div>
     <div class="canary-summary">
       <div class="canary-stat"><span class="val">ECDSA-256</span><span class="lbl">Signature algorithm</span></div>
-      <div class="canary-stat"><span class="val">3-Strike</span><span class="lbl">Blacklist before meltdown</span></div>
+      <div class="canary-stat"><span class="val">AI Judge Gate</span><span class="lbl">Quality arbitration before payout</span></div>
       <div class="canary-stat"><span class="val">FORBIDDEN_PIRACY</span><span class="lbl">Final circuit-breaker state</span></div>
     </div>
   </div>
@@ -591,7 +591,7 @@ footer .copy{color:#71717a;font-size:.85rem}
         <span class="wallet-label large">&#128273; LARGE WALLET &mdash; HOLDINGS</span>
         <div class="wallet-addr">Treasury / Contract Owner</div>
         <div class="wallet-bal">Assets at Rest</div>
-        <p class="wallet-desc">Holds the accumulated protocol revenue (developer shares, Worker collateral, platform fees). <span class="strong">Never initiates transactions.</span> Its private key is stored offline — no hot signing, no gas balance, no attack surface. Assets move only via multisig governance for protocol upgrades or emergency migration.</p>
+        <p class="wallet-desc">Holds the accumulated protocol revenue (developer shares, platform fees). <span class="strong">Never initiates transactions.</span> Its private key is stored offline — no hot signing, no gas balance, no attack surface. Assets move only via multisig governance for protocol upgrades or emergency migration.</p>
       </div>
       <div class="treasury-card">
         <span class="wallet-label small">&#9889; SMALL WALLET &mdash; GAS RELAYER</span>
@@ -800,9 +800,9 @@ provider.<span class="function">start</span>()</code>
         <h3>Workers &amp; Node Operators</h3>
         <ul>
           <li>Heartbeat every 30s (60s silence = inactive)</li>
-          <li>5.0 USDT staked collateral required</li>
-          <li>3-strike rule: every 3rd fail = $1.00 slash</li>
-          <li>Zero collateral = de-registration</li>
+          <li>Zero-barrier entry — no staking, no bonding fees</li>
+          <li>AI Judge verifies result quality — low scores = no payout</li>
+          <li>Low wallet balance guard (~0.1 USDC, anti-DDoS, never deducted)</li>
           <li>Geographic routing with region declaration</li>
         </ul>
       </div>

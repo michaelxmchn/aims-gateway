@@ -295,9 +295,9 @@ Contract:  "That is correct. The conditions for PoT were not met.
 Workers are not altruists. They provide bandwidth and compute because the math rewards them:
 - **80% of every task fee** goes to the worker
 - **Premium tasks** (high `developer_premium`) are prioritized by the broker
-- **Staked workers** receive more task assignments via reputation weighting
+- **AI Judge scoring** ensures only quality results earn rewards — low-scoring workers see reduced task flow
 
-But the slashing mechanism keeps them honest. A worker who claims tasks and fails to deliver accumulates strikes. At strike 3, $1.00 is slashed from their staked collateral and sent to the founder treasury. The system does not need to trust workers — it needs them to be rationally self-interested.
+But the quality gate keeps them honest. A worker who claims tasks and fails the AI Judge threshold (80/100) accumulates quality strikes. At strike 3, the worker is temporarily suspended pending review. The system does not need to trust workers — it evaluates every output algorithmically.
 
 ### The Complete Security Model
 

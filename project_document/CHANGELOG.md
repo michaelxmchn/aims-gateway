@@ -24,6 +24,7 @@
 - feat(frontend): `static/index.html` — 新增 Canary 反盗版三层防御、Treasury Isolation 双钱包架构、4+1 Commerce Matrix Free Trial 模式
 - feat(console): `static/console.html` — 新增拖拽上传 ZIP Skill、快速充值面板（6 档预设+自定义）、审计账本查询器（task_id 过滤 + 分类）
 - docs(deploy): `project_document/FLYIO_DOMAIN_GUIDE.md` — Fly.io 域名绑定指南（CNAME www.aimsgateway.com → aims-gateway.fly.dev）
+- **feat(cleanup): 全局 Worker 质押概念清除** — `index.html` 3 处（collateral → zero-barrier/slashing→AI Judge/treasury cleanup） + `docs.html` 1 处（staked collateral → quality strike） + `WEBSITE_COPY.md` 2 处 + `AGENT_INTEGRATION_GUIDE.md` 1 处 + `KNOWLEDGE.md` 新增 2.0 免质押政策
 ### 验证
 - **E2E 全链路通过**: task-0006 (worker-002) → DeepSeek Score ≥80 → SETTLED → on-chain settlement 执行成功 ✓
 
