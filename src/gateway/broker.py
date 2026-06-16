@@ -48,6 +48,14 @@ class BrokerTask:
     """Sequential skill IDs for task chaining (multimodal task flows)."""
     pipeline_step: int = 0
     """Current step index in the pipeline (0-based)."""
+    task_name: str = ""
+    """Human-readable task name (shown in Task Market UI)."""
+    description: str = ""
+    """Optional task description (free text for the Task Market)."""
+    is_custom: bool = False
+    """If True, only workers with credit_score >= credit_score_required can claim."""
+    credit_score_required: int = 0
+    """Minimum worker credit score (0-100) required to claim this task."""
 
 
 class TaskBroker:
@@ -162,6 +170,10 @@ class TaskBroker:
         compute_tier: int = 1,
         payload: dict | None = None,
         pipeline: list[str] | None = None,
+        task_name: str = "",
+        description: str = "",
+        is_custom: bool = False,
+        credit_score_required: int = 0,
     ) -> Optional[str]:
         """Create an escrow hold and register a PENDING task.
 
@@ -197,6 +209,10 @@ class TaskBroker:
             payload=payload,
             pipeline=pipeline,
             pipeline_step=0,
+            task_name=task_name,
+            description=description,
+            is_custom=is_custom,
+            credit_score_required=credit_score_required,
         )
 
         with self._lock:
@@ -260,6 +276,99 @@ class TaskBroker:
                         "pipeline_step": task.pipeline_step,
                     }
             return None
+
+    # ── Get Pending Tasks (for Task Market UI) ──────────────────────────
+
+    def get_pending_tasks(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Return all PENDING tasks with metadata (newest first).
+
+        Used by the Task Market UI in the Developer tab so workers can
+        browse available tasks before claiming.
+        """
+        result: list[dict[str, Any]] = []
+        now = time.time()
+        with self._lock:
+            for tid, state in self._status.items():
+                if state["status"] != "PENDING":
+                    continue
+                task = self._tasks.get(tid)
+                if task is None:
+                    continue
+                result.append({
+                    "task_id": tid,
+                    "user_id": task.user_id,
+                    "skill_id": task.skill_id,
+                    "task_name": task.task_name or task.skill_id,
+                    "description": task.description,
+                    "is_custom": task.is_custom,
+                    "credit_score_required": task.credit_score_required,
+                    "max_budget": task.max_budget,
+                    "developer_premium": task.developer_premium,
+                    "compute_tier": task.compute_tier,
+                    "payload": task.payload,
+                    "pipeline": task.pipeline,
+                    "asin": task.asin,
+                    "ts": now,
+                })
+        # Newest first (reverse insertion order)
+        result.reverse()
+        return result[:limit]
+
+    # ── Claim Specific Task (by task_id, with credit check) ────────────
+
+    def claim_specific_task(
+        self, task_id: str, worker_id: str, credit_score: int = 0,
+    ) -> Optional[Dict[str, Any]]:
+        """Atomically claim a specific PENDING task by ID.
+
+        If the task is ``is_custom``, validates that ``credit_score >=
+        task.credit_score_required``.  Returns the enriched task dict on
+        success, or ``None`` if the task doesn't exist, isn't PENDING, or
+        the credit check fails.
+        """
+        with self._lock:
+            state = self._status.get(task_id)
+            if state is None or state["status"] != "PENDING":
+                return None
+
+            task = self._tasks.get(task_id)
+            if task is None:
+                return None
+
+            # Credit score gate for custom tasks
+            if task.is_custom and credit_score < task.credit_score_required:
+                logger.warning(
+                    "CLAIM_SPECIFIC %s — worker '%s' credit %d < required %d",
+                    task_id, worker_id, credit_score, task.credit_score_required,
+                )
+                return None
+
+            state["status"] = "CLAIMED"
+            state["worker_id"] = worker_id
+            state["claimed_at"] = time.time()
+
+            self._persist_status(task_id, state)
+
+            logger.info(
+                "CLAIM_SPECIFIC %s → worker '%s'  (custom=%s  credit=%d)",
+                task_id, worker_id, task.is_custom, credit_score,
+            )
+            return {
+                "task_id": task_id,
+                "asin": task.asin,
+                "status": "CLAIMED",
+                "worker_id": worker_id,
+                "claimed_at": state["claimed_at"],
+                "user_id": task.user_id,
+                "developer_premium": task.developer_premium,
+                "max_budget": task.max_budget,
+                "escrow_hold": task.escrow_hold,
+                "skill_id": task.skill_id,
+                "compute_tier": task.compute_tier,
+                "payload": task.payload,
+                "pipeline": task.pipeline,
+                "pipeline_step": task.pipeline_step,
+            }
 
     # ── Complete ───────────────────────────────────────────────────────────
 

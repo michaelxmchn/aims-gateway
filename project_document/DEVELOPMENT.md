@@ -38,6 +38,12 @@
 - [x] **品牌名称统一修正** — 全局 `AIMS Network` → `AIMS Gateway`，覆盖 3 个 HTML 文件、2 个 Markdown 文件、4 个 Python 源码文件，共 15 处引用
 - [x] **首页 Dashboard 增强** — `static/index.html` 新增金丝雀（Canary）三层反盗版水印防御展示区 + 双钱包 Treasury 隔离架构区 + 4+1 Commerce Matrix 升级（新增 Free Trial 模式卡片，数量统计 3→4+1）
 - [x] **Console 三大功能新增** — `static/console.html` 新增拖拽上传 Skill ZIP（Developer 选项卡）、快速充值面板（Consumer 选项卡 6 档预设+自定义）、审计账本查询器（支持 task_id 过滤 + settle/refund 分类）
+- [x] **联调冲刺 4 项全栈补齐**：
+  - [x] **Consumer Publish Task UI** — `static/console.html` Consumer 选项卡新增发布任务表单（task_name/budget/custom toggle/description），`POST /api/tasks/publish` 端点含 escrow freeze 逻辑
+  - [x] **Developer Task Market (抢单池)** — `static/console.html` Developer 选项卡新增任务集市表格，`GET /api/tasks/pending` 列出 PENDING 任务，`claim_specific_task()` 含 credit score 验证门控，`POST /api/tasks/claim-specific` 端点
+  - [x] **Worker Credit Score 系统** — `CREDIT_SCORE_NS` 常量，`GET /api/worker/credit-score/{wallet}` 查询，`POST /api/worker/credit-score` 设置（Admin），0-100 整数范围
+  - [x] **AIMS_SKILL_GUIDE.md + /developer-guide 路由** — 根目录标准接入指南（Python 示例/EIP-191/AI Judge/Task Market/API 表格），`/developer-guide` FastAPI 路由渲染为 HTML
+- [x] **BrokerTask 扩展** — `src/gateway/broker.py`：新增 `task_name`/`description`/`is_custom`/`credit_score_required` 字段，`get_pending_tasks()` 方法，`claim_specific_task()` 方法含信用分门控
 - [x] **全局 Worker 质押概念清除（2.0 免质押政策）** — `index.html` 3 处 collateral/staking 文案改写为零门槛、`docs.html` staked collateral → quality strike、`WEBSITE_COPY.md` worker 策略卡重写、`AGENT_INTEGRATION_GUIDE.md` staking/slashing → AI Judge 评分、`KNOWLEDGE.md` 新增 AIMS 2.0 免质押政策（2026-06-16 生效）
 - [x] **Phase 5: AIMS 2.0 Commercialization 四大升级**：
   - **(a) 提现（Withdraw）按钮** — `console.html` Recharge 面板新增提现输入框 + `POST /api/wallet/withdraw` 端点，支持 Web3/local 双模式扣减

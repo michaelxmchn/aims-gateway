@@ -69,6 +69,9 @@ RATE_LIMIT_MAX: int = 100
 RATE_LIMIT_NS = "rate:limiter"
 """Storage namespace for rate limiter counters."""
 
+CREDIT_SCORE_NS = "worker:credit"
+"""Storage namespace for worker credit scores (0-100 integer)."""
+
 # ── Global instances (singleton per process) ──────────────────────────────
 
 storage = Storage()
@@ -310,6 +313,7 @@ async def verify_wallet_middleware(request: Request, call_next):
         or path.startswith("/api/skills/")
         or path.startswith("/api/wallet/balance")
         or path.startswith("/api/wallet/history")
+        or path.startswith("/api/worker/credit-score")
         or path.startswith("/api/commerce/")
     ):
         return await call_next(request)
@@ -505,6 +509,42 @@ class RunRequest(BaseModel):
 class RunResponse(BaseModel):
     task_id: str
     status: str = "PENDING"
+
+
+class PublishTaskRequest(BaseModel):
+    """Extended run request with Task Market metadata (Consumer Publish Task UI)."""
+    skill_id: str = Field(..., min_length=1, max_length=64)
+    params: dict[str, Any] = Field(default_factory=dict)
+    user_id: str = Field(..., min_length=1, max_length=128)
+    developer_premium: float = Field(default=0.0, ge=0.0)
+    max_budget: float = Field(default=2.0, ge=0.0)
+    compute_tier: int = Field(default=1, ge=1, le=3)
+    pipeline: list[str] | None = Field(default=None, description="Sequential skill IDs for task chaining. First element must match skill_id.")
+    task_name: str = Field(default="", max_length=128, description="Human-readable task name for the Task Market")
+    description: str = Field(default="", max_length=500, description="Free-text task description for the Task Market")
+    is_custom: bool = Field(default=False, description="If True, only workers meeting credit_score_required can claim")
+    credit_score_required: int = Field(default=0, ge=0, le=100, description="Minimum worker credit score (0-100) for custom tasks")
+
+
+class ClaimSpecificRequest(BaseModel):
+    task_id: str = Field(..., min_length=1, max_length=64)
+    worker_id: str = Field(..., min_length=1, max_length=128)
+    credit_score: int = Field(default=0, ge=0, le=100, description="Worker's credit score for custom-task validation")
+
+
+class CreditScoreRequest(BaseModel):
+    wallet: str = Field(..., min_length=1, max_length=128)
+    score: int = Field(..., ge=0, le=100, description="Credit score 0-100")
+
+
+class CreditScoreResponse(BaseModel):
+    wallet: str
+    score: int
+
+
+class PendingTasksResponse(BaseModel):
+    tasks: list[dict[str, Any]]
+    count: int
 
 
 # ── Wallet & Balance models ────────────────────────────────────────────────
@@ -956,8 +996,29 @@ async def discovery():
                     {"method": "POST", "path": "/api/licensing/request-key", "summary": "Request single-use license key for a task.", "auth_required": True},
                 ],
             },
+            {
+                "category": "Task Market",
+                "description": "Publish, browse, and claim tasks in the Task Market (抢单池).",
+                "operations": [
+                    {"method": "POST", "path": "/api/tasks/publish", "summary": "Publish a task to the Task Market (with escrow freeze).", "auth_required": True},
+                    {"method": "GET", "path": "/api/tasks/pending", "summary": "List all PENDING tasks for the market.", "auth_required": False},
+                    {"method": "POST", "path": "/api/tasks/claim-specific", "summary": "Claim a specific task by ID (with credit check).", "auth_required": True},
+                ],
+            },
+            {
+                "category": "Worker Credit",
+                "description": "Credit score system for worker reputation (0-100).",
+                "operations": [
+                    {"method": "GET", "path": "/api/worker/credit-score/{wallet}", "summary": "Get a worker's credit score.", "auth_required": False},
+                    {"method": "POST", "path": "/api/worker/credit-score", "summary": "Set a worker's credit score (admin).", "auth_required": True},
+                ],
+            },
         ],
         "links": {
+            "developer_guide": {
+                "url": f"{base_url}/developer-guide",
+                "description": "AIMS Skill Developer Guide — build, publish, and monetize Skills",
+            },
             "openclaw_manifest": {
                 "url": f"{base_url}/manifests/openclaw_skill.json",
                 "description": "OpenClaw-compatible manifest for agent orchestration",
@@ -1209,6 +1270,304 @@ async def submit_task(req: SubmitRequest):
         unused_refund=detail.unused_refund if detail else 0.0,
         pot=pot_sig,
     )
+
+
+# ── Task Market endpoints (Publish Task, Pending Tasks, Claim-Specific) ──
+
+
+@app.get("/api/tasks/pending", response_model=PendingTasksResponse)
+async def pending_tasks():
+    """Return all PENDING tasks for the Task Market (抢单池).
+
+    Workers browse this list in the Developer tab to find tasks to claim.
+    Returns ``tasks`` (list) and ``count`` (int).
+    """
+    tasks = await _run_in_thread(broker.get_pending_tasks)
+    return PendingTasksResponse(tasks=tasks, count=len(tasks))
+
+
+@app.post("/api/tasks/claim-specific")
+async def claim_specific_task(req: ClaimSpecificRequest, request: Request):
+    """Claim a specific PENDING task by ID (with optional credit check).
+
+    For ``is_custom`` tasks, validates that ``credit_score >=
+    credit_score_required``.  Returns the task metadata on success, or
+    **403** / **404** on failure.
+    """
+    task = await _run_in_thread(
+        broker.claim_specific_task, req.task_id, req.worker_id, req.credit_score,
+    )
+    if task is None:
+        # Check if the task even exists to differentiate 404 vs 403
+        existing = await _run_in_thread(broker.get_task_meta, req.task_id)
+        if existing is None:
+            raise HTTPException(status_code=404, detail=f"Task {req.task_id} not found")
+        return Response(
+            status_code=403,
+            content=json.dumps({
+                "detail": f"Task {req.task_id} requires credit_score >= {existing.credit_score_required}",
+                "credit_score_required": existing.credit_score_required,
+            }),
+            media_type="application/json",
+        )
+
+    skill_id = task.get("skill_id", "")
+    base_url = str(request.base_url).rstrip("/")
+    logic_url = f"{base_url}/api/skills/{skill_id}/logic" if skill_id else None
+
+    return ClaimResponse(
+        task_id=task["task_id"],
+        skill_id=skill_id,
+        compute_tier=task.get("compute_tier", 1),
+        developer_premium=task.get("developer_premium", 0.0),
+        max_budget=task.get("max_budget", 0.0),
+        escrow_id=task["escrow_hold"].escrow_id,
+        user_id=task["user_id"],
+        asin=task["asin"],
+        payload=task.get("payload"),
+        skill_logic_url=logic_url,
+    )
+
+
+# ── Worker Credit Score endpoints ─────────────────────────────────────────
+
+
+@app.get("/api/worker/credit-score/{wallet}", response_model=CreditScoreResponse)
+async def get_credit_score(wallet: str):
+    """Return the credit score (0-100) for a worker wallet.
+
+    Credit score reflects task completion quality and reliability.
+    Custom tasks require ``credit_score >= credit_score_required``.
+    Default score is **0** (new workers).
+    """
+    score = storage.dict_get(CREDIT_SCORE_NS, wallet) or 0
+    return CreditScoreResponse(wallet=wallet, score=int(score))
+
+
+@app.post("/api/worker/credit-score", response_model=CreditScoreResponse)
+async def set_credit_score(req: CreditScoreRequest):
+    """Set a worker's credit score (admin / AI Judge).
+
+    Accepts ``wallet`` and ``score`` (0-100).  Overwrites any existing
+    score for the wallet.
+    """
+    storage.dict_set(CREDIT_SCORE_NS, req.wallet, req.score)
+    logger.info("Credit score set: wallet=%s score=%d", req.wallet, req.score)
+    return CreditScoreResponse(wallet=req.wallet, score=req.score)
+
+
+# ── Publish Task endpoint (Consumer Publish Task UI) ──────────────────────
+
+
+@app.post("/api/tasks/publish", response_model=RunResponse)
+async def publish_task(req: PublishTaskRequest):
+    """Publish a task to the Task Market (Consumer Publish Task UI).
+
+    Accepts the same fields as ``/api/run`` plus Task Market metadata
+    (``task_name``, ``description``, ``is_custom``, ``credit_score_required``).
+    Creates an escrow hold and registers a PENDING broker task.
+    """
+    # ── 0. Circuit breaker gate ─────────────────────────────────────
+    if not _breaker.can_pass(f"publish:{req.skill_id}"):
+        raise HTTPException(
+            status_code=503,
+            detail="Gateway is OPEN — accepting no new tasks. Try again later.",
+        )
+
+    # ── 1. Look up manifest ─────────────────────────────────────────
+    manifest = registry.get(req.skill_id)
+    if manifest is None:
+        raise HTTPException(status_code=404, detail=f"Skill '{req.skill_id}' not found")
+
+    # ── 2. Validate required params ─────────────────────────────────
+    schema = manifest.input_schema or {}
+    required = schema.get("required", [])
+    for field in required:
+        if field not in req.params:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Missing required parameter: {field}",
+            )
+
+    # ── 3. Trial enforcement ────────────────────────────────────────
+    billing_mode = _get_skill_billing_mode(req.skill_id)
+    try:
+        _trial_manager.enforce(
+            wallet=req.user_id,
+            skill_id=req.skill_id,
+            billing_mode=billing_mode,
+        )
+    except FreeTrialError as exc:
+        raise HTTPException(status_code=402, detail=str(exc))
+
+    # ── 4. Balance check (skip for free trial) ──────────────────────
+    trial_count = _trial_manager.get_usage_count(req.user_id, req.skill_id)
+    on_free_trial = (trial_count == 1)
+
+    if not on_free_trial:
+        local_bal = _local_deposits.get(req.user_id, 0) if _is_web3_mode else 0
+        credit_balance = await _run_in_thread(
+            billing.check_user_balance, req.user_id, local_bal,
+        )
+        if credit_balance < BillingEngine.COST_PER_TASK_USDC:
+            required_str = f"{BillingEngine.COST_PER_TASK_USDC / 10**6:.6f}"
+            balance_str = f"{credit_balance / 10**6:.6f}"
+            raise HTTPException(
+                status_code=402,
+                detail=(
+                    f"Insufficient USDC balance. Required: {required_str}, "
+                    f"balance: {balance_str}"
+                ),
+            )
+
+    # ── 5. Budget control ───────────────────────────────────────────
+    num_steps = len(req.pipeline) if req.pipeline else 1
+    min_cost_atomic = BillingEngine.COST_PER_TASK_USDC * num_steps
+    max_budget_atomic = int(round(req.max_budget * 10**6))
+    if max_budget_atomic < min_cost_atomic:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Insufficient budget. Minimum: "
+                f"{min_cost_atomic / 10**6:.6f} USDC for {num_steps} step(s), "
+                f"provided: {req.max_budget:.6f} USDC"
+            ),
+        )
+
+    # ── 6. Auto-seed MockLedger if new wallet ───────────────────────
+    usdt_balance = await _run_in_thread(ledger.get_user_usdt, req.user_id)
+    if usdt_balance < 1.0:
+        await _run_in_thread(ledger.seed_usdt, req.user_id, 50.0)
+
+    # ── 7. Publish task with market metadata ────────────────────────
+    task_id = await _run_in_thread(
+        broker.publish_task,
+        user_id=req.user_id,
+        asin=f"market-{req.skill_id}",
+        developer_premium=req.developer_premium,
+        max_budget=req.max_budget,
+        skill_id=req.skill_id,
+        compute_tier=req.compute_tier,
+        payload=req.params,
+        pipeline=req.pipeline,
+        task_name=req.task_name,
+        description=req.description,
+        is_custom=req.is_custom,
+        credit_score_required=req.credit_score_required,
+    )
+    if task_id is None:
+        raise HTTPException(status_code=402, detail="Insufficient balance for escrow hold")
+
+    return RunResponse(task_id=task_id)
+
+
+# ── Developer Guide route ─────────────────────────────────────────────────
+
+
+@app.get("/developer-guide", response_class=HTMLResponse)
+async def developer_guide():
+    """Serve the AIMS_SKILL_GUIDE.md as HTML for external developers."""
+    guide_path = os.path.join(os.path.dirname(__file__), "..", "..", "AIMS_SKILL_GUIDE.md")
+    try:
+        with open(guide_path, "r") as f:
+            md_content = f.read()
+    except FileNotFoundError:
+        return HTMLResponse(content="<h1>Guide not found</h1><p>Please generate AIMS_SKILL_GUIDE.md</p>", status_code=404)
+
+    # Simple markdown→HTML conversion (enough for a developer doc)
+    html_body = _render_markdown_as_html(md_content)
+
+    return HTMLResponse(content=f"""<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>AIMS Skill Developer Guide</title>
+<style>
+  body{{font-family:'SF Mono',monospace;background:#0f172a;color:#cbd5e1;line-height:1.7;padding:2rem;max-width:960px;margin:0 auto}}
+  h1{{color:#deff9a;font-size:2rem;border-bottom:1px solid rgba(222,255,154,0.2);padding-bottom:.5rem}}
+  h2{{color:#a78bfa;margin-top:2rem}}
+  h3{{color:#60a5fa}}
+  code{{background:rgba(222,255,154,0.08);padding:.1rem .3rem;border-radius:3px;font-size:.85em;color:#deff9a}}
+  pre{{background:#0a0f1a;padding:1rem;border-radius:6px;overflow-x:auto;border:1px solid rgba(222,255,154,0.08)}}
+  pre code{{background:transparent;padding:0}}
+  a{{color:#60a5fa}}
+  table{{border-collapse:collapse;width:100%;margin:1rem 0}}
+  th,td{{border:1px solid rgba(222,255,154,0.15);padding:.5rem;text-align:left;font-size:.85rem}}
+  th{{background:rgba(222,255,154,0.06);color:#deff9a}}
+  hr{{border:none;border-top:1px solid rgba(222,255,154,0.1);margin:2rem 0}}
+</style>
+</head>
+<body>
+{html_body}
+</body>
+</html>""")
+
+
+def _render_markdown_as_html(md: str) -> str:
+    """Basic markdown→HTML renderer for the developer guide."""
+    import re
+    lines = md.split("\n")
+    html_parts: list[str] = []
+    in_code_block = False
+    code_buffer: list[str] = []
+    in_table = False
+
+    for line in lines:
+        # Code block
+        if line.startswith("```"):
+            if in_code_block:
+                html_parts.append(f"<pre><code>{''.join(code_buffer)}</code></pre>")
+                code_buffer = []
+                in_code_block = False
+            else:
+                in_code_block = True
+            continue
+        if in_code_block:
+            code_buffer.append(line.replace("<", "&lt;").replace(">", "&gt;") + "\n")
+            continue
+
+        # Headers
+        if line.startswith("### "):
+            html_parts.append(f"<h3>{line[4:]}</h3>")
+        elif line.startswith("## "):
+            html_parts.append(f"<h2>{line[3:]}</h2>")
+        elif line.startswith("# "):
+            html_parts.append(f"<h1>{line[2:]}</h1>")
+        # Horizontal rule
+        elif re.match(r"^---+\s*$", line) or re.match(r"^\*\*\*+\s*$", line):
+            html_parts.append("<hr>")
+        # Table row
+        elif "|" in line and line.strip().startswith("|"):
+            cells = [c.strip() for c in line.split("|")[1:-1]]
+            if in_table:
+                if re.match(r"^[\s|:,\-]+$", line):
+                    continue
+                html_parts.append("<tr>" + "".join(f"<td>{c}</td>" for c in cells) + "</tr>")
+            else:
+                in_table = True
+                html_parts.append("<table><thead><tr>" + "".join(f"<th>{c}</th>" for c in cells) + "</tr></thead><tbody>")
+        else:
+            if in_table and line.strip() == "":
+                in_table = False
+                html_parts.append("</tbody></table>")
+            # Inline formatting
+            line = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", line)
+            line = re.sub(r"`(.+?)`", r"<code>\1</code>", line)
+            line = re.sub(r"\[(.+?)\]\((.+?)\)", r'<a href="\2">\1</a>', line)
+            if line.strip() == "":
+                html_parts.append("<br>")
+            elif line.strip().startswith("- "):
+                html_parts.append(f"<li>{line.strip()[2:]}</li>")
+            elif line.strip().startswith("1. "):
+                html_parts.append(f"<li>{line.strip()[3:]}</li>")
+            else:
+                html_parts.append(f"<p>{line}</p>")
+
+    if in_code_block:
+        html_parts.append(f"<pre><code>{''.join(code_buffer)}</code></pre>")
+    if in_table:
+        html_parts.append("</tbody></table>")
+
+    return "\n".join(html_parts)
 
 
 # ── Wallet endpoints (proxy to on-chain contract) ─────────────────────────

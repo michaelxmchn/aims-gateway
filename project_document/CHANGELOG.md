@@ -25,8 +25,21 @@
 - feat(console): `static/console.html` — 新增拖拽上传 ZIP Skill、快速充值面板（6 档预设+自定义）、审计账本查询器（task_id 过滤 + 分类）
 - docs(deploy): `project_document/FLYIO_DOMAIN_GUIDE.md` — Fly.io 域名绑定指南（CNAME www.aimsgateway.com → aims-gateway.fly.dev）
 - **feat(cleanup): 全局 Worker 质押概念清除** — `index.html` 3 处（collateral → zero-barrier/slashing→AI Judge/treasury cleanup） + `docs.html` 1 处（staked collateral → quality strike） + `WEBSITE_COPY.md` 2 处 + `AGENT_INTEGRATION_GUIDE.md` 1 处 + `KNOWLEDGE.md` 新增 2.0 免质押政策
+### 新增
+- feat(api): `POST /api/tasks/publish` — Task Market 发布任务端点，含 escrow freeze + credit score 门控
+- feat(api): `GET /api/tasks/pending` — 列出 PENDING 任务（免认证），供 Developer 抢单池 UI 消费
+- feat(api): `POST /api/tasks/claim-specific` — 按 ID 精准确认任务，custom 任务验证信用分门控
+- feat(api): `GET /api/worker/credit-score/{wallet}` — Worker 信用分查询（免认证）
+- feat(api): `POST /api/worker/credit-score` — Worker 信用分设置（Admin，EIP-191 认证）
+- feat(docs): `AIMS_SKILL_GUIDE.md` — 外部开发者接入指南（Python 示例/EIP-191/AI Judge/Task Market/API 表格/Python SDK）
+- feat(api): `GET /developer-guide` — 路由将 AIMS_SKILL_GUIDE.md 渲染为 Dark 主题 HTML
+### 修改
+- feat(broker): `src/gateway/broker.py` — BrokerTask 新增 task_name/description/is_custom/credit_score_required 字段，新增 get_pending_tasks()/claim_specific_task() 方法
+- feat(console): `static/console.html` — Consumer 选项卡新增 Publish Task 表单（task_name/budget/custom toggle/description），Developer 选项卡新增 Task Market 抢单池表格 + 信用分门控弹窗
+- feat(server): `src/gateway/server.py` — 新增 PublishTaskRequest/ClaimSpecificRequest/CreditScoreRequest 等 Pydantic 模型，Discovery 新增 Task Market + Worker Credit 分类，auth 豁免 credit-score GET
 ### 验证
 - **E2E 全链路通过**: task-0006 (worker-002) → DeepSeek Score ≥80 → SETTLED → on-chain settlement 执行成功 ✓
+- **API 测试通过**: GET /api/tasks/pending 返回 200 + 空列表，GET /api/worker/credit-score/{wallet} 返回 200 + 默认 0，POST /api/worker/credit-score 需 EIP-191 认证，/developer-guide 返回 HTML 渲染文档
 
 ## [2026-06-15]
 ### 新增

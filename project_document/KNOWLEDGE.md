@@ -704,3 +704,33 @@ A: 待补充
 - **截断 JSON 修复**：DeepSeek v4 可能在 `reason` 字段中间截断，`if not cleaned.endswith("}"): cleaned += '" }'` 补全缺失的右引号和闭合括号，提高 JSON 解析成功率
 - **硬编码兜底**：`deploy_mainnet.sh` 脚本内写死 `export OPENAI_BASE_URL="https://api.deepseek.com/v1"` + `LLM_MODEL_NAME="deepseek-v4-flash"`，杜绝人为配错
 - **生产监控**：`/api/admin/judge` 端点返回当前 model 名称验证，`/api/admin/judge/verdicts` 回溯最近评分记录
+
+### 任务集市（Task Market）模式
+- **BrokerTask 扩展字段**（`src/gateway/broker.py`）：新增 `task_name`（人可读任务名）、`description`（自由文本描述）、`is_custom`（是否开启信用分门控）、`credit_score_required`（0-100 最低信用分要求）
+- **`get_pending_tasks(limit=50)`**：返回所有 `PENDING` 状态任务（`newest first`），包含 `task_id`/`skill_id`/`task_name`/`description`/`is_custom`/`credit_score_required`/`max_budget` 等字段，供前端 Task Market UI 渲染
+- **`claim_specific_task(task_id, worker_id, credit_score=0)`**：按 ID 精确认领任务；`is_custom` 任务验证 `credit_score >= credit_score_required`，不满足返回 `None`；无锁竞争，原子操作
+- **`POST /api/tasks/publish`**：接受 `PublishTaskRequest`（扩展 `RunRequest` 加 Task Market 元数据），和 `/api/run` 一样走 escrow freeze → balance check → trial enforcement 全流程
+- **`POST /api/tasks/claim-specific`**：接收 `ClaimSpecificRequest(task_id, worker_id, credit_score)`，调用 `broker.claim_specific_task()`；失败时区分 404（不存在）vs 403（信用分不足，返回 `credit_score_required`）
+- **`GET /api/tasks/pending`**：免认证，返回 `{tasks: [...], count: N}` JSON，供前端 Developer 选项卡「抢单池」表格渲染
+- **API Discovery 集成**：新增 "Task Market" 类别（publish/pending/claim-specific）和 "Worker Credit" 类别
+
+### Worker Credit Score 系统
+- **常量**：`CREDIT_SCORE_NS = "worker:credit"`（`server.py`），Storage namespace for credit scores
+- **存储**：`storage.dict_get(CREDIT_SCORE_NS, wallet)` / `storage.dict_set(CREDIT_SCORE_NS, wallet, score)`
+- **范围**：0-100，默认 0（新 Worker）
+- **`GET /api/worker/credit-score/{wallet}`**：免认证，返回 `{wallet, score}`
+- **`POST /api/worker/credit-score`**：需 EIP-191 签名认证（仅 Admin），接受 `{wallet, score}`
+- **前端门控**：`claimTask()` 先 `GET /api/worker/credit-score/{wallet}` 获取当前信用分 → `credit_score < credit_score_required` 时调用 `showCreditBlockModal()` 弹窗阻断而非静默失败；custom task 按钮显示 🔒 锁图标
+
+### AIMS_SKILL_GUIDE.md 开发者文档
+- **根目录文件**：`AIMS_SKILL_GUIDE.md`，完整接入指南覆盖：
+  - Quick Start（Hello World Skill 完整示例）
+  - EIP-191 认证流程（Python `eth_account` 示例 + Browser MetaMask 示例）
+  - Skill Lifecycle（publish → claim → execute → validate → settle）
+  - AI Judge 质量评分（80/100 threshold，打分表格）
+  - Commerce & Billing（4 种计费模式表格）
+  - Task Market（custom task 信用分门控示例）
+  - API 参考表格（所有端点 + 认证要求）
+  - 安全模型（威胁矩阵表）
+  - Python SDK 完整示例
+- **`/developer-guide` 路由**：FastAPI `GET /developer-guide` 读取 `AIMS_SKILL_GUIDE.md`，通过 `_render_markdown_as_html()` 简易 Markdown→HTML 渲染器转换后嵌入 Dark 主题 HTML 模板返回

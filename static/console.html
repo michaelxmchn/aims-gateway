@@ -118,6 +118,23 @@ th{text-align:left;padding:0.55rem 0.75rem;color:var(--text-dim);text-transform:
 td{padding:0.55rem 0.75rem;border-bottom:1px solid rgba(255,255,255,0.03);color:#cbd5e1}
 tr:hover td{background:rgba(255,255,255,0.02)}
 
+/* ── Task Market table ── */
+.market-table{max-height:400px;overflow-y:auto}
+.mt-row{display:flex;align-items:center;padding:0.6rem 0.75rem;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.78rem;gap:0.75rem;transition:background 0.2s}
+.mt-row:hover{background:rgba(255,255,255,0.03)}
+.mt-id{font-family:monospace;font-size:0.65rem;color:var(--text-dim);min-width:80px}
+.mt-name{flex:1;color:#fff;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mt-skill{font-size:0.65rem;color:var(--text-dim);min-width:80px}
+.mt-budget{color:var(--neon);font-weight:600;min-width:70px;text-align:right}
+.mt-credit{font-size:0.65rem;min-width:60px;text-align:center}
+.mt-credit.ok{color:#22c55e}
+.mt-credit.block{color:var(--red)}
+.mt-action{min-width:80px;text-align:right}
+
+/* ── Publish Task result ── */
+.pub-success{color:#22c55e;font-weight:600}
+.pub-error{color:var(--red);font-weight:600}
+
 /* ── Status indicators ── */
 .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:0.5rem}
 .status-dot.online{background:#22c55e;box-shadow:0 0 8px rgba(34,197,94,0.5)}
@@ -439,6 +456,39 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </div>
     </div>
 
+    <!-- ── Publish Task (Task Market) ── -->
+    <div class="card" style="border-color:rgba(167,139,250,0.15)">
+      <div class="card-header">
+        <span class="card-title">🚀 Publish AIMS Task (Publish Task)</span>
+        <span style="font-size:0.65rem;color:var(--text-dim)">Escrow-freeze at publish, release at settlement</span>
+      </div>
+      <form onsubmit="publishTask(event)" style="display:flex;flex-direction:column;gap:0.75rem">
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+          <input class="input" id="pubTaskName" placeholder="Task name (e.g. Scrape Amazon listings)" required style="flex:2">
+          <input class="input" id="pubBudget" type="number" step="0.01" min="0.05" placeholder="Max budget (USDC)" required style="flex:1" value="2.0">
+        </div>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center">
+          <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.78rem;color:var(--text-dim);cursor:pointer">
+            <input type="checkbox" id="pubIsCustom" onchange="toggleCreditReq()">
+            🔒 Custom Task (credit gate)
+          </label>
+          <div id="creditReqGroup" style="display:none;align-items:center;gap:0.5rem">
+            <span style="font-size:0.72rem;color:var(--text-dim)">Min. credit score:</span>
+            <input class="input" id="pubCreditReq" type="number" min="0" max="100" value="90" style="width:80px">
+          </div>
+          <select class="input" id="pubSkillSelect" required style="flex:1;min-width:150px">
+            <option value="">— Select skill —</option>
+          </select>
+        </div>
+        <textarea class="input" id="pubDescription" placeholder="Task description (optional) — e.g. Extract product prices from Amazon search results" rows="2" style="resize:vertical;min-height:50px"></textarea>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+          <button class="btn btn-neon" id="publishBtn" type="submit" style="flex:1">📤 Publish to Task Market</button>
+          <span style="font-size:0.65rem;color:var(--text-dim);align-self:center">Escrow frozen on publish • released on settlement</span>
+        </div>
+      </form>
+      <div id="publishResult" style="margin-top:0.5rem;font-size:0.75rem;color:var(--text-dim)"></div>
+    </div>
+
     <!-- ── Commerce Mode & Buyout ── -->
     <div class="card" id="commercePanel">
       <div class="card-header">
@@ -591,6 +641,24 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </div>
     </div>
   </div>
+
+    <!-- ── Task Market (抢单池) ── -->
+    <div class="card" style="border-color:rgba(251,191,36,0.15);margin-top:1.25rem">
+      <div class="card-header">
+        <span class="card-title">🛒 Task Market (抢单池)</span>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <span style="font-size:0.65rem;color:var(--text-dim)" id="mkPendingCount">Pending: —</span>
+          <button class="btn btn-sm btn-ghost" onclick="fetchPendingTasks()">⟳ Refresh</button>
+        </div>
+      </div>
+      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.75rem;line-height:1.5">
+        Browse available tasks. <strong style="color:#fbbf24">Custom tasks</strong> require credit score ≥ the listed threshold.
+        Use <code style="color:var(--neon)">POST /api/worker/credit-score</code> to set your score (admin).
+      </div>
+      <div class="market-table" id="taskMarketBody">
+        <div class="empty-state"><div class="big-icon">🛒</div>No pending tasks yet. Publish one from the Consumer tab!</div>
+      </div>
+    </div>
 
     <!-- ── Skill Upload (Drag & Drop) ── -->
     <div class="card" style="margin-top:1.25rem;border-color:rgba(222,255,154,0.1)">
@@ -1053,6 +1121,18 @@ async function fetchDiscovery() {
       sel.appendChild(opt);
     });
 
+    // Populate Publish Task skill select
+    const pubSel = document.getElementById("pubSkillSelect");
+    if (pubSel) {
+      pubSel.innerHTML = '<option value="">— Select skill —</option>';
+      skillsCache.forEach(s => {
+        const opt = document.createElement("option");
+        opt.value = s.id;
+        opt.textContent = `${s.id} — ${(s.description || "").slice(0,40)}`;
+        pubSel.appendChild(opt);
+      });
+    }
+
     // Populate skills panel
     const container = document.getElementById("skillsContent");
     if (skillsCache.length === 0) {
@@ -1372,6 +1452,194 @@ async function confirmBuyout() {
 }
 
 // ════════════════════════════════════════════════════════════════
+//  Publish Task (Task Market)
+// ════════════════════════════════════════════════════════════════
+function toggleCreditReq() {
+  const group = document.getElementById("creditReqGroup");
+  group.style.display = document.getElementById("pubIsCustom").checked ? "flex" : "none";
+}
+
+window.publishTask = async function(event) {
+  event.preventDefault();
+  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
+
+  const skillId = document.getElementById("pubSkillSelect").value;
+  if (!skillId) { toast("Select a skill", "error"); return; }
+
+  const taskName = document.getElementById("pubTaskName").value.trim();
+  if (!taskName) { toast("Enter a task name", "error"); return; }
+
+  const budget = parseFloat(document.getElementById("pubBudget").value);
+  if (!budget || budget < 0.05) { toast("Minimum budget is 0.05 USDC", "error"); return; }
+
+  const isCustom = document.getElementById("pubIsCustom").checked;
+  const creditReq = isCustom ? parseInt(document.getElementById("pubCreditReq").value) || 90 : 0;
+  const description = document.getElementById("pubDescription").value.trim();
+  const resultEl = document.getElementById("publishResult");
+  const btn = document.getElementById("publishBtn");
+
+  btn.disabled = true;
+  btn.textContent = "⏳ Publishing…";
+  resultEl.innerHTML = "";
+
+  try {
+    const body = JSON.stringify({
+      skill_id: skillId,
+      params: {},
+      user_id: walletAddress,
+      developer_premium: 0.01,
+      max_budget: budget,
+      compute_tier: 1,
+      task_name: taskName,
+      description: description,
+      is_custom: isCustom,
+      credit_score_required: creditReq,
+    });
+    const bodyBytes = new TextEncoder().encode(body);
+    const sig = await eip191SignBody(bodyBytes);
+    const headers = getAuthHeaders(bodyBytes, sig);
+
+    const resp = await fetch(`${API_BASE}/api/tasks/publish`, {
+      method: "POST", headers, body,
+    });
+
+    if (resp.ok) {
+      const data = await resp.json();
+      resultEl.innerHTML = `<span class="pub-success">✅ Published: ${data.task_id} (escrow frozen: ${budget.toFixed(2)} USDC)</span>`;
+      consumerLog("success", `📤 Publish Task: ${data.task_id} name="${taskName}" budget=${budget} custom=${isCustom}`);
+      toast(`Task published: ${data.task_id}`, "success");
+      document.getElementById("pubTaskName").value = "";
+      document.getElementById("pubDescription").value = "";
+      document.getElementById("pubIsCustom").checked = false;
+      toggleCreditReq();
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      resultEl.innerHTML = `<span class="pub-error">❌ Publish failed: ${err.detail || resp.statusText}</span>`;
+      toast("Publish failed: " + (err.detail || resp.statusText), "error");
+    }
+  } catch (err) {
+    resultEl.innerHTML = `<span class="pub-error">❌ Error: ${err.message}</span>`;
+    toast("Publish error: " + err.message, "error");
+  }
+
+  btn.disabled = false;
+  btn.textContent = "📤 Publish to Task Market";
+};
+
+// ════════════════════════════════════════════════════════════════
+//  Task Market (抢单池) — fetch pending & claim
+// ════════════════════════════════════════════════════════════════
+
+window.fetchPendingTasks = async function() {
+  const container = document.getElementById("taskMarketBody");
+  if (!container) return;
+
+  try {
+    const resp = await fetch(`${API_BASE}/api/tasks/pending`);
+    if (!resp.ok) {
+      container.innerHTML = '<div class="empty-state"><div class="big-icon">⚠️</div>Market API unavailable</div>';
+      return;
+    }
+    const data = await resp.json();
+    const tasks = data.tasks || [];
+    document.getElementById("mkPendingCount").textContent = `Pending: ${data.count || 0}`;
+
+    if (tasks.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="big-icon">🛒</div>No pending tasks yet. Publish one from the Consumer tab!</div>';
+      return;
+    }
+
+    container.innerHTML = tasks.map(t => {
+      const isCustom = t.is_custom;
+      const creditReq = t.credit_score_required || 0;
+      const creditLabel = isCustom
+        ? `<span class="mt-credit block">🔒 ≥${creditReq}</span>`
+        : `<span class="mt-credit ok">✓ Open</span>`;
+      return `<div class="mt-row">
+        <span class="mt-id">${(t.task_id || "").slice(0,12)}</span>
+        <span class="mt-name">${t.task_name || t.skill_id}</span>
+        <span class="mt-skill">${t.skill_id || "—"}</span>
+        <span class="mt-budget">$${(t.max_budget || 0).toFixed(2)}</span>
+        ${creditLabel}
+        <span class="mt-action"><button class="btn btn-sm ${isCustom ? 'btn-plg' : 'btn-outline'}" onclick="claimTask('${t.task_id}', ${creditReq}, ${isCustom})">
+          ${isCustom ? '🔒 Claim' : '⚡ Claim'}
+        </button></span>
+      </div>`;
+    }).join("");
+  } catch (err) {
+    container.innerHTML = '<div class="empty-state"><div class="big-icon">⚠️</div>Error: ' + err.message + '</div>';
+  }
+};
+
+window.claimTask = async function(taskId, creditReq, isCustom) {
+  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
+
+  // Fetch worker's credit score
+  let creditScore = 0;
+  try {
+    const csResp = await fetch(`${API_BASE}/api/worker/credit-score/${walletAddress}`);
+    if (csResp.ok) {
+      const csData = await csResp.json();
+      creditScore = csData.score || 0;
+    }
+  } catch(e) {}
+
+  // Check credit gate for custom tasks
+  if (isCustom && creditScore < creditReq) {
+    showCreditBlockModal(creditScore, creditReq, taskId);
+    return;
+  }
+
+  toast(`Claiming ${taskId}…`, "info");
+  try {
+    const body = JSON.stringify({
+      task_id: taskId,
+      worker_id: walletAddress,
+      credit_score: creditScore,
+    });
+    const bodyBytes = new TextEncoder().encode(body);
+    const sig = await eip191SignBody(bodyBytes);
+    const headers = getAuthHeaders(bodyBytes, sig);
+
+    const resp = await fetch(`${API_BASE}/api/tasks/claim-specific`, {
+      method: "POST", headers, body,
+    });
+
+    if (resp.ok) {
+      const data = await resp.json();
+      toast(`✅ Claimed ${taskId} successfully!`, "success");
+      consumerLog("success", `🛒 Claimed task: ${taskId} credit=${creditScore}`);
+      await fetchPendingTasks();
+    } else if (resp.status === 403) {
+      const err = await resp.json().catch(() => ({}));
+      showCreditBlockModal(creditScore, err.credit_score_required || creditReq, taskId);
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      toast("Claim failed: " + (err.detail || resp.statusText), "error");
+    }
+  } catch (err) {
+    toast("Claim error: " + err.message, "error");
+  }
+};
+
+function showCreditBlockModal(creditScore, required, taskId) {
+  const body = document.getElementById("modalBody");
+  const title = document.getElementById("modalTitle") || document.querySelector(".modal h3");
+  if (title) title.textContent = "🔒 Credit Score Insufficient";
+  if (body) {
+    body.innerHTML =
+      `<p><strong style="color:#fbbf24">Credit score too low</strong></p>` +
+      `<p>Your credit score is <strong style="color:var(--red)">${creditScore}</strong>, ` +
+      `but this task requires <strong style="color:#fbbf24">≥ ${required}</strong>.</p>` +
+      `<p style="font-size:0.75rem;color:var(--text-dim)">` +
+      `Complete open tasks (no credit gate) to build your reputation, or ask an admin to ` +
+      `<code style="color:var(--neon)">POST /api/worker/credit-score</code> to raise your score.</p>` +
+      `<p style="font-size:0.7rem;color:var(--text-dim)">Task: <code>${taskId}</code></p>`;
+  }
+  document.getElementById("depositModal").classList.add("open");
+}
+
+// ════════════════════════════════════════════════════════════════
 //  Consumer log
 // ════════════════════════════════════════════════════════════════
 function consumerLog(type, msg) {
@@ -1505,6 +1773,7 @@ function switchRole(role) {
   currentRole = role;
   document.querySelectorAll(".role-tab").forEach(t => t.classList.toggle("active", t.dataset.role === role));
   document.querySelectorAll(".tab-content").forEach(t => t.classList.toggle("active", t.id === "tab-" + role));
+  if (role === "developer") fetchPendingTasks();
 }
 
 // ════════════════════════════════════════════════════════════════
