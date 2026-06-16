@@ -67,6 +67,23 @@
   - `buyout`：`buyout:{wallet}:{skill_id}` → `{purchased: True, ts}`，永久有效
 - **网关集成**：`/api/run` 在 manifest 查找之后、余额检查之前插入 `_trial_manager.enforce()`，首次调用跳过余额检查（日志记录 `Free trial granted`）；`register_skill_metadata` 接受可选的 `monetization` 字典，持久化到 `skill:metadata:{skill_id}`；新增 `_get_skill_billing_mode()` 从存储中读取 billingMode，缺失时默认 `pay_per_task`
 
+### 用户提现（Withdraw）流程
+- **`POST /api/wallet/withdraw`**：EIP-191 认证 POST，请求体 `{user_id, amount}`，从用户余额扣除并记录 `tx_ledger` 条目（`type=withdraw`）
+- **双模式扣减**：Web3 模式优先扣 `_local_deposits` 本地回退余额（因 on-chain withdraw 需用户自签）；InMemory 模式直接调 `_contract.withdraw()`
+- **余额检查**：`get_user_balance() + _local_deposits` 合计校验，不足时返回 HTTP 402
+- **前端入口**：`console.html` Recharge Reserves 面板底部 withdraw-row，输入金额 + `💸 Withdraw` 按钮
+
+### 法币充值中继桥（Fiat/Stripe Bridge）
+- **`POST /api/wallet/fiat-deposit`**：EIP-191 认证 POST，请求体 `{user_id, amount, card_token}`，mock Stripe 支付确认后自动 `deposit()` + `tx_ledger.record(type=deposit, method=stripe_mock)`
+- **三档预设**：前端 `console.html` 提供 $25/$50/$100 Credit Card 按钮；后端始终成功（dev/test 模式），不调用真实 Stripe API
+- **隔离原则**：法桥仅处理 USD→USDC 兑换，不接触链上合约的 `deposit()` 直接调用路径——用户真实的 MetaMask on-chain deposit 仍通过 `/api/wallet/deposit` 独立通道
+
+### 用户历史账本（User History Ledger）
+- **`GET /api/wallet/history?user_id=&limit=N`**：GET 免认证端点，代理至 `TransactionLedger.get_user_history()`，返回带 type/amount/timestamp/tx_id/description 的条目列表
+- **`TransactionLedger`**（`src/gateway/ledger.py`）：`Storage` 持久化的 append-only 日志，`ledger:transactions:{tx_id}` 单条记录 + `ledger:user_txns:{user_id}` 反向索引（上限 200 条/用户）
+- **自动入账路径**：`wallet_deposit` → `tx_ledger.record(type="deposit")`；`wallet_withdraw` → `tx_ledger.record(type="withdraw")`；`submit_task` → 计费结算（`type="task_deduction"`，由 `CommerceEngine`/`BillingEngine` 的 `_record()` 录入）
+- **前端过滤**：`console.html` User History Ledger 面板支持 4 类过滤器（All/Deposits/Withdrawals/Tasks），`fetchHistory(typeFilter)` 通过 JS 端 filter 实现
+
 ### Hardhat 测试账户映射（关键）
 - **Account #0 (Gateway EOA)**: `0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266` — 私钥: `0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80`
 - **Account #1 (User)**: `0x70997970C51812dc3A010C7d01b50e0d17dc79C8` — 私钥: `0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d`

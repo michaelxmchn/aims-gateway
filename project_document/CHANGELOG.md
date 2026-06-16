@@ -8,6 +8,11 @@
 ## [2026-06-16]
 ### 新增
 - feat(test): `scripts/test_trigger_biz.py` — E2E 业务触发测试脚本，跨境贸易结算全链路（POST /api/run → DeepSeek AI Judge → Worker claim/submit → on-chain settlement）
+### 新增
+- feat(api): `POST /api/wallet/withdraw` — 用户提现端点，Deduct 余额 + tx_ledger 追溯记录
+- feat(api): `POST /api/wallet/fiat-deposit` — 法币充值中继桥（mock Stripe），USD→USDC 自动兑换 + tx_ledger 记录
+- feat(api): `GET /api/wallet/history` — 用户历史账本查询，支持 type/deposit/withdraw/task_deduction 分类
+- feat(deposit): `wallet_deposit` 记录 tx_ledger 条目 — 每笔充值自动入账
 ### 修改
 - feat(worker): `src/worker/utils/signer.py` — HMAC-SHA256 → EIP-191 personal_sign，Worker 通过 `AIMS_WORKER_KEY`/`AIMS_WORKER_WALLET` 环境变量 EIP-191 签名，HMAC 保留为向后兼容回退
 - feat(worker): `src/worker/worker.py` — 搜索词感知三池 Mock（electronics/wholesale/components），Canary `_canary_token` 透传修复 DeepSeek 低分问题

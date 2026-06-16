@@ -40,6 +40,7 @@ from src.ledger.mock_counter import MockLedger
 from src.skills.registry import SkillRegistry
 from src.gateway.billing import BillingEngine, CommerceEngine, BillingMode, RevenuePhase, USDC_UNIT
 from src.gateway.chain_listener import ChainListener
+from src.gateway.ledger import TransactionLedger
 from src.judge.judge_agent import JudgeEngine
 
 logger = logging.getLogger(__name__)
@@ -75,6 +76,9 @@ ledger = MockLedger(storage=storage)
 broker = TaskBroker(ledger, storage=storage)
 registry = SkillRegistry()
 skill_store = SkillStore(storage=storage)
+
+# Transaction history ledger — records deposits, withdraws, task deductions
+tx_ledger = TransactionLedger(storage=storage)
 
 # Load any previously uploaded skills into the registry
 skill_store.load_into_registry(registry)
@@ -305,6 +309,7 @@ async def verify_wallet_middleware(request: Request, call_next):
         path.startswith("/api/tasks/")
         or path.startswith("/api/skills/")
         or path.startswith("/api/wallet/balance")
+        or path.startswith("/api/wallet/history")
         or path.startswith("/api/commerce/")
     ):
         return await call_next(request)
@@ -519,6 +524,32 @@ class BalanceResponse(BaseModel):
     user_id: str
     credits: float
     status: str = "PENDING"
+
+
+class WithdrawRequest(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=128)
+    amount: float = Field(..., gt=0.0, description="Amount to withdraw in USDC")
+
+
+class WithdrawResponse(BaseModel):
+    user_id: str
+    amount: float
+    new_balance: float
+    tx_id: str
+
+
+class FiatDepositRequest(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=128)
+    amount: float = Field(..., gt=0.0, description="Fiat amount in USD")
+    card_token: str | None = Field(default="mock_stripe_token", description="Stripe card token (mock)")
+
+
+class FiatDepositResponse(BaseModel):
+    user_id: str
+    amount: float
+    new_balance: float
+    tx_id: str
+    payment_method: str = "stripe_mock"
 
 
 class TaskStatusResponse(BaseModel):
@@ -1209,6 +1240,14 @@ async def wallet_deposit(req: DepositRequest):
         _contract.deposit(req.user_id, amount_atomic)
         new_balance = _contract.get_user_balance(req.user_id)
 
+    # Record deposit in transaction history ledger
+    tx_ledger.record(
+        txn_type="deposit",
+        user_id=req.user_id,
+        amount=req.amount,
+        description=f"Wallet deposit of {req.amount:.2f} USDC",
+    )
+
     return DepositResponse(
         user_id=req.user_id,
         amount=req.amount,
@@ -1230,6 +1269,121 @@ async def wallet_balance(user_id: str):
     credits = float(balance_atomic) / 10**6
 
     return BalanceResponse(user_id=user_id, credits=credits)
+
+
+@app.post("/api/wallet/withdraw", response_model=WithdrawResponse)
+async def wallet_withdraw(req: WithdrawRequest):
+    """Withdraw USDC from the user's gateway balance back to their wallet.
+
+    Deducts from the internal balance (or local fallback in Web3 mode)
+    and records the transaction in the user history ledger.
+    """
+    # Check available balance
+    balance_atomic = _contract.get_user_balance(req.user_id)
+    if _is_web3_mode:
+        balance_atomic += _local_deposits.get(req.user_id, 0)
+
+    amount_atomic = int(round(req.amount * 10**6))
+    if balance_atomic < amount_atomic:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Insufficient balance. Available: {balance_atomic / 10**6:.6f} USDC, requested: {req.amount:.6f}",
+        )
+
+    # Deduct from balance
+    if _is_web3_mode:
+        current_local = _local_deposits.get(req.user_id, 0)
+        if current_local >= amount_atomic:
+            _local_deposits[req.user_id] = current_local - amount_atomic
+        else:
+            # Deduct from on-chain balance via local fallback
+            _local_deposits[req.user_id] = 0
+    else:
+        _contract.withdraw(req.user_id, amount_atomic)
+
+    # Recalculate new balance
+    new_balance_atomic = _contract.get_user_balance(req.user_id)
+    if _is_web3_mode:
+        new_balance_atomic += _local_deposits.get(req.user_id, 0)
+
+    # Record in transaction ledger
+    tx_id = tx_ledger.record(
+        txn_type="withdraw",
+        user_id=req.user_id,
+        amount=req.amount,
+        description=f"Withdrawal of {req.amount:.2f} USDC to wallet {req.user_id[:10]}...",
+    )
+
+    logger.info("Withdraw: user=%s amount=%.6f tx=%s", req.user_id, req.amount, tx_id)
+
+    return WithdrawResponse(
+        user_id=req.user_id,
+        amount=req.amount,
+        new_balance=float(new_balance_atomic) / 10**6,
+        tx_id=tx_id,
+    )
+
+
+@app.post("/api/wallet/fiat-deposit", response_model=FiatDepositResponse)
+async def wallet_fiat_deposit(req: FiatDepositRequest):
+    """Mock fiat/Stripe credit card deposit bridge.
+
+    Simulates a Stripe payment confirmation, then auto-deposits the
+    equivalent USDC into the user's gateway balance and records the
+    transaction in the user history ledger.
+    """
+    # ── 1. Mock Stripe charge (always succeeds in dev/test) ────────────
+    logger.info(
+        "Fiat deposit (mock): user=%s amount=%.2f card_token=%s",
+        req.user_id, req.amount, req.card_token,
+    )
+
+    # ── 2. Convert fiat USD → USDC and deposit ─────────────────────────
+    amount_atomic = int(round(req.amount * 10**6))
+
+    if _is_web3_mode:
+        _local_deposits[req.user_id] = _local_deposits.get(req.user_id, 0) + amount_atomic
+    else:
+        _contract.deposit(req.user_id, amount_atomic)
+
+    new_balance_atomic = _contract.get_user_balance(req.user_id)
+    if _is_web3_mode:
+        new_balance_atomic += _local_deposits.get(req.user_id, 0)
+
+    # ── 3. Record in transaction ledger ───────────────────────────────
+    tx_id = tx_ledger.record(
+        txn_type="deposit",
+        user_id=req.user_id,
+        amount=req.amount,
+        description=f"Fiat/Stripe deposit of ${req.amount:.2f} (mock card {req.card_token[:12]}...)",
+        metadata={"method": "stripe_mock", "card_token": req.card_token},
+    )
+
+    logger.info("Fiat deposit complete: user=%s amount=%.2f tx=%s", req.user_id, req.amount, tx_id)
+
+    return FiatDepositResponse(
+        user_id=req.user_id,
+        amount=req.amount,
+        new_balance=float(new_balance_atomic) / 10**6,
+        tx_id=tx_id,
+    )
+
+
+@app.get("/api/wallet/history")
+async def wallet_history(user_id: str, limit: int = 50):
+    """Return the personal transaction history for a wallet.
+
+    Includes deposits, withdrawals, and task billing entries.
+    Query parameters: ``?user_id=<evm_address>&limit=N``.
+    """
+    if not user_id:
+        raise HTTPException(status_code=400, detail="Missing required query parameter: user_id")
+    entries = tx_ledger.get_user_history(user_id, limit=limit)
+    return {
+        "user_id": user_id,
+        "entries": entries,
+        "count": len(entries),
+    }
 
 
 @app.get("/api/admin/audit")

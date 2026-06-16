@@ -227,6 +227,29 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 .audit-table .tx-role{color:var(--text-dim);font-size:.6rem}
 .audit-filter{display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap}
 .audit-filter .input{flex:1;min-width:120px;font-size:.72rem}
+
+/* ── Withdraw panel ── */
+.withdraw-row{display:flex;gap:.5rem;align-items:center;margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)}
+.withdraw-row .input{width:120px}
+.withdraw-btn{background:rgba(251,191,36,0.1);color:var(--amber);border-color:rgba(251,191,36,0.2)}
+.withdraw-btn:hover{background:rgba(251,191,36,0.2);box-shadow:0 0 15px rgba(251,191,36,0.1)}
+
+/* ── Fiat deposit button ── */
+.fiat-deposit-btn{background:rgba(96,165,250,0.1);color:var(--blue);border-color:rgba(96,165,250,0.2)}
+.fiat-deposit-btn:hover{background:rgba(96,165,250,0.2);box-shadow:0 0 15px rgba(96,165,250,0.1)}
+
+/* ── History Ledger ── */
+.history-table{font-size:.72rem;max-height:280px;overflow-y:auto}
+.history-table::-webkit-scrollbar{width:3px}
+.history-table::-webkit-scrollbar-thumb{background:rgba(222,255,154,0.15);border-radius:2px}
+.history-table table{font-size:.72rem}
+.history-table td{padding:.35rem .5rem;font-size:.65rem;vertical-align:top}
+.history-type{display:inline-block;padding:.1rem .4rem;border-radius:3px;font-size:.6rem;font-weight:600}
+.history-type.deposit{background:rgba(34,197,94,0.1);color:#22c55e}
+.history-type.withdraw{background:rgba(251,191,36,0.1);color:var(--amber)}
+.history-type.task_deduction{background:rgba(96,165,250,0.1);color:var(--blue)}
+.history-type.refund{background:rgba(251,191,36,0.1);color:var(--amber)}
+.history-type.worker_payout{background:rgba(222,255,154,0.08);color:var(--neon-dim)}
 </style>
 </head>
 <body>
@@ -469,6 +492,21 @@ tr:hover td{background:rgba(255,255,255,0.02)}
             <input class="input" id="customRechargeAmt" type="number" placeholder="Custom amount" min="1" style="width:120px">
             <button class="btn btn-sm btn-neon" onclick="rechargeReserves(parseFloat(document.getElementById('customRechargeAmt').value))">Deposit</button>
           </div>
+
+          <!-- ── Fiat / Credit Card Bridge ── -->
+          <div style="display:flex;gap:.5rem;margin-top:.5rem">
+            <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(25)">💳 $25 Credit Card</button>
+            <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(50)">💳 $50 Credit Card</button>
+            <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(100)">💳 $100 Credit Card</button>
+            <span style="font-size:.6rem;color:var(--text-dim);align-self:center">mock Stripe</span>
+          </div>
+
+          <!-- ── Withdraw Row ── -->
+          <div class="withdraw-row">
+            <span style="font-size:.75rem;color:var(--text-dim)">Withdraw:</span>
+            <input class="input" id="withdrawAmt" type="number" placeholder="Amount" min="1" value="10" style="width:100px">
+            <button class="btn btn-sm withdraw-btn" onclick="withdrawFunds()">💸 Withdraw</button>
+          </div>
         </div>
         <div style="flex:1;min-width:200px;font-size:.78rem;color:var(--text-dim);line-height:1.6">
           <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)">
@@ -501,6 +539,26 @@ tr:hover td{background:rgba(255,255,255,0.02)}
       </div>
       <div class="audit-table" id="auditLedgerBody">
         <div class="empty-state"><div class="big-icon">📜</div>Connect wallet and execute tasks to see the audit trail</div>
+      </div>
+    </div>
+
+    <!-- ── User History Ledger ── -->
+    <div class="card" style="border-color:rgba(222,255,154,0.1)">
+      <div class="card-header">
+        <span class="card-title">📋 User History Ledger</span>
+        <div style="display:flex;gap:.35rem">
+          <button class="btn btn-sm btn-ghost" onclick="fetchHistory('')">All</button>
+          <button class="btn btn-sm btn-ghost" onclick="fetchHistory('deposit')">Deposits</button>
+          <button class="btn btn-sm btn-ghost" onclick="fetchHistory('withdraw')">Withdrawals</button>
+          <button class="btn btn-sm btn-ghost" onclick="fetchHistory('task_deduction')">Tasks</button>
+        </div>
+      </div>
+      <div style="display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap">
+        <button class="btn btn-sm btn-outline" onclick="fetchHistory('')">⟳ Refresh</button>
+        <span style="font-size:.65rem;color:var(--text-dim);align-self:center">Your personal deposit, withdrawal &amp; task billing trail</span>
+      </div>
+      <div class="history-table" id="userHistoryBody">
+        <div class="empty-state"><div class="big-icon">📋</div>Connect wallet and execute transactions to see your history</div>
       </div>
     </div>
   </div>
@@ -824,6 +882,7 @@ async function connectWallet() {
     await refreshBalance();
     await fetchDiscovery();
     await fetchHealth();
+    await fetchHistory('');
 
     // ── Prompt to switch to Base Sepolia ──
     const net = await provider.getNetwork();
@@ -1712,6 +1771,142 @@ window.fetchAudit = async function(taskFilter) {
     `;
   } catch (err) {
     container.innerHTML = '<div class="empty-state"><div class="big-icon">⚠️</div>Error loading audit: ' + err.message + '</div>';
+  }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  Withdraw Funds
+// ════════════════════════════════════════════════════════════════
+window.withdrawFunds = async function() {
+  if (!walletAddress) { toast('Connect your wallet first', 'error'); return; }
+  const amt = parseFloat(document.getElementById('withdrawAmt').value);
+  if (!amt || amt <= 0) { toast('Enter a valid withdraw amount', 'error'); return; }
+
+  toast('Withdrawing ' + amt.toFixed(2) + ' USDC…', 'info');
+  try {
+    const body = JSON.stringify({ user_id: walletAddress, amount: amt });
+    const bodyBytes = new TextEncoder().encode(body);
+    const sig = await eip191SignBody(bodyBytes);
+    const headers = getAuthHeaders(bodyBytes, sig);
+    const resp = await fetch(API_BASE + '/api/wallet/withdraw', {
+      method: 'POST', headers, body,
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      toast('✅ Withdrew ' + amt.toFixed(2) + ' USDC — tx: ' + data.tx_id, 'success');
+      consumerLog('success', '💸 Withdrew ' + amt.toFixed(2) + ' USDC — tx=' + data.tx_id);
+      await refreshBalance();
+      if (document.getElementById('rechargeBalance')) {
+        document.getElementById('rechargeBalance').textContent = data.new_balance.toFixed(2) + ' USDC';
+      }
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      toast('Withdraw failed: ' + (err.detail || resp.statusText), 'error');
+      consumerLog('error', '💸 Withdraw failed: ' + (err.detail || resp.statusText));
+    }
+  } catch (err) {
+    toast('Withdraw error: ' + err.message, 'error');
+  }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  Fiat / Credit Card Deposit (mock Stripe)
+// ════════════════════════════════════════════════════════════════
+window.fiatDeposit = async function(amount) {
+  if (!walletAddress) { toast('Connect your wallet first', 'error'); return; }
+  if (!amount || amount <= 0) { toast('Enter a valid amount', 'error'); return; }
+
+  toast('💳 Processing $' + amount.toFixed(2) + ' credit card payment…', 'info');
+  try {
+    const body = JSON.stringify({
+      user_id: walletAddress,
+      amount: amount,
+      card_token: 'tok_mock_' + Math.random().toString(36).slice(2, 10),
+    });
+    const bodyBytes = new TextEncoder().encode(body);
+    const sig = await eip191SignBody(bodyBytes);
+    const headers = getAuthHeaders(bodyBytes, sig);
+    const resp = await fetch(API_BASE + '/api/wallet/fiat-deposit', {
+      method: 'POST', headers, body,
+    });
+    if (resp.ok) {
+      const data = await resp.json();
+      consumerDepositedUsdc += amount;
+      document.getElementById('rechargeTotal').textContent = consumerDepositedUsdc.toFixed(2) + ' USDC';
+      toast('✅ Credit card deposit successful! $' + amount.toFixed(2) + ' → ' + data.new_balance.toFixed(2) + ' USDC', 'success');
+      consumerLog('success', '💳 Fiat deposit $' + amount.toFixed(2) + ' (Stripe mock) → balance ' + data.new_balance.toFixed(2) + ' USDC, tx=' + data.tx_id);
+      await refreshBalance();
+      if (document.getElementById('rechargeBalance')) {
+        document.getElementById('rechargeBalance').textContent = data.new_balance.toFixed(2) + ' USDC';
+      }
+    } else {
+      const err = await resp.json().catch(() => ({}));
+      toast('Card payment failed: ' + (err.detail || resp.statusText), 'error');
+    }
+  } catch (err) {
+    toast('Fiat deposit error: ' + err.message, 'error');
+  }
+};
+
+// ════════════════════════════════════════════════════════════════
+//  User History Ledger
+// ════════════════════════════════════════════════════════════════
+window.fetchHistory = async function(typeFilter) {
+  const container = document.getElementById('userHistoryBody');
+  if (!container) return;
+  if (!walletAddress) {
+    container.innerHTML = '<div class="empty-state"><div class="big-icon">🔌</div>Connect your wallet to view history</div>';
+    return;
+  }
+
+  try {
+    const url = API_BASE + '/api/wallet/history?user_id=' + encodeURIComponent(walletAddress) + '&limit=50';
+    const resp = await fetch(url);
+    if (!resp.ok) {
+      container.innerHTML = '<div class="empty-state"><div class="big-icon">⚠️</div>History API unavailable (HTTP ' + resp.status + ')</div>';
+      return;
+    }
+    const data = await resp.json();
+    let entries = data.entries || [];
+
+    // Filter by type if specified
+    if (typeFilter) {
+      entries = entries.filter(e => (e.type || '') === typeFilter);
+    }
+
+    if (entries.length === 0) {
+      container.innerHTML = '<div class="empty-state"><div class="big-icon">📭</div>No history entries found' +
+        (typeFilter ? ' for type "' + typeFilter + '"' : '') + '</div>';
+      return;
+    }
+
+    container.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>Time</th><th>Type</th><th>Amount</th><th>Description</th><th>Tx ID</th>
+        </tr></thead>
+        <tbody>
+          ${entries.map(e => {
+            const ts = e.timestamp ? new Date(e.timestamp * 1000).toLocaleString() : '—';
+            const type = e.type || '—';
+            const amt = (e.amount || 0);
+            const amtStr = amt >= 0 ? amt.toFixed(2) : '(' + Math.abs(amt).toFixed(2) + ')';
+            const desc = (e.description || '—').slice(0, 50);
+            const txId = (e.tx_id || '').slice(0, 12);
+            return `<tr>
+              <td style="color:var(--text-dim);font-size:.6rem;white-space:nowrap">${ts}</td>
+              <td><span class="history-type ${type}">${type}</span></td>
+              <td style="color:${type === 'withdraw' ? 'var(--amber)' : 'var(--neon)'};font-weight:600">${amtStr}</td>
+              <td style="font-size:.6rem;color:var(--text-dim);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${desc}</td>
+              <td style="font-family:monospace;font-size:.6rem;color:var(--text-dim)">${txId || '—'}</td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+      ${entries.length >= 50 ? '<div style="text-align:center;padding:.5rem;font-size:.65rem;color:var(--text-dim)">Showing last 50 entries</div>' : ''}
+    `;
+  } catch (err) {
+    container.innerHTML = '<div class="empty-state"><div class="big-icon">⚠️</div>Error loading history: ' + err.message + '</div>';
   }
 };
 

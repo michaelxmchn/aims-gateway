@@ -38,6 +38,11 @@
 - [x] **品牌名称统一修正** — 全局 `AIMS Network` → `AIMS Gateway`，覆盖 3 个 HTML 文件、2 个 Markdown 文件、4 个 Python 源码文件，共 15 处引用
 - [x] **首页 Dashboard 增强** — `static/index.html` 新增金丝雀（Canary）三层反盗版水印防御展示区 + 双钱包 Treasury 隔离架构区 + 4+1 Commerce Matrix 升级（新增 Free Trial 模式卡片，数量统计 3→4+1）
 - [x] **Console 三大功能新增** — `static/console.html` 新增拖拽上传 Skill ZIP（Developer 选项卡）、快速充值面板（Consumer 选项卡 6 档预设+自定义）、审计账本查询器（支持 task_id 过滤 + settle/refund 分类）
+- [x] **Phase 5: AIMS 2.0 Commercialization 四大升级**：
+  - **(a) 提现（Withdraw）按钮** — `console.html` Recharge 面板新增提现输入框 + `POST /api/wallet/withdraw` 端点，支持 Web3/local 双模式扣减
+  - **(b) 法币/Stripe 信用卡充值桥** — `console.html` 新增 3 档 Credit Card 按钮（$25/50/100）+ `POST /api/wallet/fiat-deposit` mock 端点，tx_ledger 自动入账
+  - **(c) 数据库隐私隔离** — 链上仅存 balance hash + settlement 记录；用户注册/参数/输入输出保留在 Redis/Docker 层，不写链
+  - **(d) 用户历史账本** — `console.html` Consumer 选项卡新增 User History Ledger 面板（按类型过滤 deposit/withdraw/task）+ `GET /api/wallet/history` 端点，auto-load 钱包连接时
 - [ ] **Phase 6.5: Base Sepolia 多 Agent 测试网联调** — E2E Chain Listener + AI Judge + SSE 闭环验证
 - [x] **品牌名称统一修正** — 全局 `AIMS Network` → `AIMS Gateway`，覆盖 3 个 HTML 文件、2 个 Markdown 文件、4 个 Python 源码文件，共 15 处引用
 
