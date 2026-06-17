@@ -11,6 +11,9 @@
 - fix(console-fallback): 5 个关键函数（`handleDeposit`/`rechargeReserves`/`withdrawFunds`/`fiatDeposit`/`sendHeartbeat`）追加 `smartHeaders(body)` JWT fallback — 无 MetaMask 时不再静默失败
 - fix(console-silent): `fetchCreditScore()`/`fetchIntegrationStatus()` 静默 `catch{}` → `console.warn()` — 错误不再隐藏
 - fix(console-null): `fetchDiscovery()` `devSettlements` null 检查 — 防止 Developer Tab 未渲染时报 `Cannot set properties of null`
+- fix(console-vault-ids): `switchRole()` 新增 `_savedVaultTaskId` 备份/恢复 — 离开 Consumer Tab 时保存 `_currentVaultTaskId`，返回时自动还原，修复 vault 面板三个按钮（付款/查询/加价）在 Tab 切换后无响应的问题
+- fix(console-claim-silent): `claimTask()` 信用分查询 `catch(e){}` → `console.warn()` — 网络失败不再静默吞掉
+- docs(whitepaper): `project_document/AIMS_CONSOLE_BUTTON_WHITEPAPER.md` — 完整按钮白皮书（62 按钮、50 JS 函数、25 API 端点、风险矩阵）
 - fix(auth): `/` 路由释放 Auth Guard，改为公开页面 — 用户首次访问可直接看到着陆页，仅 `/console` 保留 JWT 鉴权重定向
 - fix(ui): `static/index.html` "Launch App" 按钮 href 修正 `#cta` → `/console`，确保商业动线正确引导至登录拦截流
 - fix(db): `create_user()` 返回字典缺少 `jwt_secret` — 注册后 `create_jwt()` 访问 `user["jwt_secret"]` 触发 `KeyError` 导致 500

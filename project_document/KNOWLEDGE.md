@@ -101,6 +101,16 @@
 - **自动入账路径**：`wallet_deposit` → `tx_ledger.record(type="deposit")`；`wallet_withdraw` → `tx_ledger.record(type="withdraw")`；`submit_task` → 计费结算（`type="task_deduction"`，由 `CommerceEngine`/`BillingEngine` 的 `_record()` 录入）
 - **前端过滤**：`console.html` User History Ledger 面板支持 4 类过滤器（All/Deposits/Withdrawals/Tasks），`fetchHistory(typeFilter)` 通过 JS 端 filter 实现
 
+### Console Vault 面板 Task ID 跨 Tab 保护模式
+- **`_currentVaultTaskId` 作用域问题**：该变量在 `showVaultPanel()` 中设置，但在 Tab 切换（Consumer→Developer→Consumer）时会被清空，导致 vault 三个按钮（`simulateVaultPayment`、`boostReward`、`pollVaultStatus`）点击无反应
+- **保护机制**：`switchRole()` 中添加 `_savedVaultTaskId` 备份变量，离开 Consumer Tab 时保存 `_currentVaultTaskId`，返回 Consumer Tab 时自动还原并通过 `vaultStatusBadge` DOM 元素更新 UI 状态提示
+- **标准模式**：所有跨 Tab 需要持久化的状态变量应使用对应的 `_saved*` 备份模式，在 `switchRole()` 中统一管理
+
+### Console 按钮白皮书
+- **文件**：`project_document/AIMS_CONSOLE_BUTTON_WHITEPAPER.md`
+- **内容**：62 按钮完整清单、50 JS 函数映射、25 API 端点映射、7 大核心操作像素级分析、认证架构（`smartHeaders` 降级链）、数据流全景、风险矩阵（🔴R1-R2 🟡R3-R6 🟢R7-R9）
+- **用途**：为 Console 多标签页布局重构提供完整的交互资产清单与风险点记录
+
 ### AIMS 2.0 免质押政策（2026-06-16 生效）
 - **核心原则**：Worker/卖方 **0 门槛加入**，彻底去除质押（Staking/Collateral）概念
 - **前端 UI 净化**：所有 HTML 页面移除 "Worker Staking"、"质押余额"、"节点激活费"、"抵押金" 等元素和文案

@@ -1865,7 +1865,7 @@ window.claimTask = async function(taskId, creditReq, isCustom) {
       const csData = await csResp.json();
       creditScore = csData.score || 0;
     }
-  } catch(e) {}
+  } catch(e) { console.warn("claimTask — credit score fetch:", e.message); }
 
   // Check credit gate for custom tasks
   if (isCustom && creditScore < creditReq) {
@@ -2408,10 +2408,31 @@ async function fetchHealth() {
 // ════════════════════════════════════════════════════════════════
 //  Role switching
 // ════════════════════════════════════════════════════════════════
+let _savedVaultTaskId = null;
+
 function switchRole(role) {
+  // Save vault context when leaving consumer tab
+  if (currentRole === "consumer" && role !== "consumer") {
+    _savedVaultTaskId = _currentVaultTaskId;
+  }
   currentRole = role;
   document.querySelectorAll(".role-tab").forEach(t => t.classList.toggle("active", t.dataset.role === role));
   document.querySelectorAll(".tab-content").forEach(t => t.classList.toggle("active", t.id === "tab-" + role));
+  // Restore vault context when returning to consumer tab
+  if (role === "consumer" && _savedVaultTaskId && !_currentVaultTaskId) {
+    _currentVaultTaskId = _savedVaultTaskId;
+    // Re-show vault panel if we have a cached vault task
+    if (typeof showVaultPanel === "function") {
+      // Re-render vault from cached data — vault address can't be recovered without storage,
+      // but at least boost/check/pay buttons will have a valid taskId
+      const vaultStatusEl = document.getElementById("vaultStatusBadge");
+      if (vaultStatusEl) {
+        vaultStatusEl.textContent = "READY";
+        vaultStatusEl.style.background = "rgba(222,255,154,0.1)";
+        vaultStatusEl.style.color = "var(--neon)";
+      }
+    }
+  }
   if (role === "developer") fetchPendingTasks();
 }
 

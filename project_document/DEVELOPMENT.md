@@ -84,6 +84,9 @@
   - **5 个函数追加 JWT fallback**：`handleDeposit`/`rechargeReserves`/`withdrawFunds`/`fiatDeposit`/`sendHeartbeat` 改用 `smartHeaders(body)` 支持无 MetaMask 场景
   - **Silent catch 修复**：`fetchCreditScore()`/`fetchIntegrationStatus()` 静默 `catch{}` → `console.warn()`
   - **`fetchDiscovery()` null guard**：`document.getElementById("devSettlements")` 添加 null 检查，防止 Developer Tab 未渲染时报 Cannot set properties of null
+- [x] **fix(console-vault-ids): Vault Tab 切换保护 + Claim 信用分静默修复**：
+  - `switchRole()` 新增 `_savedVaultTaskId` 备份/恢复机制 — 离开 Consumer Tab 时保存 `_currentVaultTaskId`，返回时自动还原，解决 Tab 切换后 vault 面板三个按钮（付款/查询/加价）无响应问题
+  - `claimTask()` 信用分查询 `catch(e){}` → `console.warn()` — 网络失败不再静默吞掉，错误可见于 DevTools console
   - [x] **fix(register): 注册 500 Internal Server Error 修复**：
   - **根因：** `database.py` `create_user()` 将 `jwt_secret` 写入 DB 但未在 return dict 中返回，`create_jwt()` 访问 `user["jwt_secret"]` 导致 `KeyError`
   - **修复：** `create_user()` return dict 补回 `jwt_secret` 字段
