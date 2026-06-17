@@ -28,7 +28,7 @@ let skillsCache = [];
 let usedTrials = {};  // {skill_id: true} — tracks trial consumption
 
 // ── Toast system ───────────────────────────────────────────────
-function toast(msg, type = "info") {
+function toast(msg, type = "info", durationMs = 4000) {
   try {
     const container = document.getElementById("toastContainer");
     if (!container) { console.warn("toast:", type, msg); return; }
@@ -36,7 +36,7 @@ function toast(msg, type = "info") {
     el.className = `toast ${type}`;
     el.textContent = msg;
     container.appendChild(el);
-    setTimeout(() => el.remove(), 4000);
+    setTimeout(() => el.remove(), durationMs);
   } catch (e) { console.warn("toast error:", e.message, "msg:", msg); }
 }
 
@@ -86,6 +86,8 @@ async function connectWallet() {
   resetPipeline();
   if (typeof window.ethereum === "undefined") {
     toast("MetaMask not found — install from metamask.io", "error");
+    // Show JWT badge if already logged in via web auth
+    showJwtBadge();
     return;
   }
   try {
@@ -155,6 +157,22 @@ async function connectWallet() {
     toast(`Wallet connection failed: ${err.message}`, "error");
     return false;
   }
+}
+
+function showJwtBadge() {
+  const badge = document.getElementById("jwtBadge");
+  const jwt = localStorage.getItem("aims_jwt");
+  if (badge && jwt) badge.style.display = "inline";
+}
+
+function showWalletHelp() {
+  const hasMetaMask = typeof window.ethereum !== "undefined";
+  const jwt = localStorage.getItem("aims_jwt");
+  let msg = hasMetaMask
+    ? "🦊 MetaMask detected. Click 'Connect Wallet' to link your wallet."
+    : "🔑 JWT authenticated. Most API features work without a wallet.\n\n🦊 For on-chain settlement (deposits/payments), install MetaMask:\n   https://metamask.io\n\n🛠 Local dev: add Anvil (127.0.0.1:8545 / Chain 31337) to MetaMask.";
+  if (!jwt) msg += "\n\n⚠️ Not logged in — page will redirect to /login.";
+  toast(msg, "info", 8000);
 }
 
 // ── EIP-191 signing ────────────────────────────────────────────
@@ -1622,7 +1640,10 @@ document.addEventListener("DOMContentLoaded", async function() {
   window.fetchApiKeys = fetchApiKeys;
   window.createApiKey = createApiKey;
   window.revokeApiKey = revokeApiKey;
+  window.showJwtBadge = showJwtBadge;
+  window.showWalletHelp = showWalletHelp;
 
+  showJwtBadge();
   try { await fetchDiscovery(); } catch (e) { console.warn("Page init — fetchDiscovery failed:", e.message); }
   try { await fetchApiKeys(); } catch (e) { console.warn("Page init — fetchApiKeys skipped:", e.message); }
   if (typeof window.ethereum !== "undefined") {
