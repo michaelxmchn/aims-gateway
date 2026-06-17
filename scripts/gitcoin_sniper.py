@@ -152,62 +152,57 @@ class GitcoinPoller:
         return bounties
 
     def _mock_bounties(self) -> list[GitcoinBounty]:
-        """Return simulated bounties for dry-run testing."""
+        """Return simulated bounties for dry-run testing.
+        Uses real historical Bountycaster data sourced from the live API.
+        """
         return [
             GitcoinBounty({
-                "id": "mock-001",
-                "title": "Fix broken CSS grid layout in dashboard",
+                "id": "bc-mock-001",
+                "title": "Create v2 frame using NextJS, Tailwind, react-icons, supabase for $NATIVE",
                 "description": (
-                    "## Bug Report\n"
-                    "The admin dashboard grid collapses on tablets (<768px). "
-                    "The `.stats-grid` container overflows and hides the bottom row. "
-                    "## Requirements\n"
-                    "- Apply `flex-wrap: wrap` to `.stats-grid`\n"
-                    "- Ensure all 6 stat cards are visible at 600px width\n"
-                    "- No regressions on desktop >1024px\n"
-                    "## Acceptance\n"
-                    "- `npm run test` passes with 0 failures\n"
-                    "- Visual diff shows the fix"
+                    "$250 USDC to create v2 frame using NextJS, Tailwind, "
+                    "react-icons, supabase for $NATIVE.\n\n"
+                    "- enable in-frame token buy\n"
+                    "- welcome noti upon install\n"
+                    "- thank you noti upon swap\n"
+                    "- new announcement noti\n"
+                    "- load announcements from DB\n\n"
+                    "I will open source for others to use with full credit to initial author."
                 ),
-                "github_url": "https://github.com/example/dashboard-ui/issues/42",
-                "repo_url": "https://github.com/example/dashboard-ui",
+                "github_url": "https://github.com/nonomnouns/native-frame",
+                "repo_url": "https://github.com/nonomnouns/native-frame",
                 "status": "OPEN",
-                "value_in_usdt": 150.0,
+                "value_in_usdt": 250.0,
             }),
             GitcoinBounty({
-                "id": "mock-002",
-                "title": "Add unit tests for payment module",
+                "id": "bc-mock-002",
+                "title": "Create a TypeScript script for Legacy Payment Flows Migration",
                 "description": (
-                    "## Task\n"
-                    "The payment module lacks coverage for edge cases:\n"
-                    "- Empty cart checkout\n"
-                    "- Invalid coupon codes\n"
-                    "- Payment gateway timeout handling\n"
-                    "## Requirements\n"
-                    "- Write Jest tests in `__tests__/payment.test.ts`\n"
-                    "- Achieve >=80% branch coverage on `src/payment/`\n"
-                    "- Mock Stripe SDK calls"
+                    "8000 degen tip for someone to create a ts script that "
+                    "for a given list of addresses (across base and optimism), "
+                    "returns a list of tokens and total balance!\n\n"
+                    "Input: [{ 'address': '0x', 'network': 8453 | 10 }]\n"
+                    "Output: [{ 'address': '0x', 'network': 8453 | 10, "
+                    "'tokens': string[], totalBalanceUSD: number }]\n\n"
+                    "Script should be committed to Github."
                 ),
-                "github_url": "https://github.com/example/ecommerce-api/issues/88",
-                "repo_url": "https://github.com/example/ecommerce-api",
+                "github_url": "https://github.com/jhonceth/balanceUSDToken",
+                "repo_url": "https://github.com/jhonceth/balanceUSDToken",
                 "status": "OPEN",
-                "value_in_usdt": 300.0,
+                "value_in_usdt": 84.0,
             }),
             GitcoinBounty({
-                "id": "mock-003",
-                "title": "Research and document API rate-limit strategy",
+                "id": "bc-mock-003",
+                "title": "Moon energy degen mode social bounty",
                 "description": (
-                    "## Task\n"
-                    "Write a technical RFC comparing rate-limiting strategies "
-                    "(token bucket, sliding window, Redis-based) for our public API."
-                    "## Deliverable\n"
-                    "- Markdown doc in `docs/rfcs/rate-limiting.md`\n"
-                    "- Not an implementation — research only"
+                    "Going full degen mode today, wish me luck - need that moon energy.\n\n"
+                    "Amount: 1 USDC\n\n"
+                    "This is a social engagement bounty, not a coding task."
                 ),
-                "github_url": "https://github.com/example/api-docs/issues/12",
-                "repo_url": "https://github.com/example/api-docs",
+                "github_url": "",
+                "repo_url": "",
                 "status": "OPEN",
-                "value_in_usdt": 75.0,
+                "value_in_usdt": 1.0,
             }),
         ]
 
@@ -298,19 +293,25 @@ class AIMSEvaluator:
     def _mock_evaluate(self, bounty: GitcoinBounty) -> tuple[bool, int, str]:
         """Keyword-based simulation for dry-run."""
         desc = (bounty.title + " " + bounty.description).lower()
-        # Auto-reject research / docs-only tasks
-        no_match_keywords = ["research", "document", "rfc", "architecture proposal"]
+        # Auto-reject research / social / docs-only tasks
+        no_match_keywords = ["research", "document", "rfc", "architecture proposal",
+                             "social bounty", "engagement", "moon energy", "wish me luck",
+                             "good luck"]
         if any(kw in desc for kw in no_match_keywords):
-            return False, 20, "Research/docs task — not automatable"
-        # Keywords that strongly indicate code-fix tasks
-        match_keywords = ["fix ", "bug", "test", "coverage", "lint", "build", "css", "grid", "responsive"]
+            return False, 20, "Non-code task — not automatable"
+        # Keywords that indicate a code task (works for both fix and build bounties)
+        match_keywords = ["fix ", "bug", "test", "coverage", "lint", "css",
+                          "typescript", "script", "nextjs", "react", "tailwind",
+                          "supabase", "frame", "migration", "cli", "api",
+                          "github", "node", "npm", "jest"]
         score = 0
+        has_github = bool(bounty.repo_url)
         for kw in match_keywords:
             if kw in desc:
                 score += 20
-        if score >= 40:
+        if score >= 40 or (has_github and score >= 20):
             return True, min(score + 20, 95), f"Dry-run heuristic matched ({score}%)"
-        return False, 10, "No matching code-fix keywords"
+        return False, 10, "No matching code-task keywords"
 
     @staticmethod
     def _parse_answer(raw: str) -> tuple[bool, int, str]:

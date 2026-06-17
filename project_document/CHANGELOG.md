@@ -21,6 +21,8 @@
 ### 修复
 - fix(console-css): `.app` 缺少 `flex-direction: column` 导致 top-bar 与 dashboard-container 左右并排布局 — top-bar 仅占 754px（约半屏），dashboard-container 仅 680px，图表和卡片网格被挤窄。添加 `flex-direction: column` 后 top-bar 全宽 1434px 置顶，dashboard-container 全宽 1434px 堆叠其下
 - feat(gitcoin-sniper): `scripts/gitcoin_sniper.py` — 全自动 Gitcoin 赏金狙击流水线：4 阶段管道（GitcoinPoller 60s 轮询 OPEN 任务 → AIMSEvaluator System Prompt AI 匹配 → CodeExecutor git clone + claude-code 无头修复 + 测试 → AutoDeliverer git commit + gh pr create + SSE 仪表盘 Action Traces 上报）；支持 `--dry-run`（模拟 3 个 mock bounty 验证全流程）和 `--once`（单次执行）模式；正确拒绝 mock-003 研究型任务，2/3 匹配交付预估 $450 USDC
+- feat(bountycaster-adapter): `scripts/bounty_adapter.py` — Bountycaster 生态适配器，将 Bountycaster API 转换为 Gitcoin 兼容格式的 HTTP 代理服务器（端口 9812）；轮询 `www.bountycaster.xyz/api/v1/bounties/open` + 独立 `/api/v1/bounty/{hash}` 详情渲染；支持 `--once`（单次抓取）、`--mock`（历史数据回放）、HTTP server 三种模式；内含 3 个真实历史 Bountycaster bounty 的 mock 数据
+- feat(bountycaster-sniper): `scripts/gitcoin_sniper.py` mock 数据从虚构 Gitcoin bounties 迁移至真实历史 Bountycaster bounties：`bc-mock-001` 250 USDC NextJS Frame 开发、`bc-mock-002` 8,000 degen TypeScript 脚本、`bc-mock-003` 1 USDC 社交赏金；mock 评估器关键词扩展支持 `create/build/nextjs/react/typescript` 等构建类任务匹配；dry-run 19 条 Action Traces 17 ✅ 0 ⚠️ 0 🚨 — 2/3 代码 bounty 正确匹配交付，1/3 社交 bounty 正确拒绝
 ### 重构
 ### 重构
 - refactor(console-income-expense): `static/console.html` 从 4 Tab 侧边栏重构为 **5 Tab 收支分离布局**（Dashboard → Publish → Earn → Keys → Docs）— Publish（`currency_exchange` 图标）专用于支出（发布任务/充值/vault/加价），Earn（`payments` 图标）专用于收入（任务市场/Worker/接入/技能上传）；侧边栏通过图标+文案清晰区分收入与支出功能
