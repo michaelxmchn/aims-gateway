@@ -3636,7 +3636,7 @@ async def auth_me(request: Request):
     if jwt_token:
         payload = await verify_jwt(jwt_token)
         if payload:
-            user_id = payload.get("sub")
+            user_id = int(payload.get("sub"))
             wallet = payload.get("wallet", "")
             if user_id:
                 user = await get_user_by_id(user_id)

@@ -247,7 +247,7 @@ async def create_jwt(user: dict[str, Any]) -> str:
     """Issue a signed JWT for the user."""
     now = time.time()
     payload = {
-        "sub": user["id"],
+        "sub": str(user["id"]),
         "email": user.get("email", ""),
         "wallet": user.get("wallet_address", ""),
         "iat": int(now),
