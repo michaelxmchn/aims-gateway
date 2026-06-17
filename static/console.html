@@ -1160,8 +1160,8 @@ async function connectWallet() {
     await fetchHistory('');
 
     // ── Prompt to switch to Base Sepolia ──
-    const net = await provider.getNetwork();
-    if (net.chainId !== 84532n && net.chainId !== 8453n) {
+    const currentNet = await provider.getNetwork();
+    if (currentNet.chainId !== 84532n && currentNet.chainId !== 8453n) {
       const switchResp = confirm("Switch to Base Sepolia (testnet) for on-chain settlement?");
       if (switchResp) {
         try {
@@ -1317,8 +1317,7 @@ async function handleDeposit() {
   toast("Depositing 50 USDC…", "info");
   try {
     const body = JSON.stringify({ user_id: walletAddress, amount: 50.0 });
-    const sig = await eip191SignBody(new TextEncoder().encode(body));
-    const headers = getAuthHeaders(new TextEncoder().encode(body), sig);
+    const headers = await smartHeaders(body);
     const resp = await fetch(`${API_BASE}/api/wallet/deposit`, { method: "POST", headers, body });
     if (resp.ok) {
       const data = await resp.json();
@@ -1632,7 +1631,7 @@ window.fetchCreditScore = async function() {
     if (devBar) devBar.style.width = score + "%";
     const devLevel = document.getElementById("devCreditLevel");
     if (devLevel) devLevel.textContent = `${level.level} — ${level.label}`;
-  } catch (e) { /* silent */ }
+  } catch (e) { console.warn("fetchCreditScore:", e.message); }
 };
 
 function updateTrialDisplay() {
@@ -2001,7 +2000,7 @@ window.fetchIntegrationStatus = async function() {
       const el = document.getElementById("integrateCount");
       if (el) el.textContent = `Mapped: ${count}`;
     }
-  } catch(e) { /* silent */ }
+  } catch(e) { console.warn("fetchIntegrationStatus:", e.message); }
 };
 
 // ════════════════════════════════════════════════════════════════
@@ -2344,15 +2343,14 @@ async function sendHeartbeat() {
   if (!walletAddress) { toast("Connect wallet first", "error"); return; }
   try {
     const body = JSON.stringify({ worker_id: walletAddress });
-    const sig = await eip191SignBody(new TextEncoder().encode(body));
-    const headers = getAuthHeaders(new TextEncoder().encode(body), sig);
+    const headers = await smartHeaders(body);
     const resp = await fetch(`${API_BASE}/api/workers/heartbeat`, { method: "POST", headers, body });
     if (resp.ok) {
       document.getElementById("workerStatusDot").className = "status-dot online";
       document.getElementById("workerStatusText").textContent = "Online (Active)";
     }
   } catch(err) {
-    // silent
+    console.warn("sendHeartbeat:", err.message);
   }
 }
 
@@ -2603,9 +2601,7 @@ window.rechargeReserves = async function(amount) {
   toast('Depositing ' + amount.toFixed(2) + ' USDC…', 'info');
   try {
     const body = JSON.stringify({ user_id: walletAddress, amount: amount });
-    const bodyBytes = new TextEncoder().encode(body);
-    const sig = await eip191SignBody(bodyBytes);
-    const headers = getAuthHeaders(bodyBytes, sig);
+    const headers = await smartHeaders(body);
     const resp = await fetch(API_BASE + '/api/wallet/deposit', {
       method: 'POST', headers, body,
     });
@@ -2697,9 +2693,7 @@ window.withdrawFunds = async function() {
   toast('Withdrawing ' + amt.toFixed(2) + ' USDC…', 'info');
   try {
     const body = JSON.stringify({ user_id: walletAddress, amount: amt });
-    const bodyBytes = new TextEncoder().encode(body);
-    const sig = await eip191SignBody(bodyBytes);
-    const headers = getAuthHeaders(bodyBytes, sig);
+    const headers = await smartHeaders(body);
     const resp = await fetch(API_BASE + '/api/wallet/withdraw', {
       method: 'POST', headers, body,
     });
@@ -2735,9 +2729,7 @@ window.fiatDeposit = async function(amount) {
       amount: amount,
       card_token: 'tok_mock_' + Math.random().toString(36).slice(2, 10),
     });
-    const bodyBytes = new TextEncoder().encode(body);
-    const sig = await eip191SignBody(bodyBytes);
-    const headers = getAuthHeaders(bodyBytes, sig);
+    const headers = await smartHeaders(body);
     const resp = await fetch(API_BASE + '/api/wallet/fiat-deposit', {
       method: 'POST', headers, body,
     });
@@ -2956,6 +2948,12 @@ document.addEventListener("DOMContentLoaded", async function() {
     await fetchDiscovery();
   } catch (e) {
     console.warn("Page init — fetchDiscovery failed:", e.message);
+  }
+  // Pre-load API keys (will show "Not authenticated" if no JWT)
+  try {
+    await fetchApiKeys();
+  } catch (e) {
+    console.warn("Page init — fetchApiKeys skipped:", e.message);
   }
   // Auto-connect wallet if MetaMask already authorized
   if (typeof window.ethereum !== "undefined") {
