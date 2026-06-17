@@ -68,6 +68,7 @@
   - [x] **Module 2: Multi-Platform AI Tool Integration Docs** — `GET /integration-docs` 路由（`INTEGRATION_DOCS` 常量嵌入 HTML）；平台网格卡片（Cursor/Claude Code/OpenClaw/Hermes/Codex）；One-Key Auth 说明 + Quick Start 步骤
   - [x] **Module 3: Multi-Contributor Splitter + Credit Penalty** — `ContributorSplit(BaseModel)` / `SetContributorsRequest(BaseModel)` / `IntegrateRequest.co_contributors` 扩展；`_settle_vault()` 按比例分拆 70% 开发者份额；`_penalize_contributors()` Judge 失败时连带扣分（开发者 + 所有 co-contributor -10 credit）；`static/console.html` 一键接入表单新增 co-contributor 动态行（添加/删除/保存）；`POST /api/developer/set-contributors` 推送到已集成 skill
 - [x] **品牌名称统一修正** — 全局 `AIMS Network` → `AIMS Gateway`，覆盖 3 个 HTML 文件、2 个 Markdown 文件、4 个 Python 源码文件，共 15 处引用
+- [x] **fix(auth): 首页路由释放 Auth Guard** — `src/gateway/server.py` `/` 路由移除 JWT 拦截，改为公开页面；`static/index.html` "Launch App" 按钮 href `#cta` → `/console`，确保用户首次访问可见着陆页，仅 `/console` 路由保留 JWT 鉴权重定向
 - [x] **Phase 11: One-Click Integration + Task-Vault 扫码付款 + AI Judge Vault Settlement**：
   - [x] **One-Click Integration（一键接入）** — `POST /api/developer/integrate` 自动识别 URL vs Skill 名，绑定钱包地址用于 70% 分润；`GET /api/developer/integration/{wallet}` 查询接入状态；`static/console.html` Developer 选项卡新增一键接入 UI（skill/URL 输入 + 钱包绑定 + 状态展示）
   - [x] **Task-Vault Model（扫码付款唯一托管钱包）** — 每个发布任务自动生成确定性唯一 vault 地址（`0xV` + SHA256）；`TASK_VAULT_NS` 存储 vault 数据（balance/status/budget）；状态流转 `unfunded → funded → released`；`static/console.html` Consumer 发布后显示 vault 面板（地址/余额/QR 模拟/付款触发/状态轮询）

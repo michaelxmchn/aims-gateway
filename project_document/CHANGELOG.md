@@ -5,6 +5,11 @@
 > **格式要求**: 严格遵循 `.claude/output-styles/bullet-points.md` 格式规范  
 > **提交规范**: 遵循 commitlint 规范（type(scope): subject）
 
+## [2026-06-17]
+### 修复
+- fix(auth): `/` 路由释放 Auth Guard，改为公开页面 — 用户首次访问可直接看到着陆页，仅 `/console` 保留 JWT 鉴权重定向
+- fix(ui): `static/index.html` "Launch App" 按钮 href 修正 `#cta` → `/console`，确保商业动线正确引导至登录拦截流
+
 ## [2026-06-16]
 ### 新增
 - feat(boost): `POST /api/tasks/{id}/boost-reward` — 动态加价催单端点（vault funded 状态可追加奖励金，boost_history 审计链，SSE vault_boosted 广播）

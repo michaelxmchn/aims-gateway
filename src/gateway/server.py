@@ -263,14 +263,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
 @app.get("/")
-async def index(request: Request):
-    """Serve the AIMS Gateway landing page, or redirect to login."""
-    jwt_token = request.cookies.get("aims_jwt") or _extract_bearer(request)
-    if not jwt_token:
-        return _login_redirect()
-    payload = await verify_jwt(jwt_token)
-    if not payload:
-        return _login_redirect()
+async def index():
+    """Serve the AIMS Gateway landing page — public, no auth required."""
     with open("static/index.html", "r") as f:
         return HTMLResponse(content=f.read())
 

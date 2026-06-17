@@ -6,6 +6,14 @@
 
 ## 代码模式
 
+### 路由鉴权分层策略
+- **公开路由**：`/`（着陆页）、`/docs`、`/api/discovery`、`/api/health` — 无需任何认证，用户首访可见
+- **JWT 保护路由**：`/console`（Web3 面板）— 缺失 JWT 时 302 重定向至 `/login`
+- **API 三层鉴权**：所有 `/api/*` 端点按优先级依次尝试 JWT Bearer → API Key（`sk-aims-` 前缀）→ EIP-191 personal_sign 头部
+- **商业动线设计**：用户通过 `/` 了解产品 → 点击 "Launch App" → 进入 `/console` 触发 JWT 检查 → 无令牌则重定向至 `/login` → 注册/登录后自动跳回 `/console`
+
+
+
 ### 认证模式
 - **EIP-191 personal_sign 签名认证**：替代 HMAC-SHA256 和 EIP-712，所有 `/api/run`、`/api/tasks/claim`、`/api/tasks/submit`、`/api/wallet/*` POST 请求必须携带 3 个头部：
   - `X-Wallet-Address`（首选，推荐）或 `X-User-ID`（回退）：EVM 地址（0x + 40 hex）
