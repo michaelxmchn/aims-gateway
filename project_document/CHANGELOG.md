@@ -16,6 +16,7 @@
 - fix(auth-me): 添加 `/api/auth/me` 和 `/api/auth/api-keys` 至 `EXEMPT_PATHS` — 避免 middleware EIP-191 鉴权拦截；`auth_me()` 改为直接解析 JWT cookie/Authorization header
 - fix(console): `API_BASE` 默认值 `http://127.0.0.1:8000` → `""`（空字符串，使用相对路径）— 解决 Fly.io 生产环境所有 API 调用因 CORS/网络错误失败的问题
 - fix(jwt): `create_jwt()` `sub` 字段 int → str — PyJWT 验签要求 `sub` 必须是 string，否则抛出 `Subject must be a string` 导致 `/api/auth/me` 一直返回 401
+- fix(console-buttons): 前端全按钮 JWT fallback 大检修 — 新增 `smartHeaders()` 函数（EIP-191 MetaMask 签名失败时自动降级为 JWT-only）+ 修复 publishTask/oneClickIntegrate/boostReward/claimTask/simulateVaultPayment/saveContributors/confirmBuyout 共 7 个关键函数的鉴权头生成，消除按钮无反应问题 + toast 函数异常安全包装 + 添加 DOMContentLoaded 页面初始化（自动加载 skills 列表 + 自动重连 MetaMask）
 
 ## [2026-06-16]
 ### 新增

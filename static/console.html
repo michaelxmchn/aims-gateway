@@ -1053,12 +1053,17 @@ let usedTrials = {};  // {skill_id: true} — tracks trial consumption
 //  Toast system
 // ════════════════════════════════════════════════════════════════
 function toast(msg, type = "info") {
-  const container = document.getElementById("toastContainer");
-  const el = document.createElement("div");
-  el.className = `toast ${type}`;
-  el.textContent = msg;
-  container.appendChild(el);
-  setTimeout(() => el.remove(), 4000);
+  try {
+    const container = document.getElementById("toastContainer");
+    if (!container) { console.warn("toast:", type, msg); return; }
+    const el = document.createElement("div");
+    el.className = `toast ${type}`;
+    el.textContent = msg;
+    container.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  } catch (e) {
+    console.warn("toast error:", e.message, "msg:", msg);
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -1215,6 +1220,25 @@ function getAuthHeaders(bodyBytes, signature) {
 }
 
 function jwtHeaders() {
+  const jwt = localStorage.getItem("aims_jwt");
+  return jwt ? { "Authorization": "Bearer " + jwt, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
+}
+
+/**
+ * Smart auth headers — tries EIP-191 (MetaMask) first, falls back to JWT-only.
+ * This lets buttons work even without a connected wallet, since the backend
+ * middleware accepts JWT Bearer tokens for all /api/* routes.
+ */
+async function smartHeaders(body) {
+  const bodyBytes = body ? new TextEncoder().encode(body) : null;
+  if (walletAddress && signer) {
+    try {
+      const sig = await eip191SignBody(bodyBytes || new TextEncoder().encode("{}"));
+      return getAuthHeaders(bodyBytes || new TextEncoder().encode("{}"), sig);
+    } catch (e) {
+      console.warn("EIP-191 signing unavailable, falling back to JWT:", e.message);
+    }
+  }
   const jwt = localStorage.getItem("aims_jwt");
   return jwt ? { "Authorization": "Bearer " + jwt, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
 }
@@ -1691,8 +1715,7 @@ async function confirmBuyout() {
       license_type: "buyout",
       price_usdc: 25.0,
     });
-    const sig = await eip191SignBody(new TextEncoder().encode(body));
-    const headers = getAuthHeaders(new TextEncoder().encode(body), sig);
+    const headers = await smartHeaders(body);
     const resp = await fetch(`${API_BASE}/api/licensing/request-key`, {
       method: "POST", headers, body,
     });
@@ -1753,9 +1776,7 @@ window.publishTask = async function(event) {
       is_custom: isCustom,
       credit_score_required: creditReq,
     });
-    const bodyBytes = new TextEncoder().encode(body);
-    const sig = await eip191SignBody(bodyBytes);
-    const headers = getAuthHeaders(bodyBytes, sig);
+    const headers = await smartHeaders(body);
 
     const resp = await fetch(`${API_BASE}/api/tasks/publish`, {
       method: "POST", headers, body,
@@ -1862,9 +1883,7 @@ window.claimTask = async function(taskId, creditReq, isCustom) {
       worker_id: walletAddress,
       credit_score: creditScore,
     });
-    const bodyBytes = new TextEncoder().encode(body);
-    const sig = await eip191SignBody(bodyBytes);
-    const headers = getAuthHeaders(bodyBytes, sig);
+    const headers = await smartHeaders(body);
 
     const resp = await fetch(`${API_BASE}/api/tasks/claim-specific`, {
       method: "POST", headers, body,
@@ -1943,9 +1962,7 @@ window.oneClickIntegrate = async function(event) {
       wallet_address: wallet,
       co_contributors: coContributors.length > 0 ? coContributors : undefined,
     });
-    const bodyBytes = new TextEncoder().encode(body);
-    const sig = await eip191SignBody(bodyBytes);
-    const headers = getAuthHeaders(bodyBytes, sig);
+    const headers = await smartHeaders(body);
 
     const resp = await fetch(`${API_BASE}/api/developer/integrate`, {
       method: "POST", headers, body,
@@ -2029,9 +2046,7 @@ window.simulateVaultPayment = async function() {
 
   try {
     const body = JSON.stringify({});
-    const bodyBytes = new TextEncoder().encode(body);
-    const sig = await eip191SignBody(bodyBytes);
-    const headers = getAuthHeaders(bodyBytes, sig);
+    const headers = await smartHeaders(body);
 
     const resp = await fetch(`${API_BASE}/api/tasks/${taskId}/simulate-fiat-payment`, {
       method: "POST", headers, body,
@@ -2091,9 +2106,7 @@ window.boostReward = async function() {
 
   try {
     const body = JSON.stringify({ amount: amount });
-    const bodyBytes = new TextEncoder().encode(body);
-    const sig = await eip191SignBody(bodyBytes);
-    const headers = getAuthHeaders(bodyBytes, sig);
+    const headers = await smartHeaders(body);
 
     const resp = await fetch(`${API_BASE}/api/tasks/${taskId}/boost-reward`, {
       method: "POST", headers, body,
@@ -2203,9 +2216,7 @@ window.saveContributors = async function() {
       wallet_address: wallet,
       co_contributors: coContributors,
     });
-    const bodyBytes = new TextEncoder().encode(body);
-    const sig = await eip191SignBody(bodyBytes);
-    const headers = getAuthHeaders(bodyBytes, sig);
+    const headers = await smartHeaders(body);
 
     const resp = await fetch(`${API_BASE}/api/developer/set-contributors`, {
       method: "POST", headers, body,
@@ -2938,6 +2949,26 @@ if (typeof window.ethereum !== "undefined") {
     }
   });
 }
+
+// ── Page init: load skills & try wallet reconnect ─────────────────
+document.addEventListener("DOMContentLoaded", async function() {
+  try {
+    await fetchDiscovery();
+  } catch (e) {
+    console.warn("Page init — fetchDiscovery failed:", e.message);
+  }
+  // Auto-connect wallet if MetaMask already authorized
+  if (typeof window.ethereum !== "undefined") {
+    try {
+      const accounts = await window.ethereum.request({ method: "eth_accounts" });
+      if (accounts.length > 0) {
+        await connectWallet();
+      }
+    } catch (e) {
+      console.warn("Page init — wallet reconnect skipped:", e.message);
+    }
+  }
+});
 </script>
 
 </body>
