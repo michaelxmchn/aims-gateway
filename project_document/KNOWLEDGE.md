@@ -44,6 +44,12 @@
 - **绝对冷酷模式**：任务一旦进入 Docker 修复流程，连续重试 5 次依然报错 → 熔断放弃 → 自动切换下一单，严禁卡死或报警
 - **统一输出格式**：`{id, title, description, github_url, url, repo_url, status, value_in_usdt, source}` 向 sniper 输出的标准 JSON 数组
 - **Mock 数据**：6 条跨源 mock（3 Bountycaster + 3 GitHub Bounties），dry-run 46 条 Traces 41 ✅ 0 ⚠️ 0 🚨
+- **Source C (Algora.io)**：新增 `AlgoraClient`，因 Algora 为 **Phoenix LiveView** 应用无 JSON API（`/api/bounties` 返回 HTML + `{"errors":{"detail":"Not Acceptable"}}`），改用 **GitHub Issue Comment 跨引用**策略 — 搜索 `"/bounty" is:issue is:open` 发现所有通过 `/bounty $X` 命令创建的 Algora 悬赏；`_parse_bounty_amount()` 正则匹配 `/bounty $300`、`/bounty $300 USDC` 等模式；3 个 mock entries 集成至 MultiSourceAggregator
+- **三源并网架构**：`MultiSourceAggregator.fetch_all()` 依次调用 `BountycasterClient` → `GitHubBountyClient` → `AlgoraClient`，每个源被独立的 `try/except` 包裹保证单源失败不影响其他源；最终统一经 `DedupEngine` + `is_valid_bounty()` 过滤后返回
+
+### Gitcoin Sniper 安全与风控机制
+- **Anti-bot Human Mimicry**：`AutoDeliverer.deliver()` 成功创建 PR 后调用 `time.sleep(random.uniform(180, 600))` 随机冷却 3-10 分钟模拟人类操作节奏，日志记录 `[SECURITY] PR submitted successfully. Mimicking human behavior, cooling down for X seconds...`；dry-run 模式下跳过实际休眠
+- **5-retry Circuit Break（5 次熔断重试）**：`CodeExecutor.execute()` 将 claude-code 修复 + Docker 测试阶段包裹在 `for attempt in range(1, 6)` 循环中；失败时 `continue` 下一轮（10s 间隔）；全部 5 次耗尽后返回 `{"status": "FAILED", "step": "circuit-break"}` 并记录 `All 5 attempts exhausted — giving up`；严禁无限卡死或报警
 
 ### PyJWT 约束
 - **`sub` 字段必须为 string**：PyJWT `decode()` 验签时要求 `sub` 是字符串，否则抛出 `Subject must be a string`。`create_jwt()` 中需 `str(user["id"])` 而非直接传 int。消费端用 `int(payload.get("sub"))` 转换回整数

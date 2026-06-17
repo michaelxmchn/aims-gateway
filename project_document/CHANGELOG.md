@@ -6,6 +6,10 @@
 > **提交规范**: 遵循 commitlint 规范（type(scope): subject）
 
 ## [2026-06-18]
+### 新增
+- feat(adapter-algora): `scripts/bounty_adapter.py` **Algora.io Source C 并入多源聚合网关** — `AlgoraClient` 使用 GitHub Issues Search API 搜索 `"/bounty" is:issue is:open` 跨引用发现 Algora 悬赏；`_parse_bounty_amount()` 正则匹配 `/bounty $X` / `/bounty $X USDC` 模式；`3` 个 Algora mock entries（`algora-mock-001` $300 Dashboard Dark Mode、`algora-mock-002` $150 API Tests、`algora-mock-003` $450 DB Query Optimization）集成至 `MultiSourceAggregator` 三源并网；`--sources` / `/sources` 端点展示 3 源状态；适配器初始化日志确认 3 源
+- feat(sniper-antiboot): `scripts/gitcoin_sniper.py` **反风控人类行为伪装机制** — `AutoDeliverer.deliver()` 成功 PR 提交后 `random.uniform(180, 600)` 秒强制休眠；日志 `[SECURITY] PR submitted successfully. Mimicking human behavior, cooling down for X seconds...`；dry-run 跳过实际休眠但记录提示
+- feat(sniper-retry): `scripts/gitcoin_sniper.py` **5-retry Circuit Break 熔断重试** — `CodeExecutor.execute()` 将 claude-code 修复 + Docker 测试阶段包裹在 `for attempt in range(1, 6)` 重试循环中；单步失败时 `continue` 下一轮重试（10s 间隔）；全部 5 次耗尽后记录 `All 5 attempts exhausted — giving up` 并返回 FAILED 终结；trace 日志展示 `Execution attempt N/5`
 ### 重构
 - refactor(sniper-deep): `scripts/gitcoin_sniper.py` 底层雷达重构 — **GitcoinPoller → BountycasterPoller**：完全移除废弃的 Gitcoin API（全部 404）、API fallback 链、HTML 爬虫死代码；替换为直接轮询 Bountycaster Next.js API（`GET /api/v1/bounties/open` + `GET /api/v1/bounty/{hash}`）；`BountycasterBounty` 类从 `reward_summary` 解析 token/amount/usd_value；GitHub URL 通过正则从 `summary_text` 提取；`BOUNTYCASTER_API` 环境变量替换 `GITCOIN_API`
 - refactor(sniper-docker): `scripts/gitcoin_sniper.py` **CodeExecutor Docker 沙箱隔离** — `_run_in_docker()` 方法使用 `docker run --rm --network none -v <host>:/workspace <image> sh -c "<cmd>"` 安全执行测试；`PROJECT_MAP` 自动检测语言（node/python/go/rust/ruby/java + alpine 兜底）；Docker 不可用时优雅回退 `subprocess.run(shell=True)`；`SNIPER_DOCKER=0` 可禁用；`DOCKER_IMAGES` 映射 7 种镜像

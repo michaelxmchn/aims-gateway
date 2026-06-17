@@ -17,7 +17,7 @@ Usage:
   python3 scripts/gitcoin_sniper.py --report           # dashboard report only
 """
 
-import argparse, hashlib, json, os, re, shutil, subprocess, sys, time, uuid
+import argparse, hashlib, json, os, random, re, shutil, subprocess, sys, time, uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -494,59 +494,86 @@ class CodeExecutor:
 
         trace("clone_done", f"Cloned to {clone_path}")
 
-        # ── 3b. Invoke claude-code for headless fix ──────────────────
-        prompt = self._build_prompt(bounty)
-        if DRY_RUN:
-            log(f"[DRY-RUN] Would invoke claude-code with:\n{prompt[:500]}...")
-            fix_file = clone_path / "DRY_RUN_FIX.md"
-            fix_file.write_text(f"# Automated Fix for Bounty {bounty.id}\n\nApplied at {datetime.now()}")
-            claude_exit = 0
-        else:
-            trace("claude_start", f"Invoking claude-code for {bounty.id}")
-            claude_exit = subprocess.run(
-                ["claude", "-p", prompt],
-                cwd=str(clone_path),
-                timeout=600,
-            ).returncode
+        # ── 3b+3c. Retry Circuit (max 5 attempts) ────────────────────
+        MAX_EXEC_RETRIES = 5
+        last_error = None
 
-        if claude_exit != 0:
-            trace("claude_failed", f"claude-code exited {claude_exit}", "error")
-            return {"status": "FAILED", "step": "claude-code", "detail": f"exit code {claude_exit}"}
+        for attempt in range(1, MAX_EXEC_RETRIES + 1):
+            log(f"  ── Execution attempt {attempt}/{MAX_EXEC_RETRIES} ──")
 
-        trace("claude_done", "claude-code completed successfully")
-
-        # ── 3c. Run tests in Docker sandbox ──────────────────────────
-        project_type = self._detect_project_type(clone_path)
-        if project_type is None:
-            log("No known test framework detected — skipping test phase", "WARN")
-            trace("test_skip", "No test framework found")
-        else:
-            docker_image, test_cmds = project_type
-            trace("test_start", f"Running in Docker ({docker_image}): {'; '.join(test_cmds)}")
-
+            # Invoke claude-code for headless fix
+            prompt = self._build_prompt(bounty)
             if DRY_RUN:
-                log(f"[DRY-RUN] Would run in Docker ({docker_image}): {'; '.join(test_cmds)}")
+                log(f"[DRY-RUN] Would invoke claude-code with:\n{prompt[:500]}...")
+                fix_file = clone_path / "DRY_RUN_FIX.md"
+                fix_file.write_text(f"# Automated Fix for Bounty {bounty.id}\n\nApplied at {datetime.now()}")
+                claude_exit = 0
             else:
-                result = self._run_in_docker(clone_path, docker_image, test_cmds)
-                if result is None:
-                    # Docker unavailable — fallback to direct execution with warning
-                    log("Docker unavailable — falling back to direct execution", "WARN")
-                    for cmd in test_cmds:
-                        r = subprocess.run(cmd, shell=True, cwd=str(clone_path),
-                                           capture_output=True, text=True, timeout=300)
-                        if r.returncode != 0:
-                            detail = r.stderr[-300:] if r.stderr else r.stdout[-300:]
-                            trace("test_failed", f"'{cmd}' exited {r.returncode}: {detail}", "error")
-                            return {"status": "FAILED", "step": "test", "detail": detail}
-                elif result["returncode"] != 0:
-                    detail = result["stderr"][-300:] if result["stderr"] else result["stdout"][-300:]
-                    trace("test_failed", f"Docker test exited {result['returncode']}: {detail}", "error")
-                    return {"status": "FAILED", "step": "test", "detail": detail}
-                else:
-                    log(f"All Docker tests passed ({docker_image})")
+                trace("claude_start", f"Invoking claude-code for {bounty.id} (attempt {attempt})")
+                claude_exit = subprocess.run(
+                    ["claude", "-p", prompt],
+                    cwd=str(clone_path),
+                    timeout=600,
+                ).returncode
 
-        trace("test_passed", "All tests passed (0 failures)")
-        return {"status": "PASS", "step": "done", "clone_path": str(clone_path)}
+            if claude_exit != 0:
+                last_error = f"claude-code exited {claude_exit}"
+                trace("claude_failed", f"{last_error} (attempt {attempt})", "error")
+                if attempt < MAX_EXEC_RETRIES:
+                    log(f"  claude-code failed (attempt {attempt}), retrying...")
+                    continue
+                log(f"  All {MAX_EXEC_RETRIES} attempts exhausted — giving up")
+                return {"status": "FAILED", "step": "claude-code", "detail": last_error}
+
+            trace("claude_done", f"claude-code completed (attempt {attempt})")
+
+            # Run tests in Docker sandbox
+            project_type = self._detect_project_type(clone_path)
+            if project_type is None:
+                log("No known test framework detected — skipping test phase", "WARN")
+                trace("test_skip", "No test framework found")
+            else:
+                docker_image, test_cmds = project_type
+                trace("test_start", f"Running in Docker ({docker_image}): {'; '.join(test_cmds)}")
+
+                test_failed = False
+                if DRY_RUN:
+                    log(f"[DRY-RUN] Would run in Docker ({docker_image}): {'; '.join(test_cmds)}")
+                else:
+                    result = self._run_in_docker(clone_path, docker_image, test_cmds)
+                    if result is None:
+                        log("Docker unavailable — falling back to direct execution", "WARN")
+                        for cmd in test_cmds:
+                            r = subprocess.run(cmd, shell=True, cwd=str(clone_path),
+                                               capture_output=True, text=True, timeout=300)
+                            if r.returncode != 0:
+                                detail = r.stderr[-300:] if r.stderr else r.stdout[-300:]
+                                last_error = f"'{cmd}' exited {r.returncode}: {detail}"
+                                trace("test_failed", f"{last_error} (attempt {attempt})", "error")
+                                test_failed = True
+                                break
+                    elif result["returncode"] != 0:
+                        detail = result["stderr"][-300:] if result["stderr"] else result["stdout"][-300:]
+                        last_error = f"Docker test exited {result['returncode']}: {detail}"
+                        trace("test_failed", f"{last_error} (attempt {attempt})", "error")
+                        test_failed = True
+                    else:
+                        log(f"All Docker tests passed ({docker_image})")
+
+                if test_failed:
+                    if attempt < MAX_EXEC_RETRIES:
+                        log(f"  Tests failed (attempt {attempt}), retrying claude-code...")
+                        time.sleep(10)  # brief pause before retry
+                        continue
+                    log(f"  All {MAX_EXEC_RETRIES} attempts exhausted — giving up")
+                    return {"status": "FAILED", "step": "test", "detail": last_error}
+
+            # All phases passed
+            trace("test_passed", f"All tests passed after {attempt} attempt(s)")
+            return {"status": "PASS", "step": "done", "clone_path": str(clone_path)}
+
+        # Should not reach here, but just in case
+        return {"status": "FAILED", "step": "circuit-break", "detail": last_error or "Unknown error"}
 
     def _run_in_docker(self, clone_path: Path, image_key: str, commands: list[str]) -> Optional[dict]:
         """
@@ -680,6 +707,18 @@ class AutoDeliverer:
                 trace("git_timeout", str(e)[:100], "error")
 
         self.report_to_dashboard(bounty, exec_result, pr_url)
+
+        # ═══ Anti-bot Human Mimicry ═══
+        # After successful PR submission, sleep 180-600s to mimic human behavior
+        if pr_url and pr_url != "N/A":
+            cooldown = random.uniform(180, 600)
+            log(f"[SECURITY] PR submitted successfully. Mimicking human behavior, cooling down for {cooldown:.0f} seconds...")
+            trace("anti_bot_cooldown", f"Cooling down {cooldown:.0f}s after PR submission")
+            if DRY_RUN:
+                log(f"[DRY-RUN] Would sleep {cooldown:.0f}s (skipped in dry-run)")
+            else:
+                time.sleep(cooldown)
+
         return {"status": "DELIVERED", "pr_url": pr_url or "N/A", "branch": branch}
 
     def report_to_dashboard(self, bounty: BountycasterBounty, exec_result: dict, pr_url: str) -> None:

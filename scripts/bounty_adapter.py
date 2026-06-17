@@ -34,6 +34,8 @@ GITHUB_SEARCH_URL = "https://api.github.com/search/issues"
 
 # ── Mock Data ──
 
+ALGORA_API = os.getenv("ALGORA_API", "https://algora.io")
+
 HISTORICAL_BOUNTIES = [
     # ── Bountycaster (3 historical) ──
     {
@@ -123,6 +125,52 @@ HISTORICAL_BOUNTIES = [
         "status": "OPEN",
         "value_in_usdt": "200",
         "source": "github_bounty",
+    },
+    # ── Algora (3 simulated) ──
+    {
+        "id": "algora-mock-001",
+        "title": "Add dark mode support to dashboard UI",
+        "description": (
+            "/bounty $300 — Implement dark mode theme for the main analytics dashboard. "
+            "Must support system preference detection and manual toggle with localStorage persistence. "
+            "Include CSS custom properties for easy theming."
+        ),
+        "github_url": "https://github.com/analytics-inc/dashboard/issues/89",
+        "url": "https://github.com/analytics-inc/dashboard/issues/89",
+        "repo_url": "https://github.com/analytics-inc/dashboard",
+        "status": "OPEN",
+        "value_in_usdt": "300",
+        "source": "algora",
+    },
+    {
+        "id": "algora-mock-002",
+        "title": "Write comprehensive API tests for user endpoints",
+        "description": (
+            "/bounty $150 — Add integration tests covering all user CRUD endpoints "
+            "(register, login, profile update, delete). Must include test fixtures and "
+            "CI pipeline integration. Minimum 80% coverage."
+        ),
+        "github_url": "https://github.com/auth-service/user-api/issues/45",
+        "url": "https://github.com/auth-service/user-api/issues/45",
+        "repo_url": "https://github.com/auth-service/user-api",
+        "status": "OPEN",
+        "value_in_usdt": "150",
+        "source": "algora",
+    },
+    {
+        "id": "algora-mock-003",
+        "title": "Optimize database queries for feed endpoint",
+        "description": (
+            "/bounty $450 USDC — Reduce p95 latency of the main feed endpoint from 2.5s to under 500ms. "
+            "Must implement query batching, N+1 elimination, and connection pooling. "
+            "Include before/after benchmark results."
+        ),
+        "github_url": "https://github.com/social-app/feed-service/issues/231",
+        "url": "https://github.com/social-app/feed-service/issues/231",
+        "repo_url": "https://github.com/social-app/feed-service",
+        "status": "OPEN",
+        "value_in_usdt": "450",
+        "source": "algora",
     },
 ]
 
@@ -386,6 +434,132 @@ class GitHubBountyClient:
 
 
 # ══════════════════════════════════════════════════════════════
+# SOURCE C: Algora (GitHub /bounty comment cross-reference)
+# ══════════════════════════════════════════════════════════════
+
+class AlgoraClient:
+    """Fetch Algora bounties via GitHub cross-reference.
+
+    Algora.io is a Phoenix LiveView app with no public JSON API.
+    Bounties are created by commenting \"/bounty $X\" on GitHub issues.
+    We discover them by searching GitHub for open issues containing
+    \"/bounty\" in their text, then parse the dollar amount.
+
+    Strategy: GitHub Issues Search for \"/bounty\" keyword in open issues.
+    """
+
+    SEARCH_QUERY = '"/bounty" is:issue is:open'
+
+    def __init__(self):
+        self._session = requests.Session()
+        self._session.headers.update({
+            "Accept": "application/vnd.github.v3+json",
+            "User-Agent": "AIMS-BountyAdapter/2.0",
+        })
+        if GITHUB_TOKEN:
+            self._session.headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+
+    def fetch(self) -> list[dict]:
+        """Search GitHub for issues with /bounty references, return normalized list."""
+        all_issues: list[dict] = []
+        page = 1
+
+        try:
+            while page <= 3:  # max 3 pages = 90 issues
+                resp = self._session.get(
+                    GITHUB_SEARCH_URL,
+                    params={"q": self.SEARCH_QUERY, "per_page": 30, "page": page},
+                    timeout=15,
+                )
+                if resp.status_code == 403:
+                    print(f"[Algora] Rate limited — using partial results ({len(all_issues)} issues)", flush=True)
+                    break
+                resp.raise_for_status()
+                data = resp.json()
+                items = data.get("items", [])
+                if not items:
+                    break
+                for item in items:
+                    converted = self._convert(item)
+                    if converted:
+                        all_issues.append(converted)
+                page += 1
+        except requests.RequestException as e:
+            print(f"[Algora] Search error: {e}", flush=True)
+
+        return all_issues
+
+    def _convert(self, issue: dict) -> Optional[dict]:
+        """Convert a GitHub issue to unified bounty format for Algora bounties."""
+        title = issue.get("title", "") or ""
+        body = issue.get("body", "") or ""
+        html_url = issue.get("html_url", "")
+        repo_full = (issue.get("repository_url") or "").replace("https://api.github.com/repos/", "")
+
+        if not html_url:
+            return None
+
+        # Parse /bounty $X from body (primary) or title (fallback)
+        value_usdt = self._parse_bounty_amount(body) or self._parse_bounty_amount(title) or "0"
+        repo_url = f"https://github.com/{repo_full}" if repo_full else ""
+        labels = [lb.get("name", "") for lb in (issue.get("labels") or [])]
+        issue_number = issue.get("number", "")
+        issue_id = f"algora:{repo_full.replace('/', '-')}:{issue_number}" if repo_full and issue_number else f"algora:{uuid.uuid4().hex[:12]}"
+
+        return {
+            "id": issue_id,
+            "title": title[:200],
+            "description": (title + "\n\n" + (body or ""))[:2000],
+            "github_url": html_url,
+            "url": html_url,
+            "repo_url": repo_url,
+            "status": "OPEN",
+            "value_in_usdt": value_usdt,
+            "source": "algora",
+            "metadata": {
+                "labels": labels,
+                "created_at": issue.get("created_at", ""),
+                "repo": repo_full,
+                "score": issue.get("score", 0),
+            },
+        }
+
+    @staticmethod
+    def _parse_bounty_amount(text: str) -> Optional[str]:
+        """Extract dollar amount from /bounty command.
+
+        Patterns: /bounty $300, /bounty $300 USDC, /bounty 300 USDC
+        """
+        if not text:
+            return None
+        # Primary: /bounty $<amount> [USDC/USDT/USD]
+        m = re.search(r'/bounty\s+\$?(\d{1,6}(?:,\d{3})*(?:\.\d{1,2})?)\s*(?:USDC|USDT|USD)?', text, re.IGNORECASE)
+        if m:
+            val = m.group(1).replace(",", "")
+            try:
+                fval = float(val)
+                if 5 <= fval <= 100_000:
+                    return val
+            except ValueError:
+                pass
+        # Secondary: $<amount> near "bounty" keyword
+        m = re.search(r'\$(\d{1,6}(?:,\d{3})*(?:\.\d{1,2})?)\s*(?:USDC|USDT|USD)?', text, re.IGNORECASE)
+        if m:
+            val = m.group(1).replace(",", "")
+            try:
+                fval = float(val)
+                if 5 <= fval <= 100_000:
+                    return val
+            except ValueError:
+                pass
+        return None
+
+    @staticmethod
+    def mock_bounties() -> list[dict]:
+        return [b for b in HISTORICAL_BOUNTIES if b["source"] == "algora"]
+
+
+# ══════════════════════════════════════════════════════════════
 # SHARED HELPERS
 # ══════════════════════════════════════════════════════════════
 
@@ -409,6 +583,7 @@ class MultiSourceAggregator:
     def __init__(self):
         self.bountycaster = BountycasterClient()
         self.github = GitHubBountyClient()
+        self.algora = AlgoraClient()
         self.dedup = DedupEngine()
 
     def fetch_all(self) -> list[dict]:
@@ -431,6 +606,14 @@ class MultiSourceAggregator:
         except Exception as e:
             print(f"[Aggregator] GitHubBounty failed: {e}", flush=True)
 
+        # Source C: Algora
+        try:
+            al = self.algora.fetch()
+            print(f"[Aggregator] Algora: {len(al)} bounties", flush=True)
+            all_bounties.extend(al)
+        except Exception as e:
+            print(f"[Aggregator] Algora failed: {e}", flush=True)
+
         # Deduplicate by URL
         deduped = self.dedup.filter(all_bounties)
         if len(deduped) < len(all_bounties):
@@ -446,7 +629,9 @@ class MultiSourceAggregator:
 
     def fetch_mock(self) -> list[dict]:
         """Get mock data from all sources, deduplicated and filtered."""
-        raw = BountycasterClient.mock_bounties() + GitHubBountyClient.mock_bounties()
+        raw = (BountycasterClient.mock_bounties()
+               + GitHubBountyClient.mock_bounties()
+               + AlgoraClient.mock_bounties())
         deduped = self.dedup.filter(raw)
         return [b for b in deduped if is_valid_bounty(b)]
 
@@ -477,9 +662,11 @@ class AdapterHandler(BaseHTTPRequestHandler):
         if path == "/sources":
             mock_bc = BountycasterClient.mock_bounties()
             mock_gh = GitHubBountyClient.mock_bounties()
+            mock_al = AlgoraClient.mock_bounties()
             self._respond([
                 {"source": "bountycaster", "type": "live-api", "url": BOUNTYCASTER_API, "mock_count": len(mock_bc)},
                 {"source": "github_bounty", "type": "github-search", "url": GITHUB_SEARCH_URL, "mock_count": len(mock_gh)},
+                {"source": "algora", "type": "github-crossref-github-search", "url": GITHUB_SEARCH_URL, "mock_count": len(mock_al)},
                 {"min_bounty_usd": MIN_BOUNTY_USD},
             ])
             return
@@ -510,7 +697,7 @@ def run_server(mock_mode: bool = False):
     server.mock_mode = mock_mode
     mode = "MOCK" if mock_mode else "LIVE"
     print(f"[Adapter] Multi-source gateway ({mode}) on :{ADAPTER_PORT}", flush=True)
-    print(f"[Adapter] Sources: Bountycaster + GitHub Bounties", flush=True)
+    print(f"[Adapter] Sources: Bountycaster + GitHub Bounties + Algora", flush=True)
     print(f"[Adapter] MIN_BOUNTY_USD={MIN_BOUNTY_USD} | GITHUB_TOKEN={'set' if GITHUB_TOKEN else 'unset (60 req/hr)'}", flush=True)
     print(f"[Adapter] Point GITCOIN_API=http://localhost:{ADAPTER_PORT} at the sniper", flush=True)
     try:
@@ -536,9 +723,11 @@ def main():
     if args.sources:
         bc = BountycasterClient.mock_bounties()
         gh = GitHubBountyClient.mock_bounties()
+        al = AlgoraClient.mock_bounties()
         print(json.dumps([
             {"source": "bountycaster", "type": "live-api", "url": BOUNTYCASTER_API, "mock_count": len(bc)},
             {"source": "github_bounty", "type": "github-search", "url": GITHUB_SEARCH_URL, "mock_count": len(gh)},
+            {"source": "algora", "type": "github-crossref-search", "url": GITHUB_SEARCH_URL, "mock_count": len(al)},
             {"min_bounty_usd": MIN_BOUNTY_USD},
         ], indent=2))
         return
