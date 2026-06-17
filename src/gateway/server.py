@@ -42,7 +42,7 @@ from src.gateway.billing import BillingEngine, CommerceEngine, BillingMode, Reve
 from src.gateway.chain_listener import ChainListener
 from src.gateway.ledger import TransactionLedger
 from src.judge.judge_agent import JudgeEngine
-from src.gateway.database import init_db, create_user, authenticate_user, get_user_by_wallet, get_user_by_id, link_wallet_to_user, create_jwt, verify_jwt, generate_api_key, verify_api_key, list_api_keys, revoke_api_key, record_payment, get_payment_history
+from src.gateway.database import init_db, create_user, authenticate_user, get_user_by_wallet, get_user_by_id, link_wallet_to_user, create_jwt, verify_jwt, generate_api_key, verify_api_key, list_api_keys, revoke_api_key, record_payment, get_payment_history, JWT_EXPIRY_S
 
 logger = logging.getLogger(__name__)
 
