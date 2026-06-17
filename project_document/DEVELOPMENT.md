@@ -73,6 +73,13 @@
   - **根因：** `database.py` `create_user()` 将 `jwt_secret` 写入 DB 但未在 return dict 中返回，`create_jwt()` 访问 `user["jwt_secret"]` 导致 `KeyError`
   - **修复：** `create_user()` return dict 补回 `jwt_secret` 字段
   - **加固：** 新增 `@app.exception_handler(Exception)` 全局异常处理器，所有未处理异常统一返回 JSON `{"detail": "..."}`，杜绝裸吐 500 纯文本
+- [x] **fix(redirect-loop): JWT Cookie + API_BASE + EXEMPT_PATHS 全链路修复**：
+  - **根因1：** `server.py` 注册/登录端点仅返回 JSON body 中的 JWT 令牌，前端存入 localStorage，但 `/console` 服务端路由从 `cookies` 或 `Authorization` header 读取 JWT，导致 `_login_redirect()` 死循环
+  - **修复1：** 注册/登录/钱包登录端点 `JSONResponse.set_cookie("aims_jwt", ...)` 写入 `Set-Cookie` header，服务端 `/console` 路由可正常读取
+  - **根因2：** `/api/auth/me` 不在 `EXEMPT_PATHS` 中，middleware 先尝试 JWT 验证 (`verify_jwt` 返回 `None` 原因待查) 再回退 EIP-191 头部检查，因无钱包头部返回 403
+  - **修复2：** `/api/auth/me` 和 `/api/auth/api-keys` 加入 `EXEMPT_PATHS`，`auth_me()` 改为直接自解析 JWT cookie/header
+  - **根因3：** `console.html` `API_BASE` 默认 `http://127.0.0.1:8000`，Fly.io 生产环境所有 `API_BASE + "/api/..."` 调用向 localhost 发请求导致网络失败
+  - **修复3：** `API_BASE` 默认值改为 `""`（空字符串，使用相对路径）
 - [x] **Phase 11: One-Click Integration + Task-Vault 扫码付款 + AI Judge Vault Settlement**：
   - [x] **One-Click Integration（一键接入）** — `POST /api/developer/integrate` 自动识别 URL vs Skill 名，绑定钱包地址用于 70% 分润；`GET /api/developer/integration/{wallet}` 查询接入状态；`static/console.html` Developer 选项卡新增一键接入 UI（skill/URL 输入 + 钱包绑定 + 状态展示）
   - [x] **Task-Vault Model（扫码付款唯一托管钱包）** — 每个发布任务自动生成确定性唯一 vault 地址（`0xV` + SHA256）；`TASK_VAULT_NS` 存储 vault 数据（balance/status/budget）；状态流转 `unfunded → funded → released`；`static/console.html` Consumer 发布后显示 vault 面板（地址/余额/QR 模拟/付款触发/状态轮询）

@@ -11,6 +11,9 @@
 - fix(ui): `static/index.html` "Launch App" 按钮 href 修正 `#cta` → `/console`，确保商业动线正确引导至登录拦截流
 - fix(db): `create_user()` 返回字典缺少 `jwt_secret` — 注册后 `create_jwt()` 访问 `user["jwt_secret"]` 触发 `KeyError` 导致 500
 - fix(server): 添加全局 `@app.exception_handler(Exception)` — 捕获所有未处理异常，统一返回 `{"detail": "..."}` JSON 格式而非纯文本 500
+- fix(redirect-loop): 注册/登录/钱包登录端点返回 `Set-Cookie: aims_jwt` — 解决服务端 `/console` 无法读取 localStorage 中 JWT 导致的 `/console`→`/login`→`/console` 死循环
+- fix(auth-me): 添加 `/api/auth/me` 和 `/api/auth/api-keys` 至 `EXEMPT_PATHS` — 避免 middleware EIP-191 鉴权拦截；`auth_me()` 改为直接解析 JWT cookie/Authorization header
+- fix(console): `API_BASE` 默认值 `http://127.0.0.1:8000` → `""`（空字符串，使用相对路径）— 解决 Fly.io 生产环境所有 API 调用因 CORS/网络错误失败的问题
 
 ## [2026-06-16]
 ### 新增

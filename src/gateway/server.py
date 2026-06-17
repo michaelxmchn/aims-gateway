@@ -309,6 +309,8 @@ EXEMPT_PATHS = {
     "/api/auth/register",
     "/api/auth/login",
     "/api/auth/wallet-login",
+    "/api/auth/me",
+    "/api/auth/api-keys",
     "/api/v2/feed/stream",
 }
 
@@ -3508,12 +3510,23 @@ async def auth_register(req: RegisterRequest):
         raise HTTPException(status_code=409, detail=str(e))
 
     jwt_token = await create_jwt(user)
-    resp = AuthResponse(
-        token=jwt_token,
-        user_id=user["id"],
-        email=user["email"],
-        wallet_address=user.get("wallet_address", ""),
-        display_name=user.get("display_name", ""),
+    resp = JSONResponse(
+        status_code=200,
+        content={
+            "token": jwt_token,
+            "user_id": user["id"],
+            "email": user["email"],
+            "wallet_address": user.get("wallet_address", ""),
+            "display_name": user.get("display_name", ""),
+        },
+    )
+    resp.set_cookie(
+        key="aims_jwt",
+        value=jwt_token,
+        max_age=JWT_EXPIRY_S,
+        path="/",
+        httponly=False,
+        samesite="lax",
     )
     return resp
 
@@ -3526,13 +3539,25 @@ async def auth_login(req: LoginRequest):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     jwt_token = await create_jwt(user)
-    return AuthResponse(
-        token=jwt_token,
-        user_id=user["id"],
-        email=user["email"],
-        wallet_address=user.get("wallet_address", ""),
-        display_name=user.get("display_name", ""),
+    resp = JSONResponse(
+        status_code=200,
+        content={
+            "token": jwt_token,
+            "user_id": user["id"],
+            "email": user["email"],
+            "wallet_address": user.get("wallet_address", ""),
+            "display_name": user.get("display_name", ""),
+        },
     )
+    resp.set_cookie(
+        key="aims_jwt",
+        value=jwt_token,
+        max_age=JWT_EXPIRY_S,
+        path="/",
+        httponly=False,
+        samesite="lax",
+    )
+    return resp
 
 
 @app.post("/api/auth/wallet-login", response_model=AuthResponse)
@@ -3572,13 +3597,25 @@ async def auth_wallet_login(req: WalletLoginRequest):
                 raise HTTPException(status_code=500, detail="Failed to create wallet account")
 
     jwt_token = await create_jwt(user)
-    return AuthResponse(
-        token=jwt_token,
-        user_id=user["id"],
-        email=user["email"],
-        wallet_address=user.get("wallet_address", ""),
-        display_name=user.get("display_name", ""),
+    resp = JSONResponse(
+        status_code=200,
+        content={
+            "token": jwt_token,
+            "user_id": user["id"],
+            "email": user["email"],
+            "wallet_address": user.get("wallet_address", ""),
+            "display_name": user.get("display_name", ""),
+        },
     )
+    resp.set_cookie(
+        key="aims_jwt",
+        value=jwt_token,
+        max_age=JWT_EXPIRY_S,
+        path="/",
+        httponly=False,
+        samesite="lax",
+    )
+    return resp
 
 
 @app.post("/api/auth/link-wallet")
@@ -3593,16 +3630,20 @@ async def auth_link_wallet(req: LinkWalletRequest, request: Request):
 
 @app.get("/api/auth/me")
 async def auth_me(request: Request):
-    """Return current user info from JWT."""
-    user_id = getattr(request.state, "user_id", None)
-    wallet = getattr(request.state, "verified_wallet", "")
-    if not user_id and not wallet:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    if user_id:
-        user = await get_user_by_id(user_id)
-        if user:
-            return user
-    return {"wallet": wallet}
+    """Return current user info from JWT (cookie or Authorization header)."""
+    # Extract JWT from cookie or Authorization header
+    jwt_token = request.cookies.get("aims_jwt") or _extract_bearer(request)
+    if jwt_token:
+        payload = await verify_jwt(jwt_token)
+        if payload:
+            user_id = payload.get("sub")
+            wallet = payload.get("wallet", "")
+            if user_id:
+                user = await get_user_by_id(user_id)
+                if user:
+                    return user
+            return {"wallet": wallet}
+    raise HTTPException(status_code=401, detail="Not authenticated")
 
 
 # ── API Key management ───────────────────────────────────────────────
