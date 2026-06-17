@@ -3,322 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AIMS Gateway Console — Web3 Control Panel</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js">
-</script>
-<style>
-/* ── Reset & Theme ── */
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
-body{font-family:'SF Mono',SFMono-Regular,'JetBrains Mono','Fira Code',monospace;background:#0f172a;color:#cbd5e1;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh}
-
-/* ── Fluorescent green accent (Theme_4) ── */
-:root{--neon:#deff9a;--neon-dim:#a8c96a;--neon-glow:rgba(222,255,154,0.15);--bg-card:#1e293b;--bg-card-hover:#253349;--border:rgba(222,255,154,0.08);--text-dim:#94a3b8;--red:#ff6b6b;--blue:#60a5fa;--amber:#fbbf24}
-
-/* ── Scrollbar ── */
-::-webkit-scrollbar{width:6px}
-::-webkit-scrollbar-track{background:#0f172a}
-::-webkit-scrollbar-thumb{background:var(--neon-dim);border-radius:3px}
-
-/* ── Layout ── */
-.app{max-width:1280px;margin:0 auto;padding:1.5rem;display:flex;flex-direction:column;gap:1.25rem}
-
-/* ── Top bar ── */
-.topbar{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;padding:1rem 1.5rem;background:var(--bg-card);border:1px solid var(--border);border-radius:12px}
-.topbar .logo{font-size:1.25rem;font-weight:700;color:#fff}.topbar .logo span{color:var(--neon)}
-.topbar .wallet-area{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
-.wallet-btn{background:transparent;border:1px solid var(--neon);color:var(--neon);padding:0.5rem 1.25rem;border-radius:8px;cursor:pointer;font-family:inherit;font-size:0.825rem;font-weight:600;transition:all 0.2s}
-.wallet-btn:hover{background:var(--neon-glow);box-shadow:0 0 20px var(--neon-glow)}
-.wallet-btn.connected{background:var(--neon);color:#0f172a}
-.wallet-addr{font-size:0.8rem;color:var(--text-dim)}
-.wallet-bal{display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0.75rem;background:rgba(222,255,154,0.06);border-radius:6px;font-size:0.8rem}
-.wallet-bal .num{color:var(--neon);font-weight:700}
-.network-badge{padding:0.25rem 0.6rem;border-radius:4px;font-size:0.7rem;font-weight:600}
-.network-badge.ok{background:rgba(34,197,94,0.15);color:#22c55e;border:1px solid rgba(34,197,94,0.2)}
-.network-badge.warn{background:rgba(251,191,36,0.15);color:var(--amber);border:1px solid rgba(251,191,36,0.2)}
-
-/* PLG badge */
-.plg-badge{display:inline-flex;align-items:center;gap:0.35rem;padding:0.3rem 0.7rem;border-radius:6px;font-size:0.7rem;font-weight:600;background:rgba(52,211,153,0.1);color:#34d399;border:1px solid rgba(52,211,153,0.15)}
-.plg-badge.active{background:rgba(52,211,153,0.15);border-color:rgba(52,211,153,0.3);box-shadow:0 0 12px rgba(52,211,153,0.1)}
-
-/* ── Role tabs ── */
-.role-tabs{display:flex;gap:0.5rem;flex-wrap:wrap}
-.role-tab{padding:0.65rem 1.5rem;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-dim);cursor:pointer;font-family:inherit;font-size:0.85rem;font-weight:600;transition:all 0.2s}
-.role-tab:hover{border-color:var(--neon-dim);color:#fff}
-.role-tab.active{background:var(--neon-glow);border-color:var(--neon);color:var(--neon);box-shadow:0 0 15px var(--neon-glow)}
-.role-tab .badge{display:inline-block;margin-left:0.5rem;padding:0.1rem 0.5rem;border-radius:10px;font-size:0.65rem;background:rgba(255,255,255,0.06);color:var(--text-dim)}
-
-/* ── Grid ── */
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem}
-.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.25rem}
-@media(max-width:900px){.grid-2,.grid-3{grid-template-columns:1fr}}
-
-/* ── Cards ── */
-.card{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:1.25rem}
-.card-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
-.card-title{font-size:0.85rem;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.05em}
-.card-title .icon{margin-right:0.5rem}
-.card-subtitle{font-size:0.75rem;color:var(--text-dim);margin-top:0.25rem}
-.stat{display:flex;flex-direction:column;gap:0.25rem}
-.stat-label{font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-dim)}
-.stat-value{font-size:1.5rem;font-weight:700;color:#fff}
-.stat-value .unit{font-size:0.8rem;color:var(--text-dim);font-weight:400}
-.stat-value.neon{color:var(--neon)}
-
-/* ── Pipeline progress ── */
-.pipeline{display:flex;align-items:center;gap:0.5rem;padding:1rem;background:rgba(15,23,42,0.6);border-radius:8px;overflow-x:auto}
-.pipeline-step{display:flex;flex-direction:column;align-items:center;gap:0.35rem;min-width:80px;position:relative}
-.pipeline-step .circle{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;border:2px solid var(--border);color:var(--text-dim);background:transparent;transition:all 0.4s}
-.pipeline-step.done .circle{background:rgba(34,197,94,0.15);border-color:#22c55e;color:#22c55e}
-.pipeline-step.active .circle{background:var(--neon-glow);border-color:var(--neon);color:var(--neon);box-shadow:0 0 20px var(--neon-glow);animation:pulse 1.5s ease-in-out infinite}
-.pipeline-step .label{font-size:0.6rem;text-align:center;color:var(--text-dim);white-space:nowrap}
-.pipeline-step.done .label{color:#22c55e}
-.pipeline-step.active .label{color:var(--neon)}
-.pipeline-step.trial .circle{border-color:#34d399;color:#34d399}
-.pipeline-step.trial .label{color:#34d399}
-.pipeline-step.done.trial .circle{background:rgba(52,211,153,0.15);border-color:#34d399;color:#34d399}
-.pipeline-arrow{color:var(--border);font-size:0.8rem;flex-shrink:0}
-.pipeline-step.done + .pipeline-arrow{color:var(--neon-dim)}
-
-@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.7;transform:scale(1.05)}}
-
-/* ── Log / activity feed ── */
-.log-feed{max-height:240px;overflow-y:auto;display:flex;flex-direction:column;gap:0.35rem}
-.log-entry{display:flex;gap:0.75rem;align-items:flex-start;padding:0.4rem 0.6rem;border-radius:4px;font-size:0.75rem;background:rgba(255,255,255,0.02)}
-.log-entry .time{color:var(--text-dim);white-space:nowrap;font-size:0.65rem;min-width:70px}
-.log-entry .msg{flex:1;color:#cbd5e1;word-break:break-all}
-.log-entry.info{border-left:2px solid var(--blue)}
-.log-entry.success{border-left:2px solid #22c55e}
-.log-entry.error{border-left:2px solid var(--red)}
-.log-entry.trial{border-left:2px solid #34d399}
-
-/* ── Buttons ── */
-.btn{display:inline-flex;align-items:center;gap:0.5rem;padding:0.55rem 1.25rem;border-radius:8px;font-family:inherit;font-size:0.8rem;font-weight:600;cursor:pointer;border:1px solid transparent;transition:all 0.2s}
-.btn-neon{background:var(--neon);color:#0f172a;border-color:var(--neon)}
-.btn-neon:hover{box-shadow:0 0 25px var(--neon-glow);transform:translateY(-1px)}
-.btn-neon:disabled{opacity:0.4;cursor:not-allowed;transform:none}
-.btn-outline{background:transparent;color:var(--neon);border-color:var(--neon)}
-.btn-outline:hover{background:var(--neon-glow)}
-.btn-outline.active{background:var(--neon-glow);border-color:var(--neon);color:var(--neon)}
-.btn-ghost{background:transparent;color:var(--text-dim);border-color:var(--border)}
-.btn-ghost:hover{color:#fff;border-color:var(--text-dim)}
-.btn-sm{padding:0.35rem 0.85rem;font-size:0.7rem}
-.btn-plg{background:rgba(52,211,153,0.1);color:#34d399;border-color:rgba(52,211,153,0.2)}
-.btn-plg:hover{background:rgba(52,211,153,0.2);box-shadow:0 0 15px rgba(52,211,153,0.1)}
-
-/* ── Input ── */
-.input{background:rgba(15,23,42,0.6);border:1px solid var(--border);border-radius:6px;padding:0.55rem 0.75rem;color:#fff;font-family:inherit;font-size:0.8rem;width:100%;outline:none;transition:border-color 0.2s}
-.input:focus{border-color:var(--neon-dim)}
-.input::placeholder{color:var(--text-dim);opacity:0.5}
-select.input option{background:#1e293b;color:#fff}
-
-/* ── Tables ── */
-table{width:100%;border-collapse:collapse;font-size:0.78rem}
-th{text-align:left;padding:0.55rem 0.75rem;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.05em;font-size:0.65rem;border-bottom:1px solid var(--border)}
-td{padding:0.55rem 0.75rem;border-bottom:1px solid rgba(255,255,255,0.03);color:#cbd5e1}
-tr:hover td{background:rgba(255,255,255,0.02)}
-
-/* ── Task Market table ── */
-.market-table{max-height:400px;overflow-y:auto}
-.mt-row{display:flex;align-items:center;padding:0.6rem 0.75rem;border-bottom:1px solid rgba(255,255,255,0.03);font-size:0.78rem;gap:0.75rem;transition:background 0.2s}
-.mt-row:hover{background:rgba(255,255,255,0.03)}
-.mt-id{font-family:monospace;font-size:0.65rem;color:var(--text-dim);min-width:80px}
-.mt-name{flex:1;color:#fff;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.mt-skill{font-size:0.65rem;color:var(--text-dim);min-width:80px}
-.mt-budget{color:var(--neon);font-weight:600;min-width:70px;text-align:right}
-.mt-credit{font-size:0.65rem;min-width:60px;text-align:center}
-.mt-credit.ok{color:#22c55e}
-.mt-credit.block{color:var(--red)}
-.mt-action{min-width:80px;text-align:right}
-
-/* ── Publish Task result ── */
-.pub-success{color:#22c55e;font-weight:600}
-.pub-error{color:var(--red);font-weight:600}
-
-/* ── Status indicators ── */
-.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:0.5rem}
-.status-dot.online{background:#22c55e;box-shadow:0 0 8px rgba(34,197,94,0.5)}
-.status-dot.idle{background:var(--amber);box-shadow:0 0 8px rgba(251,191,36,0.5)}
-.status-dot.busy{background:var(--neon);box-shadow:0 0 8px var(--neon-glow)}
-.status-dot.offline{background:var(--text-dim)}
-
-/* ── Modal ── */
-.modal-overlay{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;z-index:999}
-.modal-overlay.open{display:flex}
-.modal{background:var(--bg-card);border:1px solid var(--border);border-radius:12px;padding:2rem;max-width:480px;width:90%;position:relative}
-.modal h3{margin-bottom:0.75rem;color:#fff}
-.modal p{font-size:0.85rem;color:var(--text-dim);margin-bottom:1.25rem;line-height:1.6}
-.modal-actions{display:flex;gap:0.75rem;justify-content:flex-end}
-
-/* ── Toast ── */
-.toast-container{position:fixed;top:1.5rem;right:1.5rem;z-index:1000;display:flex;flex-direction:column;gap:0.5rem}
-.toast{padding:0.75rem 1.25rem;border-radius:8px;font-size:0.8rem;font-weight:600;animation:slideIn 0.3s ease;max-width:400px}
-.toast.success{background:rgba(34,197,94,0.15);border:1px solid rgba(34,197,94,0.3);color:#22c55e}
-.toast.error{background:rgba(255,107,107,0.15);border:1px solid rgba(255,107,107,0.3);color:var(--red)}
-.toast.info{background:rgba(96,165,250,0.15);border:1px solid rgba(96,165,250,0.3);color:var(--blue)}
-.toast.warn{background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.3);color:var(--amber)}
-.toast.trial{background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.2);color:#34d399}
-@keyframes slideIn{from{opacity:0;transform:translateX(40px)}to{opacity:1;transform:translateX(0)}}
-
-/* ── Tab content ── */
-.tab-content{display:none}
-.tab-content.active{display:block}
-
-/* ── Role header ── */
-.role-header{display:flex;align-items:center;gap:0.75rem;margin-bottom:1.25rem}
-.role-header .avatar{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.1rem}
-.role-header .avatar.consumer{background:rgba(96,165,250,0.15);border:1px solid rgba(96,165,250,0.2)}
-.role-header .avatar.developer{background:rgba(222,255,154,0.15);border:1px solid rgba(222,255,154,0.2)}
-.role-header .avatar.worker{background:rgba(251,191,36,0.15);border:1px solid rgba(251,191,36,0.2)}
-.role-header .info h3{color:#fff;font-size:0.95rem}
-.role-header .info p{font-size:0.75rem;color:var(--text-dim);margin:0}
-
-/* ── Skill cards ── */
-.skill-card{padding:0.75rem;background:rgba(15,23,42,0.4);border:1px solid var(--border);border-radius:8px;display:flex;justify-content:space-between;align-items:center}
-.skill-card .name{font-weight:600;color:#fff;font-size:0.85rem}
-.skill-card .desc{font-size:0.7rem;color:var(--text-dim);margin-top:0.15rem}
-.skill-card .caps{display:flex;gap:0.3rem;flex-wrap:wrap;margin-top:0.35rem}
-.skill-card .cap-tag{padding:0.1rem 0.35rem;border-radius:3px;font-size:0.6rem;background:rgba(222,255,154,0.06);color:var(--neon-dim)}
-
-/* ── Social login ── */
-.social-btn-group{display:flex;gap:.35rem}
-.social-btn-sm{display:inline-flex;align-items:center;gap:.35rem;padding:.3rem .6rem;border-radius:6px;font-size:.68rem;font-weight:600;cursor:pointer;border:1px solid var(--border);background:rgba(255,255,255,0.03);color:var(--text-dim);transition:all .2s;font-family:inherit;white-space:nowrap}
-.social-btn-sm:hover{color:#fff;border-color:var(--text-dim)}
-.social-btn-sm .cs{font-size:.5rem;padding:.08rem .3rem;border-radius:2px;background:rgba(251,191,36,0.1);color:var(--amber);margin-left:.15rem}
-.social-btn-sm svg{width:12px;height:12px}
-
-/* ── Settlement Feed (console) ── */
-.feed-console{max-height:200px;overflow-y:auto;display:flex;flex-direction:column;gap:1px;font-size:.7rem;font-family:'SF Mono',monospace}
-.feed-console::-webkit-scrollbar{width:3px}
-.feed-console::-webkit-scrollbar-thumb{background:rgba(222,255,154,0.15);border-radius:2px}
-.feed-entry-c{display:flex;gap:.5rem;padding:.35rem .5rem;border-radius:3px;background:rgba(255,255,255,0.01);border-left:2px solid transparent;animation:feedIn .3s ease}
-.feed-entry-c.pass{border-left-color:#22c55e}
-.feed-entry-c.refund{border-left-color:var(--red)}
-.feed-entry-c .fc-time{color:var(--text-dim);min-width:40px;font-size:.6rem}
-.feed-entry-c .fc-main{flex:1;display:flex;flex-wrap:wrap;gap:0 .75rem}
-.feed-entry-c .fc-skill{color:#fff;font-weight:600}
-.feed-entry-c .fc-score{font-weight:600}
-.feed-entry-c .fc-score.pass{color:#22c55e}
-.feed-entry-c .fc-score.refund{color:var(--red)}
-.feed-entry-c .fc-split{color:var(--text-dim)}
-.feed-entry-c .fc-dex{color:var(--neon-dim)}
-.feed-entry-c .fc-region{color:#6366f1;font-size:.6rem}
-@keyframes feedIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
-
-/* ── Responsive ── */
-@media(max-width:600px){.app{padding:0.75rem}.topbar{padding:0.75rem}.grid-2,.grid-3{grid-template-columns:1fr}}
-
-/* ── Gas meter ── */
-.gas-meter{height:4px;background:rgba(255,255,255,0.06);border-radius:2px;overflow:hidden;margin-top:0.5rem}
-.gas-meter .fill{height:100%;background:linear-gradient(90deg,var(--neon),#22c55e);border-radius:2px;transition:width 1s ease;width:0%}
-
-/* ── Empty state ── */
-.empty-state{text-align:center;padding:2rem;color:var(--text-dim);font-size:0.85rem}
-.empty-state .big-icon{font-size:2.5rem;margin-bottom:0.75rem;opacity:0.3}
-
-/* ── Drag & Drop Upload ── */
-.drop-zone{border:2px dashed var(--border);border-radius:10px;padding:2rem;text-align:center;cursor:pointer;transition:all .3s;background:rgba(15,23,42,0.3)}
-.drop-zone:hover,.drop-zone.drag-over{border-color:var(--neon);background:var(--neon-glow)}
-.drop-zone .dz-icon{font-size:2.5rem;margin-bottom:.5rem;opacity:0.4}
-.drop-zone .dz-text{color:var(--text-dim);font-size:.8rem}
-.drop-zone .dz-text strong{color:var(--neon)}
-.drop-zone .dz-hint{font-size:.65rem;color:var(--text-dim);margin-top:.3rem;opacity:0.5}
-.drop-zone .dz-file{display:none;padding:.5rem;background:rgba(52,211,153,0.06);border-radius:6px;margin-top:.5rem;font-size:.75rem;color:#34d399}
-.drop-zone.has-file{border-color:#34d399;border-style:solid;background:rgba(52,211,153,0.04)}
-.drop-zone.has-file .dz-icon{opacity:1;color:#34d399}
-
-/* ── Recharge panel ── */
-.recharge-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:.5rem}
-.recharge-amt{padding:.6rem;border-radius:8px;border:1px solid var(--border);background:rgba(15,23,42,0.4);color:var(--neon);font-family:inherit;font-size:.85rem;font-weight:700;cursor:pointer;transition:all .2s;text-align:center}
-.recharge-amt:hover{border-color:var(--neon);background:var(--neon-glow);transform:translateY(-1px)}
-.recharge-amt .currency{font-size:.6rem;color:var(--text-dim);font-weight:400;display:block;margin-top:.1rem}
-
-/* ── Audit Ledger ── */
-.audit-table{font-size:.72rem;max-height:260px;overflow-y:auto}
-.audit-table::-webkit-scrollbar{width:3px}
-.audit-table::-webkit-scrollbar-thumb{background:rgba(222,255,154,0.15);border-radius:2px}
-.audit-table table{font-size:.72rem}
-.audit-table td{padding:.35rem .5rem;font-size:.65rem;vertical-align:top}
-.audit-table .tx-pass{color:#22c55e;font-weight:600}
-.audit-table .tx-refund{color:var(--red);font-weight:600}
-.audit-table .tx-role{color:var(--text-dim);font-size:.6rem}
-.audit-filter{display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap}
-.audit-filter .input{flex:1;min-width:120px;font-size:.72rem}
-
-/* ── Withdraw panel ── */
-.withdraw-row{display:flex;gap:.5rem;align-items:center;margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)}
-.withdraw-row .input{width:120px}
-.withdraw-btn{background:rgba(251,191,36,0.1);color:var(--amber);border-color:rgba(251,191,36,0.2)}
-.withdraw-btn:hover{background:rgba(251,191,36,0.2);box-shadow:0 0 15px rgba(251,191,36,0.1)}
-
-/* ── Fiat deposit button ── */
-.fiat-deposit-btn{background:rgba(96,165,250,0.1);color:var(--blue);border-color:rgba(96,165,250,0.2)}
-.fiat-deposit-btn:hover{background:rgba(96,165,250,0.2);box-shadow:0 0 15px rgba(96,165,250,0.1)}
-
-/* ── History Ledger ── */
-.history-table{font-size:.72rem;max-height:280px;overflow-y:auto}
-.history-table::-webkit-scrollbar{width:3px}
-.history-table::-webkit-scrollbar-thumb{background:rgba(222,255,154,0.15);border-radius:2px}
-.history-table table{font-size:.72rem}
-.history-table td{padding:.35rem .5rem;font-size:.65rem;vertical-align:top}
-.history-type{display:inline-block;padding:.1rem .4rem;border-radius:3px;font-size:.6rem;font-weight:600}
-.history-type.deposit{background:rgba(34,197,94,0.1);color:#22c55e}
-.history-type.withdraw{background:rgba(251,191,36,0.1);color:var(--amber)}
-.history-type.task_deduction{background:rgba(96,165,250,0.1);color:var(--blue)}
-.history-type.refund{background:rgba(251,191,36,0.1);color:var(--amber)}
-.history-type.worker_payout{background:rgba(222,255,154,0.08);color:var(--neon-dim)}
-
-/* ── One-Click Integration Card ── */
-.integrate-row{display:flex;gap:.75rem;align-items:center;flex-wrap:wrap}
-.integrate-row .input{flex:1;min-width:180px}
-.integrate-status{font-size:.72rem;margin-top:.5rem;padding:.5rem;border-radius:6px}
-.integrate-status.success{background:rgba(34,197,94,0.06);border:1px solid rgba(34,197,94,0.1);color:#22c55e}
-.integrate-status.error{background:rgba(255,107,107,0.06);border:1px solid rgba(255,107,107,0.1);color:var(--red)}
-.integrate-status.info{background:rgba(96,165,250,0.06);border:1px solid rgba(96,165,250,0.1);color:var(--blue)}
-.integrate-badge{display:inline-block;padding:.1rem .4rem;border-radius:3px;font-size:.6rem;font-weight:600}
-.integrate-badge.skill{background:rgba(222,255,154,0.08);color:var(--neon-dim)}
-.integrate-badge.url{background:rgba(96,165,250,0.08);color:var(--blue)}
-
-/* ── Vault / QR Payment Panel ── */
-.vault-panel{background:rgba(15,23,42,0.4);border:1px solid var(--border);border-radius:8px;padding:1rem;margin-top:.75rem}
-.vault-panel .vp-row{display:flex;justify-content:space-between;align-items:center;padding:.35rem 0;font-size:.78rem;border-bottom:1px solid rgba(255,255,255,0.03)}
-.vault-panel .vp-row:last-child{border-bottom:none}
-.vault-panel .vp-label{color:var(--text-dim)}
-.vault-panel .vp-value{color:#fff;font-weight:600;font-family:monospace;font-size:.72rem}
-.vault-panel .vp-value.neon{color:var(--neon)}
-.vault-panel .vp-value.green{color:#22c55e}
-.vault-panel .vp-value.amber{color:var(--amber)}
-.qr-mock{display:flex;align-items:center;justify-content:center;gap:1rem;padding:1rem;background:rgba(255,255,255,0.02);border:1px dashed var(--border);border-radius:8px;margin:.75rem 0}
-.qr-mock .qr-box{width:80px;height:80px;background:linear-gradient(135deg,#fff 25%,#ddd 50%,#fff 75%);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:.6rem;color:#333;font-weight:700;text-align:center;padding:.25rem;line-height:1.2;position:relative;overflow:hidden}
-.qr-mock .qr-box::before{content:'';position:absolute;inset:8px;border:2px solid #333;border-radius:4px}
-.qr-mock .qr-box::after{content:'';position:absolute;width:20px;height:20px;background:#333;border-radius:2px}
-.qr-mock .qr-info{font-size:.72rem;color:var(--text-dim)}
-.qr-mock .qr-info strong{color:#fff}
-.vault-status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:.35rem}
-.vault-status-dot.unfunded{background:var(--text-dim)}
-.vault-status-dot.funded{background:#22c55e;box-shadow:0 0 8px rgba(34,197,94,0.5)}
-.vault-status-dot.released{background:var(--neon);box-shadow:0 0 8px var(--neon-glow)}
-</style>
+<title>AIMS Gateway Console v2</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>tailwind.config={theme:{extend:{colors:{neon:'#deff9a','neon-dim':'#a8c96a',surface:{ DEFAULT:'#1e293b',container:'#0f172a'},'outline-variant':'rgba(222,255,154,0.08)'},fontFamily:{display:['Geist','Inter','system-ui','sans-serif'],mono:['SF Mono','JetBrains Mono','monospace']},backdropBlur:{xs:'2px'},spacing:{sm:'0.5rem',md:'1rem',lg:'1.5rem','4xl':'2rem'}}}}}</script>
+<link rel="stylesheet" href="/static/css/console-v2.css">
 </head>
 <body>
-
-<!-- ── Toast container ── -->
 <div class="toast-container" id="toastContainer"></div>
 
-<!-- ── 402 Deposit Modal ── -->
+<!-- Deposit Modal -->
 <div class="modal-overlay" id="depositModal">
   <div class="modal">
     <h3>⚠️ Insufficient Balance</h3>
-    <p id="modalBody">
-      Each skill invocation requires a minimum of <strong>0.05 USDC</strong>.
-      Your current available balance is <strong id="modalBalance">0.00 USDC</strong>.
-    </p>
-    <p id="modalTrialNotice" style="font-size:0.8rem;color:#34d399;background:rgba(52,211,153,0.06);padding:0.75rem;border-radius:6px;display:none">
-      &#9733; <strong>First-Task-Free available!</strong> You haven't used your free trial for this Skill yet. <button class="btn btn-sm btn-plg" onclick="closeDepositModal();document.getElementById('billingMode').value='trial'">Use Free Trial Instead</button>
-    </p>
-    <p style="font-size:0.8rem;color:var(--neon);background:var(--neon-glow);padding:0.75rem;border-radius:6px">
-      Deposit to contract: <code id="modalContractAddr" style="word-break:break-all">0x0000...0000</code>
-    </p>
+    <p id="modalBody">Each skill invocation requires a minimum of <strong>0.05 USDC</strong>. Your current available balance is <strong id="modalBalance">0.00 USDC</strong>.</p>
+    <p id="modalTrialNotice" style="font-size:0.8rem;color:#34d399;background:rgba(52,211,153,0.06);padding:0.75rem;border-radius:6px;display:none">&#9733; <strong>First-Task-Free available!</strong> <button class="btn btn-sm btn-plg" onclick="closeDepositModal();document.getElementById('billingMode').value='trial'">Use Free Trial Instead</button></p>
+    <p style="font-size:0.8rem;color:var(--neon);background:var(--neon-glow);padding:0.75rem;border-radius:6px">Deposit to contract: <code id="modalContractAddr" style="word-break:break-all">0x0000...0000</code></p>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeDepositModal()">Dismiss</button>
       <button class="btn btn-neon" onclick="handleDeposit()">Deposit 50 USDC</button>
@@ -326,23 +26,15 @@ tr:hover td{background:rgba(255,255,255,0.02)}
   </div>
 </div>
 
-<!-- ── Buyout Perpetual License Modal ── -->
+<!-- Buyout Modal -->
 <div class="modal-overlay" id="buyoutModal">
   <div class="modal">
     <h3>🔒 Buyout Perpetual License</h3>
     <p>Purchase a one-time perpetual license for this Skill. No recurring fees, no rate limits, no expiration.</p>
     <div style="background:rgba(52,211,153,0.06);border:1px solid rgba(52,211,153,0.12);border-radius:8px;padding:1rem;margin:1rem 0">
-      <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:0.5rem">
-        <span style="color:var(--text-dim)">Skill</span><span style="color:#fff" id="buyoutSkillName">—</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:0.5rem">
-        <span style="color:var(--text-dim)">License Type</span><span style="color:#34d399">Perpetual (Lifetime)</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:0.85rem">
-        <span style="color:var(--text-dim)">Price</span><span style="color:var(--neon);font-weight:700">25.00 USDC</span>
-      </div>
+      <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:0.5rem"><span style="color:var(--text-dim)">Skill</span><span style="color:#fff" id="buyoutSkillName">—</span></div>
+      <div style="display:flex;justify-content:space-between;font-size:0.85rem"><span style="color:var(--text-dim)">Price</span><span style="color:var(--neon);font-weight:700">25.00 USDC</span></div>
     </div>
-    <p style="font-size:0.8rem;color:var(--text-dim)">Buyout grants unlimited perpetual access to this Skill. License is tied to your wallet address and non-transferable. <strong>LLM-as-a-Judge</strong> arbitration still applies to all invocations.</p>
     <div class="modal-actions">
       <button class="btn btn-ghost" onclick="closeBuyoutModal()">Cancel</button>
       <button class="btn btn-neon" onclick="confirmBuyout()">🔒 Purchase Perpetual License</button>
@@ -351,112 +43,67 @@ tr:hover td{background:rgba(255,255,255,0.02)}
 </div>
 
 <div class="app">
-
-  <!-- ═══ Top Bar ═══ -->
+  <!-- Top Bar -->
   <header class="topbar">
     <div class="logo">AIMS Gateway <span>Console</span></div>
     <nav class="top-nav" style="display:flex;gap:.75rem;align-items:center;font-size:.72rem;margin-left:1.5rem;flex:1">
       <a href="/console" style="color:var(--neon);text-decoration:none;font-weight:600">Console</a>
       <a href="/integration-docs" style="color:var(--text-dim);text-decoration:none">Integration</a>
-      <a href="/rules-and-docs" style="color:var(--text-dim);text-decoration:none">Rules & Docs</a>
+      <a href="/rules-and-docs" style="color:var(--text-dim);text-decoration:none">Rules</a>
       <a href="/api/discovery" style="color:var(--text-dim);text-decoration:none">API</a>
     </nav>
     <div class="wallet-area">
       <span class="plg-badge" id="trialBadge" style="display:none">&#9733; 1 Free Trial / Skill</span>
       <span class="network-badge ok" id="networkBadge">● Base L2</span>
-      <div class="wallet-bal" id="balanceDisplay" style="display:none">
-        Balance: <span class="num" id="walletBalance">0.00</span> <span style="font-size:0.65rem;color:var(--text-dim)">USDC</span>
-      </div>
+      <div class="wallet-bal" id="balanceDisplay" style="display:none">Balance: <span class="num" id="walletBalance">0.00</span> <span style="font-size:0.65rem;color:var(--text-dim)">USDC</span></div>
       <span class="wallet-addr" id="walletAddress"></span>
       <button class="wallet-btn" id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
       <div class="social-btn-group">
-        <button class="social-btn-sm" onclick="toast('Social login coming soon — use MetaMask','info')" title="Google login (Coming Soon)">
-          <svg viewBox="0 0 24 24" fill="none" style="width:12px;height:12px"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-          Google <span class="cs">Soon</span>
-        </button>
-        <button class="social-btn-sm" onclick="toast('Social login coming soon — use MetaMask','info')" title="Apple login (Coming Soon)">
-          <svg viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg>
-          Apple <span class="cs">Soon</span>
-        </button>
+        <button class="social-btn-sm" onclick="toast('Social login coming soon — use MetaMask','info')"><svg viewBox="0 0 24 24" fill="none" style="width:12px;height:12px"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg> Google <span class="cs">Soon</span></button>
+        <button class="social-btn-sm" onclick="toast('Social login coming soon — use MetaMask','info')"><svg viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg> Apple <span class="cs">Soon</span></button>
       </div>
     </div>
   </header>
 
-  <!-- ═══ Pipeline Progress ═══ -->
+  <!-- Pipeline -->
   <div class="card" style="padding:0.75rem 1.25rem">
-    <div class="card-header" style="margin-bottom:0.5rem">
-      <span class="card-title"><span class="icon">⛓️</span> AIMS Execution Pipeline</span>
-      <span id="pipelineStatus" style="font-size:0.7rem;color:var(--text-dim)">Idle</span>
-    </div>
+    <div class="card-header" style="margin-bottom:0.5rem"><span class="card-title"><span class="icon">⛓️</span> AIMS Execution Pipeline</span><span id="pipelineStatus" style="font-size:0.7rem;color:var(--text-dim)">Idle</span></div>
     <div class="pipeline" id="pipeline">
-      <div class="pipeline-step" data-step="0"><div class="circle">①</div><span class="label">Auth</span></div>
-      <span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="1"><div class="circle">②</div><span class="label">Free Trial<br/>Check</span></div>
-      <span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="2"><div class="circle">③</div><span class="label">Balance<br/>Check</span></div>
-      <span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="3"><div class="circle">④</div><span class="label">Execute<br/>Task</span></div>
-      <span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="4"><div class="circle">⑤</div><span class="label">Proof of<br/>Task</span></div>
-      <span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="5"><div class="circle">⑥</div><span class="label">Settle<br/>70/25/5</span></div>
+      <div class="pipeline-step" data-step="0"><div class="circle">①</div><span class="label">Auth</span></div><span class="pipeline-arrow">▸</span>
+      <div class="pipeline-step" data-step="1"><div class="circle">②</div><span class="label">Free Trial Check</span></div><span class="pipeline-arrow">▸</span>
+      <div class="pipeline-step" data-step="2"><div class="circle">③</div><span class="label">Balance Check</span></div><span class="pipeline-arrow">▸</span>
+      <div class="pipeline-step" data-step="3"><div class="circle">④</div><span class="label">Execute Task</span></div><span class="pipeline-arrow">▸</span>
+      <div class="pipeline-step" data-step="4"><div class="circle">⑤</div><span class="label">Proof of Task</span></div><span class="pipeline-arrow">▸</span>
+      <div class="pipeline-step" data-step="5"><div class="circle">⑥</div><span class="label">Settle 70/25/5</span></div>
     </div>
   </div>
 
-  <!-- ═══ Role Tabs ═══ -->
+  <!-- Role Tabs -->
   <div class="role-tabs">
-    <button class="role-tab active" data-role="consumer" onclick="switchRole('consumer')">
-      🛒 Consumer <span class="badge">Run Skills</span>
-    </button>
-    <button class="role-tab" data-role="developer" onclick="switchRole('developer')">
-      🔧 Developer <span class="badge">70% Revenue</span>
-    </button>
-    <button class="role-tab" data-role="worker" onclick="switchRole('worker')">
-      ⚡ Worker <span class="badge">25% Commission</span>
-    </button>
+    <button class="role-tab active" data-role="consumer" onclick="switchRole('consumer')">🛒 Consumer <span class="badge">Run Skills</span></button>
+    <button class="role-tab" data-role="developer" onclick="switchRole('developer')">🔧 Developer <span class="badge">70% Revenue</span></button>
+    <button class="role-tab" data-role="worker" onclick="switchRole('worker')">⚡ Worker <span class="badge">25% Commission</span></button>
   </div>
 
-  <!-- ════════════════════════════════════════════════════════ -->
-  <!--  TAB: Consumer                                         -->
-  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- CONSUMER TAB -->
   <div class="tab-content active" id="tab-consumer">
+    <div class="role-header"><div class="avatar consumer">🛒</div><div class="info"><h3>Consumer Dashboard</h3><p id="consumerDashboardHint">Invoke AI skills with your wallet</p></div></div>
 
-    <div class="role-header">
-      <div class="avatar consumer">🛒</div>
-      <div class="info"><h3>Consumer Dashboard</h3><p>Invoke AI skills with your wallet — EIP-191 signed, on-chain settled. <strong style="color:#34d399">First task free per Skill.</strong></p></div>
-    </div>
-
-    <!-- ── Free Trial Status Banner ── -->
-    <div class="card" style="border-color:rgba(52,211,153,0.15);margin-bottom:0">
-      <div class="card-header">
-        <span class="card-title">🎁 Free Trial Status</span>
-        <span id="trialStatusBadge" class="plg-badge active">&#9733; PLG Enabled</span>
-      </div>
+    <div class="card" style="border-color:rgba(52,211,153,0.15)">
+      <div class="card-header"><span class="card-title">🎁 Free Trial Status</span><span id="trialStatusBadge" class="plg-badge active">&#9733; PLG Enabled</span></div>
       <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
-        <div class="stat">
-          <span class="stat-label">Remaining Trials</span>
-          <span class="stat-value" style="color:#34d399" id="trialsLeftEnhanced">—</span>
-        </div>
+        <div class="stat"><span class="stat-label">Remaining Trials</span><span class="stat-value" style="color:#34d399" id="trialsLeftEnhanced">—</span></div>
         <div style="flex:1;min-width:200px">
-          <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-dim);margin-bottom:0.25rem">
-            <span>Trial Usage</span>
-            <span id="trialProgressText">0 / 0 Skills used</span>
-          </div>
+          <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-dim);margin-bottom:0.25rem"><span>Trial Usage</span><span id="trialProgressText">0 / 0 Skills used</span></div>
           <div class="gas-meter"><div class="fill" id="trialProgressBar" style="width:0%;background:linear-gradient(90deg,#34d399,#22c55e)"></div></div>
         </div>
-        <div style="font-size:0.72rem;color:var(--text-dim);max-width:300px;line-height:1.5">
-          Every wallet gets <strong style="color:#34d399">1 free invocation per Skill</strong> — zero USDC required. <strong>LLM-as-a-Judge</strong> arbitrates quality; failed trials don't count.
-        </div>
+        <div style="font-size:0.72rem;color:var(--text-dim);max-width:300px;line-height:1.5" id="trialBannerText"></div>
       </div>
     </div>
 
     <div class="grid-2">
-      <!-- Quick stats -->
       <div class="card">
-        <div class="card-header">
-          <span class="card-title">💰 Account</span>
-          <button class="btn btn-sm btn-outline" onclick="refreshBalance()">⟳ Refresh</button>
-        </div>
+        <div class="card-header"><span class="card-title">💰 Account</span><button class="btn btn-sm btn-outline" onclick="refreshBalance()">⟳ Refresh</button></div>
         <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
           <div class="stat"><span class="stat-label">Available Balance</span><span class="stat-value neon" id="consumerBalance">— <span class="unit">USDC</span></span></div>
           <div class="stat"><span class="stat-label">Total Deposited</span><span class="stat-value" id="consumerDeposited">— <span class="unit">USDC</span></span></div>
@@ -464,2529 +111,275 @@ tr:hover td{background:rgba(255,255,255,0.02)}
           <div class="stat"><span class="stat-label">Free Trials Left</span><span class="stat-value" style="color:#34d399" id="trialsLeft">— <span class="unit">/ Skills</span></span></div>
         </div>
       </div>
-
-      <!-- Invoke form -->
       <div class="card">
         <div class="card-header"><span class="card-title">🚀 Invoke Skill</span></div>
         <form onsubmit="invokeSkill(event)" style="display:flex;flex-direction:column;gap:0.75rem">
           <div style="display:flex;gap:0.75rem">
-            <select class="input" id="skillSelect" required style="flex:1">
-              <option value="">— Select a skill —</option>
-            </select>
-            <select class="input" id="billingMode" style="width:160px;flex-shrink:0">
-              <option value="pay_per_task">⚡ Metered</option>
-              <option value="subscription">📅 Subscription</option>
-              <option value="buyout">🔒 Buyout</option>
-              <option value="trial" selected>🎁 Free Trial (1st)</option>
-            </select>
+            <select class="input" id="skillSelect" required style="flex:1"><option value="">— Select a skill —</option></select>
+            <select class="input" id="billingMode" style="width:160px;flex-shrink:0"><option value="pay_per_task">⚡ Metered</option><option value="trial" selected>🎁 Free Trial (1st)</option></select>
           </div>
-          <input class="input" id="skillParams" placeholder='Params JSON (e.g. {"url":"https://example.com"})' value='{"url":"https://example.com"}'>
+          <input class="input" id="skillParams" placeholder='Params JSON' value='{"url":"https://example.com"}'>
           <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
-            <input class="input" id="workerAddr" placeholder="Worker address (0x...)" style="flex:1" value="0x70997970C51812dc3A010C7d01b50e0d17dc79C8">
-            <input class="input" id="devAddr" placeholder="Developer address (0x...)" style="flex:1" value="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266">
+            <input class="input" id="workerAddr" placeholder="Worker address" style="flex:1" value="0x70997970C51812dc3A010C7d01b50e0d17dc79C8">
+            <input class="input" id="devAddr" placeholder="Developer address" style="flex:1" value="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266">
           </div>
           <div style="display:flex;gap:0.75rem">
             <button class="btn btn-neon" id="invokeBtn" type="submit" style="flex:1">▶ Execute &amp; Settle</button>
-            <button class="btn btn-sm btn-plg" id="trialBtn" type="button" onclick="document.getElementById('billingMode').value='trial'" title="Use free trial">🎁 Free</button>
+            <button class="btn btn-sm btn-plg" id="trialBtn" type="button" onclick="document.getElementById('billingMode').value='trial'">🎁 Free</button>
           </div>
         </form>
       </div>
     </div>
 
-    <!-- ── Credit Score Card (Consumer) ── -->
     <div class="card" style="border-color:rgba(251,191,36,0.1)">
-      <div class="card-header">
-        <span class="card-title">🛡️ Credit Score &amp; Level</span>
-        <span id="creditLevelBadge" style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600">—</span>
-      </div>
+      <div class="card-header"><span class="card-title">🛡️ Credit Score</span><span id="creditLevelBadge" style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600">—</span></div>
       <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
-        <div class="stat">
-          <span class="stat-label">Credit Score</span>
-          <span class="stat-value neon" id="creditScoreDisplay">—</span>
-        </div>
-        <div style="flex:1;min-width:150px">
-          <div style="position:relative;height:8px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden">
-            <div class="fill" id="creditScoreBar" style="height:100%;border-radius:4px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e);transition:width 0.8s ease"></div>
-          </div>
-          <div style="display:flex;justify-content:space-between;font-size:0.6rem;color:var(--text-dim);margin-top:0.2rem">
-            <span>0</span><span style="color:var(--amber)">50</span><span style="color:#22c55e">100</span>
-          </div>
-        </div>
-        <div style="font-size:0.72rem;color:var(--text-dim);max-width:240px;line-height:1.5">
-          <strong style="color:#fbbf24">AI Judge Accountability</strong><br>
-          Failed tasks deduct <strong style="color:var(--red)">10 points</strong> (developer + co-contributors).<br>
-          High score → <strong style="color:#22c55e">priority task routing</strong>.
-        </div>
+        <div class="stat"><span class="stat-label">Score</span><span class="stat-value neon" id="creditScoreDisplay">—</span></div>
+        <div style="flex:1;min-width:150px"><div style="position:relative;height:8px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden"><div class="fill" id="creditScoreBar" style="height:100%;border-radius:4px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e)"></div></div></div>
         <button class="btn btn-sm btn-ghost" onclick="fetchCreditScore()">⟳ Refresh</button>
       </div>
     </div>
 
-    <!-- ── Publish Task (Task Market) ── -->
     <div class="card" style="border-color:rgba(167,139,250,0.15)">
-      <div class="card-header">
-        <span class="card-title">🚀 Publish AIMS Task (Publish Task)</span>
-        <span style="font-size:0.65rem;color:var(--text-dim)">Escrow-freeze at publish, release at settlement</span>
-      </div>
+      <div class="card-header"><span class="card-title">🚀 Publish Task</span></div>
       <form onsubmit="publishTask(event)" style="display:flex;flex-direction:column;gap:0.75rem">
         <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
-          <input class="input" id="pubTaskName" placeholder="Task name (e.g. Scrape Amazon listings)" required style="flex:2">
-          <input class="input" id="pubBudget" type="number" step="0.01" min="0.05" placeholder="Max budget (USDC)" required style="flex:1" value="2.0">
+          <input class="input" id="pubTaskName" placeholder="Task name" required style="flex:2">
+          <input class="input" id="pubBudget" type="number" step="0.01" min="0.05" placeholder="Budget (USDC)" required style="flex:1" value="2.0">
         </div>
         <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center">
-          <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.78rem;color:var(--text-dim);cursor:pointer">
-            <input type="checkbox" id="pubIsCustom" onchange="toggleCreditReq()">
-            🔒 Custom Task (credit gate)
-          </label>
-          <div id="creditReqGroup" style="display:none;align-items:center;gap:0.5rem">
-            <span style="font-size:0.72rem;color:var(--text-dim)">Min. credit score:</span>
-            <input class="input" id="pubCreditReq" type="number" min="0" max="100" value="90" style="width:80px">
-          </div>
-          <select class="input" id="pubSkillSelect" required style="flex:1;min-width:150px">
-            <option value="">— Select skill —</option>
-          </select>
+          <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.78rem;color:var(--text-dim);cursor:pointer"><input type="checkbox" id="pubIsCustom" onchange="toggleCreditReq()"> 🔒 Custom Task</label>
+          <div id="creditReqGroup" style="display:none;align-items:center;gap:0.5rem"><span style="font-size:0.72rem;color:var(--text-dim)">Min credit:</span><input class="input" id="pubCreditReq" type="number" min="0" max="100" value="90" style="width:80px"></div>
+          <select class="input" id="pubSkillSelect" required style="flex:1;min-width:150px"><option value="">— Select skill —</option></select>
         </div>
-        <textarea class="input" id="pubDescription" placeholder="Task description (optional) — e.g. Extract product prices from Amazon search results" rows="2" style="resize:vertical;min-height:50px"></textarea>
-        <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
-          <button class="btn btn-neon" id="publishBtn" type="submit" style="flex:1">📤 Publish to Task Market</button>
-          <span style="font-size:0.65rem;color:var(--text-dim);align-self:center">Escrow frozen on publish • released on settlement</span>
-        </div>
+        <textarea class="input" id="pubDescription" placeholder="Description" rows="2" style="resize:vertical;min-height:50px"></textarea>
+        <button class="btn btn-neon" id="publishBtn" type="submit" style="flex:1">📤 Publish to Task Market</button>
       </form>
       <div id="publishResult" style="margin-top:0.5rem;font-size:0.75rem;color:var(--text-dim)"></div>
-      <!-- ── Task Vault QR / Payment Panel (shown after publish) ── -->
       <div id="vaultPanel" class="vault-panel" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-          <span style="color:var(--neon);font-weight:700;font-size:.8rem">📱 Task Vault — 扫码付款唯一托管钱包</span>
-          <span id="vaultStatusBadge" style="font-size:.65rem;padding:.15rem .5rem;border-radius:4px;background:rgba(148,163,184,0.1);color:var(--text-dim);border:1px solid var(--border)">UNFUNDED</span>
-        </div>
-        <div class="vp-row">
-          <span class="vp-label">Vault Address</span>
-          <span class="vp-value neon" id="vaultAddressDisplay">—</span>
-        </div>
-        <div class="vp-row">
-          <span class="vp-label">Task ID</span>
-          <span class="vp-value" id="vaultTaskIdDisplay">—</span>
-        </div>
-        <div class="vp-row">
-          <span class="vp-label">Balance</span>
-          <span class="vp-value" id="vaultBalanceDisplay">0.00 USDC</span>
-        </div>
-        <div class="qr-mock" id="qrMockPanel">
-          <div class="qr-box">SCAN<br>TO<br>PAY</div>
-          <div class="qr-info">
-            <strong>📱 Scan to Pay</strong><br>
-            Supports <strong style="color:#60a5fa">Stripe</strong> · <strong style="color:#22c55e">Credit Card</strong> · <strong style="color:#fbbf24">QR Transfer</strong><br>
-            <span style="font-size:.65rem;color:var(--text-dim)">Fiat → USDC auto-conversion via AIMS Fiat Bridge</span>
-          </div>
-        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--neon);font-weight:700;font-size:.8rem">📱 Task Vault</span><span id="vaultStatusBadge" style="font-size:.65rem;padding:.15rem .5rem;border-radius:4px;background:rgba(148,163,184,0.1);color:var(--text-dim);border:1px solid var(--border)">UNFUNDED</span></div>
+        <div class="vp-row"><span class="vp-label">Vault Address</span><span class="vp-value neon" id="vaultAddressDisplay">—</span></div>
+        <div class="vp-row"><span class="vp-label">Task ID</span><span class="vp-value" id="vaultTaskIdDisplay">—</span></div>
+        <div class="vp-row"><span class="vp-label">Balance</span><span class="vp-value" id="vaultBalanceDisplay">0.00 USDC</span></div>
+        <div class="qr-mock" id="qrMockPanel"><div class="qr-box">SCAN TO PAY</div><div class="qr-info"><strong>Scan to Pay</strong><br>Stripe · Credit Card · QR</div></div>
         <div style="display:flex;gap:.75rem;margin-top:.5rem;flex-wrap:wrap">
-          <button class="btn btn-sm fiat-deposit-btn" onclick="simulateVaultPayment()" id="vaultPayBtn">💳 Simulate Fiat Payment (扫码付款)</button>
+          <button class="btn btn-sm fiat-deposit-btn" onclick="simulateVaultPayment()" id="vaultPayBtn">💳 Simulate Payment</button>
           <button class="btn btn-sm btn-ghost" onclick="pollVaultStatus()" id="vaultPollBtn">⟳ Check Status</button>
           <span style="font-size:.65rem;color:var(--text-dim);align-self:center" id="vaultPollResult"></span>
         </div>
-
-        <!-- ⚡ Boost Reward (动态加价催单) -->
         <div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)" id="boostSection">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-            <span style="color:var(--amber);font-weight:600;font-size:.8rem">⚡ Boost Reward</span>
-            <span id="boostTotalDisplay" style="font-size:.65rem;color:var(--text-dim)">Total boosted: 0.00 USDC</span>
-          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--amber);font-weight:600;font-size:.8rem">⚡ Boost Reward</span><span id="boostTotalDisplay" style="font-size:.65rem;color:var(--text-dim)">Total boosted: 0.00 USDC</span></div>
           <div style="display:flex;gap:.5rem;align-items:center">
-            <input class="input" id="boostAmount" type="number" step="0.01" min="0.05" placeholder="Boost amount (USDC)" style="width:150px;flex-shrink:0" value="0.5">
-            <button class="btn btn-sm withdraw-btn" onclick="boostReward()" id="boostBtn">⚡ Boost Reward</button>
-            <span id="boostResult" style="font-size:.65rem;color:var(--text-dim)"></span>
+            <input class="input" id="boostAmount" type="number" step="0.01" min="0.05" placeholder="Amount" style="width:150px" value="0.5">
+            <button class="btn btn-sm withdraw-btn" onclick="boostReward()" id="boostBtn" disabled>⚡ Boost</button><span id="boostResult" style="font-size:.65rem;color:var(--text-dim)"></span>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- ── Commerce Mode & Buyout ── -->
     <div class="card" id="commercePanel">
-      <div class="card-header">
-        <span class="card-title">💳 Commerce Mode &amp; License</span>
-        <span id="currentBillingModeDisplay" style="font-size:0.7rem;padding:0.2rem 0.6rem;border-radius:4px;background:var(--neon-glow);color:var(--neon)">Metered</span>
-      </div>
+      <div class="card-header"><span class="card-title">💳 Commerce Mode</span><span id="currentBillingModeDisplay" style="font-size:0.7rem;padding:0.2rem 0.6rem;border-radius:4px;background:var(--neon-glow);color:var(--neon)">Metered</span></div>
       <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
-        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
-          <button class="btn btn-sm btn-outline active" data-mode="pay_per_task" onclick="switchBillingMode('pay_per_task')">⚡ Metered</button>
-          <button class="btn btn-sm btn-outline" data-mode="subscription" onclick="switchBillingMode('subscription')">📅 Subscription</button>
-          <button class="btn btn-sm btn-outline" data-mode="trial" onclick="switchBillingMode('trial')">🎁 Free Trial</button>
-        </div>
-        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-left:auto">
-          <button class="btn btn-sm btn-plg" onclick="openBuyoutModal()">🔒 Buyout Perpetual License</button>
-        </div>
+        <div style="display:flex;gap:0.5rem"><button class="btn btn-sm btn-outline active" data-mode="pay_per_task" onclick="switchBillingMode('pay_per_task')">⚡ Metered</button><button class="btn btn-sm btn-outline" data-mode="trial" onclick="switchBillingMode('trial')">🎁 Free Trial</button></div>
+        <button class="btn btn-sm btn-plg" onclick="openBuyoutModal()">🔒 Buyout License</button>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border);font-size:0.75rem">
-        <span style="color:var(--text-dim)" id="commerceModeDesc">Pay per successful invocation. No commitments, no expiration.</span>
-        <span style="color:var(--neon-dim);font-size:0.7rem" id="commerceFreeTrialNote">✓ Free trial available for this Skill</span>
-      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border);font-size:0.75rem"><span style="color:var(--text-dim)" id="commerceModeDesc">Pay per successful invocation.</span><span style="color:var(--neon-dim);font-size:0.7rem" id="commerceFreeTrialNote">✓ Free trial available</span></div>
     </div>
 
-    <!-- Activity log -->
     <div class="card">
-      <div class="card-header">
-        <span class="card-title">📋 Activity Log</span>
-        <button class="btn btn-sm btn-ghost" onclick="clearLog()">Clear</button>
-      </div>
-      <div class="log-feed" id="consumerLog">
-        <div class="log-entry info"><span class="time">—</span><span class="msg">Connect your wallet to begin. <strong style="color:#34d399">First task is always free!</strong></span></div>
-      </div>
+      <div class="card-header"><span class="card-title">📋 Activity Log</span><button class="btn btn-sm btn-ghost" onclick="clearLog()">Clear</button></div>
+      <div class="log-feed" id="consumerLog"><div class="log-entry info"><span class="time">—</span><span class="msg">Connect wallet to begin. <strong style="color:#34d399">First task free!</strong></span></div></div>
     </div>
 
-    <!-- ── Recharge Reserves ── -->
     <div class="card" style="border-color:rgba(222,255,154,0.1)">
-      <div class="card-header">
-        <span class="card-title">💰 Recharge Reserves</span>
-        <span style="font-size:0.65rem;color:var(--text-dim)">USDC &middot; instant on-chain deposit</span>
+      <div class="card-header"><span class="card-title">💰 Recharge</span></div>
+      <div style="flex:1;min-width:200px">
+        <div class="recharge-grid">
+          <button class="recharge-amt" onclick="rechargeReserves(10)">10 <span class="currency">USDC</span></button>
+          <button class="recharge-amt" onclick="rechargeReserves(25)">25 <span class="currency">USDC</span></button>
+          <button class="recharge-amt" onclick="rechargeReserves(50)" style="border-color:var(--neon)">50 <span class="currency">USDC ★</span></button>
+          <button class="recharge-amt" onclick="rechargeReserves(100)">100 <span class="currency">USDC</span></button>
+          <button class="recharge-amt" onclick="rechargeReserves(250)">250 <span class="currency">USDC</span></button>
+          <button class="recharge-amt" onclick="rechargeReserves(500)">500 <span class="currency">USDC</span></button>
+        </div>
+        <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap">
+          <input class="input" id="customRechargeAmt" type="number" placeholder="Custom" min="1" style="width:100px">
+          <button class="btn btn-sm btn-neon" onclick="rechargeReserves(parseFloat(document.getElementById('customRechargeAmt').value))">Deposit</button>
+          <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(25)">💳 $25 Card</button>
+          <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(50)">💳 $50 Card</button>
+          <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(100)">💳 $100 Card</button>
+        </div>
+        <div class="withdraw-row">
+          <span style="font-size:.75rem;color:var(--text-dim)">Withdraw:</span>
+          <input class="input" id="withdrawAmt" type="number" placeholder="Amount" min="1" value="10" style="width:100px">
+          <button class="btn btn-sm withdraw-btn" onclick="withdrawFunds()">💸 Withdraw</button>
+        </div>
       </div>
-      <div style="display:flex;gap:1rem;flex-wrap:wrap">
-        <div style="flex:1;min-width:200px">
-          <div class="recharge-grid">
-            <button class="recharge-amt" onclick="rechargeReserves(10)">10 <span class="currency">USDC</span></button>
-            <button class="recharge-amt" onclick="rechargeReserves(25)">25 <span class="currency">USDC</span></button>
-            <button class="recharge-amt" onclick="rechargeReserves(50)" style="border-color:var(--neon)">50 <span class="currency">USDC ★</span></button>
-            <button class="recharge-amt" onclick="rechargeReserves(100)">100 <span class="currency">USDC</span></button>
-            <button class="recharge-amt" onclick="rechargeReserves(250)">250 <span class="currency">USDC</span></button>
-            <button class="recharge-amt" onclick="rechargeReserves(500)">500 <span class="currency">USDC</span></button>
-          </div>
-          <div style="display:flex;gap:.5rem;margin-top:.5rem">
-            <input class="input" id="customRechargeAmt" type="number" placeholder="Custom amount" min="1" style="width:120px">
-            <button class="btn btn-sm btn-neon" onclick="rechargeReserves(parseFloat(document.getElementById('customRechargeAmt').value))">Deposit</button>
-          </div>
-
-          <!-- ── Fiat / Credit Card Bridge ── -->
-          <div style="display:flex;gap:.5rem;margin-top:.5rem">
-            <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(25)">💳 $25 Credit Card</button>
-            <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(50)">💳 $50 Credit Card</button>
-            <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(100)">💳 $100 Credit Card</button>
-            <span style="font-size:.6rem;color:var(--text-dim);align-self:center">mock Stripe</span>
-          </div>
-
-          <!-- ── Withdraw Row ── -->
-          <div class="withdraw-row">
-            <span style="font-size:.75rem;color:var(--text-dim)">Withdraw:</span>
-            <input class="input" id="withdrawAmt" type="number" placeholder="Amount" min="1" value="10" style="width:100px">
-            <button class="btn btn-sm withdraw-btn" onclick="withdrawFunds()">💸 Withdraw</button>
-          </div>
-        </div>
-        <div style="flex:1;min-width:200px;font-size:.78rem;color:var(--text-dim);line-height:1.6">
-          <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)">
-            <span>Available</span><span class="stat-value neon" style="font-size:1rem" id="rechargeBalance">0.00 USDC</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)">
-            <span>Total Deposited</span><span id="rechargeTotal" style="color:#fff;font-weight:600">0.00 USDC</span>
-          </div>
-          <div style="display:flex;justify-content:space-between;padding:.35rem 0">
-            <span>Contract</span><span style="color:var(--text-dim);font-size:.65rem;word-break:break-all" id="rechargeContract">—</span>
-          </div>
-        </div>
+      <div style="flex:1;min-width:200px;font-size:.78rem;color:var(--text-dim);line-height:1.6;margin-top:.75rem">
+        <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)"><span>Available</span><span class="stat-value neon" style="font-size:1rem" id="rechargeBalance">0.00 USDC</span></div>
+        <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)"><span>Total Deposited</span><span id="rechargeTotal" style="color:#fff;font-weight:600">0.00 USDC</span></div>
+        <div style="display:flex;justify-content:space-between;padding:.35rem 0"><span>Contract</span><span style="color:var(--text-dim);font-size:.65rem;word-break:break-all" id="rechargeContract">—</span></div>
       </div>
     </div>
 
-    <!-- ── Audit Ledger ── -->
     <div class="card" style="border-color:rgba(96,165,250,0.1)">
-      <div class="card-header">
-        <span class="card-title">📜 Audit Ledger</span>
-        <div style="display:flex;gap:.35rem">
-          <button class="btn btn-sm btn-ghost" onclick="fetchAudit('')">All</button>
-          <button class="btn btn-sm btn-ghost" onclick="fetchAudit('settle')">Settlements</button>
-          <button class="btn btn-sm btn-ghost" onclick="fetchAudit('refund')">Refunds</button>
-        </div>
-      </div>
-      <div class="audit-filter">
-        <input class="input" id="auditTaskFilter" placeholder="Filter by task ID…" style="max-width:200px">
-        <button class="btn btn-sm btn-outline" onclick="fetchAudit(document.getElementById('auditTaskFilter').value.trim())">🔍 Search</button>
-        <button class="btn btn-sm btn-ghost" onclick="fetchHealth();refreshBalance()">⟳ Refresh</button>
-      </div>
-      <div class="audit-table" id="auditLedgerBody">
-        <div class="empty-state"><div class="big-icon">📜</div>Connect wallet and execute tasks to see the audit trail</div>
-      </div>
+      <div class="card-header"><span class="card-title">📜 Audit Ledger</span><div style="display:flex;gap:.35rem"><button class="btn btn-sm btn-ghost" onclick="fetchAudit('')">All</button><button class="btn btn-sm btn-ghost" onclick="fetchAudit('settle')">Settlements</button><button class="btn btn-sm btn-ghost" onclick="fetchAudit('refund')">Refunds</button></div></div>
+      <div class="audit-filter"><input class="input" id="auditTaskFilter" placeholder="Filter by task ID…" style="max-width:200px"><button class="btn btn-sm btn-outline" onclick="fetchAudit(document.getElementById('auditTaskFilter').value.trim())">Search</button><button class="btn btn-sm btn-ghost" onclick="fetchHealth();refreshBalance()">⟳ Refresh</button></div>
+      <div class="audit-table" id="auditLedgerBody"><div class="empty-state"><div class="big-icon">📜</div>Connect wallet to see audit trail</div></div>
     </div>
 
-    <!-- ── User History Ledger ── -->
     <div class="card" style="border-color:rgba(222,255,154,0.1)">
-      <div class="card-header">
-        <span class="card-title">📋 User History Ledger</span>
-        <div style="display:flex;gap:.35rem">
-          <button class="btn btn-sm btn-ghost" onclick="fetchHistory('')">All</button>
-          <button class="btn btn-sm btn-ghost" onclick="fetchHistory('deposit')">Deposits</button>
-          <button class="btn btn-sm btn-ghost" onclick="fetchHistory('withdraw')">Withdrawals</button>
-          <button class="btn btn-sm btn-ghost" onclick="fetchHistory('task_deduction')">Tasks</button>
-        </div>
-      </div>
-      <div style="display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap">
-        <button class="btn btn-sm btn-outline" onclick="fetchHistory('')">⟳ Refresh</button>
-        <span style="font-size:.65rem;color:var(--text-dim);align-self:center">Your personal deposit, withdrawal &amp; task billing trail</span>
-      </div>
-      <div class="history-table" id="userHistoryBody">
-        <div class="empty-state"><div class="big-icon">📋</div>Connect wallet and execute transactions to see your history</div>
-      </div>
+      <div class="card-header"><span class="card-title">📋 User History</span><div style="display:flex;gap:.35rem"><button class="btn btn-sm btn-ghost" onclick="fetchHistory('')">All</button><button class="btn btn-sm btn-ghost" onclick="fetchHistory('deposit')">Deposits</button><button class="btn btn-sm btn-ghost" onclick="fetchHistory('withdraw')">Withdrawals</button></div></div>
+      <div style="display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap"><button class="btn btn-sm btn-outline" onclick="fetchHistory('')">⟳ Refresh</button></div>
+      <div class="history-table" id="userHistoryBody"><div class="empty-state"><div class="big-icon">📋</div>Connect wallet to see history</div></div>
     </div>
   </div>
 
-  <!-- ════════════════════════════════════════════════════════ -->
-  <!--  TAB: Developer                                        -->
-  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- DEVELOPER TAB -->
   <div class="tab-content" id="tab-developer">
-
-    <div class="role-header">
-      <div class="avatar developer">🔧</div>
-      <div class="info"><h3>Developer Dashboard</h3><p>Your skills, your <strong style="color:#a78bfa">70%</strong> streaming revenue — settled on-chain every task. Use <code style="color:var(--neon)">aims-cli publish</code> for DRM protection.</p></div>
-    </div>
-
+    <div class="role-header"><div class="avatar developer">🔧</div><div class="info"><h3>Developer Dashboard</h3><p id="developerDashboardHint">Your skills, 70% revenue</p></div></div>
     <div class="grid-3">
-      <div class="card">
-        <div class="card-header"><span class="card-title">📦 Your Skills</span></div>
-        <div class="stat"><span class="stat-label">Registered</span><span class="stat-value" id="devSkillCount">—</span></div>
-        <div style="margin-top:0.75rem" id="devSkillList"></div>
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">💎 Streaming Revenue (70%)</span></div>
-        <div class="stat"><span class="stat-label">Cumulative Earnings</span><span class="stat-value neon" id="devRevenue">— <span class="unit">USDC</span></span></div>
-        <div class="gas-meter"><div class="fill" id="devRevenueMeter" style="width:0%"></div></div>
-        <p style="font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">Auto-distributed on each settled task via 70/25/5 split (Q1) / 95/0/5 (Q2-Q5)</p>
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">🛡️ Credit Score</span></div>
-        <div style="display:flex;gap:1rem;align-items:center">
-          <div class="stat">
-            <span class="stat-label">Score</span>
-            <span class="stat-value neon" id="devCreditScore">—</span>
-          </div>
-          <div style="flex:1;min-width:80px">
-            <div style="position:relative;height:6px;background:rgba(255,255,255,0.06);border-radius:3px;overflow:hidden">
-              <div class="fill" id="devCreditScoreBar" style="height:100%;border-radius:3px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e)"></div>
-            </div>
-            <span style="font-size:0.6rem;color:var(--text-dim)" id="devCreditLevel">—</span>
-          </div>
-          <button class="btn btn-sm btn-ghost" onclick="fetchCreditScore()">⟳</button>
-        </div>
-      </div>
+      <div class="card"><div class="card-header"><span class="card-title">📦 Skills</span></div><div class="stat"><span class="stat-label">Registered</span><span class="stat-value" id="devSkillCount">—</span></div><div style="margin-top:0.75rem" id="devSkillList"></div></div>
+      <div class="card"><div class="card-header"><span class="card-title">💎 Revenue (70%)</span></div><div class="stat"><span class="stat-label">Cumulative</span><span class="stat-value neon" id="devRevenue">— <span class="unit">USDC</span></span></div><div class="gas-meter"><div class="fill" id="devRevenueMeter" style="width:0%"></div></div></div>
+      <div class="card"><div class="card-header"><span class="card-title">🛡️ Credit</span></div><div class="stat"><span class="stat-label">Score</span><span class="stat-value neon" id="devCreditScore">—</span></div><div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;margin-top:.5rem"><div class="fill" id="devCreditScoreBar" style="height:100%;border-radius:3px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e)"></div></div><span style="font-size:0.6rem;color:var(--text-dim)" id="devCreditLevel">—</span></div>
     </div>
-  </div>
 
-    <!-- ── One-Click Integration (一键接入) ── -->
     <div class="card" style="border-color:rgba(167,139,250,0.15);margin-top:1.25rem">
-      <div class="card-header">
-        <span class="card-title">🔗 One-Click Integration (一键接入)</span>
-        <span style="font-size:0.65rem;color:var(--text-dim);text-align:right">Paste a skill name or API URL — revenue auto-routed</span>
-      </div>
-      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.75rem;line-height:1.5">
-        Enter a <strong style="color:#fff">Skill name</strong> (e.g. <code style="color:var(--neon)">amazon_scraper</code>) or a <strong style="color:#fff">third-party API URL</strong>.
-        The system auto-detects the type and binds <strong style="color:#a78bfa">70%</strong> streaming revenue to your wallet.
-        No CLI, no SDK, no configuration files.
-      </div>
+      <div class="card-header"><span class="card-title">🔗 One-Click Integration</span></div>
       <form onsubmit="oneClickIntegrate(event)" style="display:flex;flex-direction:column;gap:.75rem">
         <div class="integrate-row">
-          <input class="input" id="integrateInput" placeholder="Skill name or API URL (e.g. https://api.example.com/v1)" required>
+          <input class="input" id="integrateInput" placeholder="Skill name or API URL" required>
           <input class="input" id="integrateWallet" placeholder="Your wallet (0x...)" style="flex:0.6;min-width:280px" value="">
         </div>
         <div style="display:flex;gap:.75rem;align-items:center">
-          <button class="btn btn-neon" type="submit" id="integrateBtn">🔗 One-Click Integrate</button>
+          <button class="btn btn-neon" type="submit" id="integrateBtn">🔗 Integrate</button>
           <span style="font-size:0.65rem;color:var(--text-dim)" id="integrateCount">Mapped: —</span>
           <button class="btn btn-sm btn-ghost" type="button" onclick="fetchIntegrationStatus()">⟳ Refresh</button>
         </div>
       </form>
       <div id="integrateResult"></div>
-
-      <!-- 👥 Co-Contributors Split -->
-      <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border)" id="coContribSection">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem">
-          <span style="color:var(--neon);font-weight:600;font-size:.8rem">👥 Co-Contributors Split</span>
-          <span style="font-size:.65rem;color:var(--text-dim)">Split your 70% dev revenue with team members</span>
-        </div>
-        <div style="font-size:.72rem;color:var(--text-dim);margin-bottom:.5rem">
-          Configure co-contributors to split your <strong style="color:#a78bfa">70% developer share</strong>.
-          Each contributor receives their proportional cut during vault settlement.
-          Use <strong style="color:#fbbf24">Save Split Config</strong> to push changes to an already-integrated skill.
-        </div>
-        <div id="coContribList">
-          <!-- Co-contributor rows inserted by JS -->
-        </div>
+      <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border)">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--neon);font-weight:600;font-size:.8rem">👥 Co-Contributors</span></div>
+        <div id="coContribList"></div>
         <div style="display:flex;gap:.5rem;margin-top:.5rem;align-items:center;flex-wrap:wrap">
-          <button class="btn btn-sm btn-ghost" onclick="addContributorRow()">+ Add Contributor</button>
-          <button class="btn btn-sm btn-outline" onclick="saveContributors()">💾 Save Split Config</button>
+          <button class="btn btn-sm btn-ghost" onclick="addContributorRow()">+ Add</button>
+          <button class="btn btn-sm btn-outline" onclick="saveContributors()">💾 Save Split</button>
           <span id="contribTotalPct" style="font-size:.65rem;color:var(--text-dim)">Total: 0%</span>
           <span id="contribSaveResult" style="font-size:.65rem;color:var(--text-dim)"></span>
         </div>
       </div>
     </div>
 
-    <!-- ── API Key Management (安全密钥) ── -->
-    <div class="card" style="border-color:rgba(167,139,250,0.15);margin-top:1.25rem">
-      <div class="card-header">
-        <span class="card-title">🔑 API Key Management</span>
-        <span style="font-size:0.65rem;color:var(--text-dim)">Generate keys for AI tool integration (Cursor, Claude Code, etc.)</span>
-      </div>
-      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.75rem;line-height:1.5">
-        API Keys allow external AI agents to invoke AIMS skills via
-        <code style="color:var(--neon)">Authorization: Bearer &lt;API_KEY&gt;</code>.
-        <strong style="color:#fbbf24">Treat keys like passwords — do not share them publicly.</strong>
-      </div>
+    <div class="card" style="margin-top:1.25rem;border-color:rgba(167,139,250,0.15)">
+      <div class="card-header"><span class="card-title">🔑 API Keys</span></div>
       <div style="display:flex;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap">
-        <input class="input" id="apiKeyLabel" placeholder="Label (e.g. Cursor, My Agent)" style="max-width:260px;font-size:.78rem">
-        <button class="btn btn-sm btn-neon" onclick="createApiKey()">+ Generate New Key</button>
+        <input class="input" id="apiKeyLabel" placeholder="Label (e.g. Cursor)" style="max-width:260px;font-size:.78rem">
+        <button class="btn btn-sm btn-neon" onclick="createApiKey()">+ Generate Key</button>
         <button class="btn btn-sm btn-ghost" onclick="fetchApiKeys()">⟳ Refresh</button>
       </div>
       <div id="apiKeyResult" style="margin-bottom:.5rem"></div>
-      <div id="apiKeyList" style="font-size:.75rem">
-        <div style="color:var(--text-dim);padding:.5rem">No API keys generated yet.</div>
-      </div>
+      <div id="apiKeyList" style="font-size:.75rem"><div style="color:var(--text-dim);padding:.5rem">No API keys yet.</div></div>
     </div>
 
-    <!-- ── Task Market (抢单池) ── -->
-    <div class="card" style="border-color:rgba(251,191,36,0.15);margin-top:1.25rem">
-      <div class="card-header">
-        <span class="card-title">🛒 Task Market (抢单池)</span>
-        <div style="display:flex;gap:.5rem;align-items:center">
-          <span style="font-size:0.65rem;color:var(--text-dim)" id="mkPendingCount">Pending: —</span>
-          <button class="btn btn-sm btn-ghost" onclick="fetchPendingTasks()">⟳ Refresh</button>
-        </div>
-      </div>
-      <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:0.75rem;line-height:1.5">
-        Browse available tasks. <strong style="color:#fbbf24">Custom tasks</strong> require credit score ≥ the listed threshold.
-        Use <code style="color:var(--neon)">POST /api/worker/credit-score</code> to set your score (admin).
-      </div>
-      <div class="market-table" id="taskMarketBody">
-        <div class="empty-state"><div class="big-icon">🛒</div>No pending tasks yet. Publish one from the Consumer tab!</div>
-      </div>
+    <div class="card" style="margin-top:1.25rem;border-color:rgba(251,191,36,0.15)">
+      <div class="card-header"><span class="card-title">🛒 Task Market</span><div style="display:flex;gap:.5rem"><span style="font-size:0.65rem;color:var(--text-dim)" id="mkPendingCount">Pending: —</span><button class="btn btn-sm btn-ghost" onclick="fetchPendingTasks()">⟳ Refresh</button></div></div>
+      <div class="market-table" id="taskMarketBody"><div class="empty-state"><div class="big-icon">🛒</div>No pending tasks</div></div>
     </div>
 
-    <!-- ── Skill Upload (Drag & Drop) ── -->
     <div class="card" style="margin-top:1.25rem;border-color:rgba(222,255,154,0.1)">
-      <div class="card-header">
-        <span class="card-title">📦 Upload Skill (ZIP)</span>
-        <span style="font-size:0.65rem;color:var(--text-dim)">.zip &middot; max 10 MB</span>
-      </div>
-      <div style="font-size:0.78rem;color:var(--text-dim);margin-bottom:1rem;line-height:1.6">
-        Package your Python Skill into a <strong style="color:#fff">ZIP archive</strong> with a <code style="color:var(--neon)">manifest.json</code> and <code style="color:var(--neon)">main.py</code>. The gateway auto-registers the Skill, extracts metadata, and makes it available for invocation. <strong>DRM obfuscation</strong> via <code style="color:var(--neon)">aims-cli publish</code> recommended for production.
-      </div>
+      <div class="card-header"><span class="card-title">📦 Upload Skill (ZIP)</span></div>
       <div class="drop-zone" id="skillDropZone">
         <div class="dz-icon">📦</div>
-        <div class="dz-text"><strong>Click to select</strong> or drag &amp; drop your Skill ZIP here</div>
-        <div class="dz-hint">Requires manifest.json + main.py (or .pyc) at the root</div>
+        <div class="dz-text"><strong>Click</strong> or drag ZIP here</div>
+        <div class="dz-hint">Requires manifest.json + main.py</div>
         <div class="dz-file" id="dzFileInfo"></div>
         <input type="file" id="skillFileInput" accept=".zip" style="display:none">
       </div>
-      <div style="display:flex;gap:.75rem;margin-top:.75rem;align-items:center;flex-wrap:wrap">
-        <button class="btn btn-neon btn-sm" id="uploadSkillBtn" disabled onclick="uploadSkill()">⬆ Upload Skill</button>
-        <span id="uploadStatus" style="font-size:.72rem;color:var(--text-dim)">Select a ZIP file to upload</span>
-      </div>
-      <div style="margin-top:.75rem;padding:.6rem;background:rgba(251,191,36,0.04);border:1px solid rgba(251,191,36,0.08);border-radius:6px;font-size:.7rem;color:var(--text-dim);line-height:1.5">
-        <strong style="color:var(--amber);">⚠️ Dev-mode upload:</strong> Skills are registered in-memory. For DRM-protected publishing with AES-256 encryption, EIP-191 signing, and on-chain registration, use <code style="color:var(--neon)">aims-cli publish</code> from the CLI SDK.
+      <div style="display:flex;gap:.75rem;margin-top:.75rem;align-items:center">
+        <button class="btn btn-neon btn-sm" id="uploadSkillBtn" disabled onclick="uploadSkill()">⬆ Upload</button>
+        <span id="uploadStatus" style="font-size:.72rem;color:var(--text-dim)">Select a ZIP file</span>
       </div>
     </div>
+  </div>
 
-  <!-- ════════════════════════════════════════════════════════ -->
-  <!--  TAB: Worker                                           -->
-  <!-- ════════════════════════════════════════════════════════ -->
+  <!-- WORKER TAB -->
   <div class="tab-content" id="tab-worker">
-
-    <div class="role-header">
-      <div class="avatar worker">⚡</div>
-      <div class="info"><h3>Worker / Provider Dashboard</h3><p>Run an AIMS node — earn <strong style="color:#22c55e">25% commission</strong> selling residential bandwidth</p></div>
-    </div>
-
+    <div class="role-header"><div class="avatar worker">⚡</div><div class="info"><h3>Worker Dashboard</h3><p id="workerDashboardHint">Run a node — earn 25% commission</p></div></div>
     <div class="grid-3">
       <div class="card">
         <div class="card-header"><span class="card-title">🔌 Node Status</span></div>
-        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem">
-          <span class="status-dot idle" id="workerStatusDot"></span>
-          <span style="font-size:0.85rem;font-weight:600;color:#fff" id="workerStatusText">Disconnected</span>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:0.5rem;font-size:0.78rem">
-          <div><span style="color:var(--text-dim)">Node ID:</span> <span id="workerNodeId" style="color:#fff">—</span></div>
-          <div><span style="color:var(--text-dim)">Uptime:</span> <span id="workerUptime" style="color:#fff">0s</span></div>
-          <div><span style="color:var(--text-dim)">Tasks Claimed:</span> <span id="workerTasksClaimed" style="color:#fff">0</span></div>
-          <div><span style="color:var(--text-dim)">Commission Split:</span> <span style="color:#22c55e">25% (Q1) / 0% (Q2-Q5)</span></div>
-        </div>
-        <div style="margin-top:1rem;display:flex;gap:0.5rem">
-          <button class="btn btn-sm btn-neon" onclick="startWorkerSim()" id="workerStartBtn">▶ Start Node</button>
-          <button class="btn btn-sm btn-ghost" onclick="sendHeartbeat()">💓 Heartbeat</button>
-        </div>
+        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem"><span class="status-dot idle" id="workerStatusDot"></span><span style="font-size:0.85rem;font-weight:600;color:#fff" id="workerStatusText">Disconnected</span></div>
+        <div style="font-size:0.78rem"><div style="margin-bottom:0.35rem"><span style="color:var(--text-dim)">Node ID:</span> <span id="workerNodeId" style="color:#fff">—</span></div><div><span style="color:var(--text-dim)">Uptime:</span> <span id="workerUptime" style="color:#fff">0s</span></div></div>
+        <div style="margin-top:1rem"><button class="btn btn-sm btn-neon" onclick="startWorkerSim()" id="workerStartBtn">▶ Start Node</button></div>
       </div>
-
-      <div class="card">
-        <div class="card-header"><span class="card-title">💰 Commission (25%)</span></div>
-        <div class="stat"><span class="stat-label">Total Earned</span><span class="stat-value neon" id="workerEarnings">— <span class="unit">USDC</span></span></div>
-        <div class="gas-meter"><div class="fill" id="workerEarningsMeter" style="width:0%"></div></div>
-        <p style="font-size:0.65rem;color:var(--text-dim);margin-top:0.5rem">25% of each Q1 task fee for providing residential IP bandwidth. Q2-Q5 direct skills bypass the compute layer (0% commission).</p>
-      </div>
-
-      <div class="card">
-        <div class="card-header"><span class="card-title">📋 Last Payouts</span></div>
-        <div id="workerPayouts"><div class="empty-state"><div class="big-icon">📭</div>No payouts yet — start your node and claim tasks</div></div>
-      </div>
+      <div class="card"><div class="card-header"><span class="card-title">💰 Commission (25%)</span></div><div class="stat"><span class="stat-label">Earned</span><span class="stat-value neon" id="workerEarnings">— <span class="unit">USDC</span></span></div><div class="gas-meter"><div class="fill" id="workerEarningsMeter" style="width:0%"></div></div></div>
+      <div class="card"><div class="card-header"><span class="card-title">📋 Last Payouts</span></div><div id="workerPayouts"><div class="empty-state"><div class="big-icon">📭</div>No payouts yet</div></div></div>
     </div>
-
-    <!-- ── Canary Watermark Status ── -->
-    <div class="card" id="canaryStatusCard" style="border-color:rgba(52,211,153,0.15)">
-      <div class="card-header">
-        <span class="card-title">🛡️ Canary Watermark Status</span>
-        <span id="canaryStatusBadge" style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:4px;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.15);font-weight:600">● ACTIVE</span>
-      </div>
-      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
-        <div style="display:flex;align-items:center;gap:0.75rem">
-          <span id="canaryStatusDot" class="status-dot online"></span>
-          <span style="font-size:0.85rem;font-weight:600;color:#fff" id="canaryStatusText">Protection Active</span>
-        </div>
-        <div style="font-size:0.78rem">
-          <div style="margin-bottom:0.35rem"><span style="color:var(--text-dim)">Layer 1 — Canary Token:</span> <span style="color:#34d399">ECDSA-signed watermark injected</span></div>
-          <div style="margin-bottom:0.35rem"><span style="color:var(--text-dim)">Layer 2 — Replay Shield:</span> <span style="color:#34d399">Nonce + UUID composite verification</span></div>
-          <div style="margin-bottom:0.35rem"><span style="color:var(--text-dim)">Layer 3 — Piracy Blacklist:</span> <span style="color:#34d399" id="canaryBlacklistStatus">Clean — no strikes</span></div>
-          <div><span style="color:var(--text-dim)">Circuit Breaker:</span> <span style="color:#fbbf24;font-weight:600">FORBIDDEN_PIRACY armed</span></div>
-        </div>
-      </div>
+    <div class="card" style="border-color:rgba(52,211,153,0.15)">
+      <div class="card-header"><span class="card-title">🛡️ Canary Watermark</span><span id="canaryStatusBadge" style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:4px;background:rgba(34,197,94,0.1);color:#22c55e;font-weight:600">● ACTIVE</span></div>
+      <div style="display:flex;align-items:center;gap:1.5rem"><span id="canaryStatusDot" class="status-dot online"></span><span id="canaryStatusText" style="color:#fff;font-weight:600">Protection Active</span><span style="color:var(--text-dim);font-size:.78rem" id="canaryBlacklistStatus">Clean — no strikes</span></div>
     </div>
   </div>
 
-  <!-- ═══ System Stats (bottom) ═══ -->
+  <!-- System Stats -->
   <div class="grid-3">
-    <div class="card">
-      <div class="card-header"><span class="card-title">🏥 Network Health</span></div>
-      <div id="healthContent">
-        <div style="display:flex;flex-direction:column;gap:0.5rem;font-size:0.78rem">
-          <div><span style="color:var(--text-dim)">Status:</span> <span id="healthStatus" style="color:#22c55e;font-weight:600">—</span></div>
-          <div><span style="color:var(--text-dim)">Block:</span> <span id="healthBlock">—</span></div>
-          <div><span style="color:var(--text-dim)">Pending Tasks:</span> <span id="healthPending">—</span></div>
-          <div><span style="color:var(--text-dim)">Succeeded:</span> <span id="healthSucceeded">—</span></div>
-          <div><span style="color:var(--text-dim)">Active Workers:</span> <span id="healthWorkers">—</span></div>
-          <div><span style="color:var(--text-dim)">Treasury:</span> <span id="healthTreasury">—</span></div>
-        </div>
+    <div class="card"><div class="card-header"><span class="card-title">🏥 Network Health</span></div>
+      <div id="healthContent" style="font-size:0.78rem">
+        <div><span style="color:var(--text-dim)">Status:</span> <span id="healthStatus" style="color:#22c55e;font-weight:600">—</span></div>
+        <div><span style="color:var(--text-dim)">Block:</span> <span id="healthBlock">—</span></div>
+        <div><span style="color:var(--text-dim)">Pending:</span> <span id="healthPending">—</span></div>
+        <div><span style="color:var(--text-dim)">Succeeded:</span> <span id="healthSucceeded">—</span></div>
+        <div><span style="color:var(--text-dim)">Workers:</span> <span id="healthWorkers">—</span></div>
+        <div><span style="color:var(--text-dim)">Treasury:</span> <span id="healthTreasury">—</span></div>
       </div>
-      <div style="margin-top:0.75rem"><button class="btn btn-sm btn-ghost" onclick="fetchHealth()">⟳ Refresh</button></div>
+      <button class="btn btn-sm btn-ghost" onclick="fetchHealth()">⟳ Refresh</button>
     </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title">🧩 Available Skills</span></div>
-      <div id="skillsContent" style="max-height:200px;overflow-y:auto"><div class="empty-state">Connect to load</div></div>
-      <div style="margin-top:0.5rem"><button class="btn btn-sm btn-ghost" onclick="fetchDiscovery()">⟳ Refresh</button></div>
-    </div>
-    <div class="card">
-      <div class="card-header"><span class="card-title">⚙️ Config</span></div>
-      <div style="display:flex;flex-direction:column;gap:0.5rem;font-size:0.78rem">
-        <div><span style="color:var(--text-dim)">API Base:</span> <span id="cfgApiBase" style="color:var(--neon)"></span></div>
-        <div><span style="color:var(--text-dim)">Wallet:</span> <span id="cfgWallet">Not connected</span></div>
-        <div><span style="color:var(--text-dim)">Network:</span> <span id="cfgNetwork">—</span></div>
-        <div><span style="color:var(--text-dim)">Free Trial:</span> <span id="cfgTrial" style="color:#34d399">1 per Skill (PLG)</span></div>
-      </div>
+    <div class="card"><div class="card-header"><span class="card-title">🧩 Skills</span></div><div id="skillsContent" style="max-height:200px;overflow-y:auto"><div class="empty-state">Connect to load</div></div><button class="btn btn-sm btn-ghost" onclick="fetchDiscovery()">⟳ Refresh</button></div>
+    <div class="card"><div class="card-header"><span class="card-title">⚙️ Config</span></div>
+      <div style="font-size:0.78rem"><div><span style="color:var(--text-dim)">API:</span> <span id="cfgApiBase" style="color:var(--neon)"></span></div>
+      <div><span style="color:var(--text-dim)">Wallet:</span> <span id="cfgWallet">—</span></div>
+      <div><span style="color:var(--text-dim)">Network:</span> <span id="cfgNetwork">—</span></div>
+      <div><span style="color:var(--text-dim)">Free Trial:</span> <span id="cfgTrial" style="color:#34d399">1 per Skill</span></div></div>
     </div>
   </div>
 
-  <!-- ═══ Settlement Feed (bottom) ═══ -->
+  <!-- Settlement Feed -->
   <div class="card" style="border-color:rgba(34,197,94,0.1)">
-    <div class="card-header">
-      <span class="card-title" style="color:#22c55e">⚡ Live Settlement Feed</span>
-      <div style="display:flex;align-items:center;gap:.75rem;font-size:.7rem;color:var(--text-dim)">
+    <div class="card-header"><span class="card-title" style="color:#22c55e">⚡ Live Settlement Feed</span>
+      <div style="display:flex;gap:.75rem;font-size:.7rem;color:var(--text-dim)">
         <span>Settled: <strong style="color:var(--neon)" id="consoleFeedCount">0</strong></span>
         <span>Vol: <strong style="color:#a78bfa" id="consoleFeedVol">0.00</strong></span>
-        <span style="display:inline-flex;align-items:center;gap:.3rem;padding:.15rem .4rem;background:rgba(34,197,94,0.08);border-radius:3px;font-size:.6rem;color:#22c55e;font-weight:600">
-          <span style="display:inline-block;width:4px;height:4px;border-radius:50%;background:#22c55e;animation:pulse 1.5s infinite"></span>
-          LIVE
-        </span>
+        <span style="display:inline-flex;align-items:center;gap:.3rem;padding:.15rem .4rem;background:rgba(34,197,94,0.08);border-radius:3px;font-size:.6rem;color:#22c55e"><span style="display:inline-block;width:4px;height:4px;border-radius:50%;background:#22c55e;animation:pulse 1.5s infinite"></span>LIVE</span>
       </div>
     </div>
-    <div class="feed-console" id="consoleFeed">
-      <div style="text-align:center;padding:2rem;color:var(--text-dim);font-size:.75rem">⏳ Connecting to settlement stream…</div>
-    </div>
+    <div class="feed-console" id="consoleFeed"><div style="text-align:center;padding:2rem;color:var(--text-dim)">⏳ Connecting to stream…</div></div>
   </div>
 
-  <!-- ═══ CORS / Config Doc ═══ -->
+  <!-- CORS Docs -->
   <div class="card" style="border-color:var(--neon-dim)">
-    <div class="card-header">
-      <span class="card-title" style="color:var(--neon)">🔌 CORS &amp; Local Dev Setup</span>
-    </div>
-    <div style="font-size:0.78rem;line-height:1.7;color:var(--text-dim)">
-      <p><strong style="color:#fff">API Base URL:</strong> <code id="corsApiBase" style="color:var(--neon);background:rgba(222,255,154,0.06);padding:0.15rem 0.4rem;border-radius:3px">http://127.0.0.1:8000</code></p>
-      <p><strong style="color:#fff">Backend CORS config</strong> — add to <code style="color:var(--neon)">src/gateway/server.py</code> before any routes:</p>
-      <pre style="background:#0a0f1a;padding:1rem;border-radius:6px;margin-top:0.5rem;overflow-x:auto;font-size:0.7rem;color:#cbd5e1">from fastapi.middleware.cors import CORSMiddleware
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Dev only! Restrict in production
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)</pre>
-      <p style="margin-top:0.5rem"><strong style="color:#fff">Headers required</strong> for authenticated POST requests:</p>
-      <pre style="background:#0a0f1a;padding:0.75rem 1rem;border-radius:6px;margin-top:0.25rem;font-size:0.7rem;color:#cbd5e1">X-Wallet-Address: 0x...
-X-Signature: &lt;EIP-191 personal_sign hex&gt;
-X-Timestamp: &lt;UNIX seconds&gt;
-Content-Type: application/json</pre>
-    </div>
+    <div class="card-header"><span class="card-title" style="color:var(--neon)">🔌 CORS Setup</span></div>
+    <div style="font-size:0.78rem;line-height:1.7;color:var(--text-dim)" id="corsDocContent"></div>
   </div>
-
 </div>
 
+<script src="/static/js/docs-content.js"></script>
+<script src="/static/js/console-core.js"></script>
 <script>
-// ════════════════════════════════════════════════════════════════
-//  Auth Guard — redirect to login if no JWT
-// ════════════════════════════════════════════════════════════════
-(function() {
-  const jwt = localStorage.getItem("aims_jwt");
-  if (!jwt) {
-    window.location.href = "/login";
-  }
-})();
-
-// ════════════════════════════════════════════════════════════════
-//  Configuration
-// ════════════════════════════════════════════════════════════════
-const API_BASE = localStorage.getItem("aims_api_base") || "";
-document.getElementById("cfgApiBase").textContent = API_BASE;
-document.getElementById("corsApiBase").textContent = API_BASE;
-const CONTRACT_ADDRESS = localStorage.getItem("aims_contract_addr") || "0x5FbDB2315678afecb367f032d93F642f64180aa3";
-
-let signer = null;
-let provider = null;
-let walletAddress = "";
-let currentRole = "consumer";
-let workerInterval = null;
-let workerStartTime = null;
-let workerTaskCount = 0;
-let workerEarnedUsdc = 0;
-let devRevenueUsdc = 0;
-let consumerTaskCount = 0;
-let consumerDepositedUsdc = 0;
-let skillsCache = [];
-let usedTrials = {};  // {skill_id: true} — tracks trial consumption
-
-// ════════════════════════════════════════════════════════════════
-//  Toast system
-// ════════════════════════════════════════════════════════════════
-function toast(msg, type = "info") {
-  try {
-    const container = document.getElementById("toastContainer");
-    if (!container) { console.warn("toast:", type, msg); return; }
-    const el = document.createElement("div");
-    el.className = `toast ${type}`;
-    el.textContent = msg;
-    container.appendChild(el);
-    setTimeout(() => el.remove(), 4000);
-  } catch (e) {
-    console.warn("toast error:", e.message, "msg:", msg);
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Pipeline progress — 6 steps (trial check inserted)
-// ════════════════════════════════════════════════════════════════
-function resetPipeline() {
-  document.querySelectorAll(".pipeline-step").forEach(s => { s.classList.remove("done", "active", "trial"); });
-  document.getElementById("pipelineStatus").textContent = "Idle";
-}
-
-function setTrialStep() {
-  document.querySelectorAll(".pipeline-step")[1].classList.add("trial");
-}
-
-function advancePipeline(step) {
-  const steps = document.querySelectorAll(".pipeline-step");
-  steps.forEach((s, i) => {
-    s.classList.remove("active");
-    if (i < step) s.classList.add("done");
-  });
-  if (step < steps.length) {
-    steps[step].classList.add("active");
-    const labels = [
-      "Authenticating…",
-      "Checking free trial eligibility…",
-      "Verifying on-chain balance…",
-      "Executing skill task…",
-      "Generating Proof-of-Task…",
-      "Settling 70/25/5 split…",
-    ];
-    document.getElementById("pipelineStatus").textContent = labels[step] || `Step ${step + 1}/6`;
-  } else {
-    document.getElementById("pipelineStatus").textContent = "✅ Complete";
-    document.getElementById("pipelineStatus").style.color = "var(--neon)";
-  }
-}
-
-function completePipeline() {
-  document.querySelectorAll(".pipeline-step").forEach(s => { s.classList.remove("active"); s.classList.add("done"); });
-  document.getElementById("pipelineStatus").textContent = "✅ Complete";
-  document.getElementById("pipelineStatus").style.color = "var(--neon)";
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Wallet connection
-// ════════════════════════════════════════════════════════════════
-async function connectWallet() {
-  resetPipeline();
-  if (typeof window.ethereum === "undefined") {
-    toast("MetaMask not found — install from metamask.io", "error");
-    return;
-  }
-  try {
-    advancePipeline(0);
-    provider = new ethers.BrowserProvider(window.ethereum);
-    const accounts = await provider.send("eth_requestAccounts", []);
-    signer = await provider.getSigner();
-    walletAddress = accounts[0].toLowerCase();
-
-    const btn = document.getElementById("connectBtn");
-    btn.textContent = `● ${walletAddress.slice(0,6)}…${walletAddress.slice(-4)}`;
-    btn.classList.add("connected");
-    document.getElementById("walletAddress").textContent = walletAddress;
-
-    document.getElementById("cfgWallet").textContent = walletAddress;
-    document.getElementById("cfgWallet").style.color = "var(--neon)";
-
-    // Show trial badge
-    document.getElementById("trialBadge").style.display = "inline-flex";
-
-    // Check network
-    const net = await provider.getNetwork();
-    const netBadge = document.getElementById("networkBadge");
-    if (net.chainId === 31337n) {
-      netBadge.textContent = "● Anvil (31337)";
-      netBadge.className = "network-badge warn";
-    } else if (net.chainId === 8453n) {
-      netBadge.textContent = "● Base Mainnet";
-      netBadge.className = "network-badge ok";
-    } else if (net.chainId === 84532n) {
-      netBadge.textContent = "● Base Sepolia";
-      netBadge.className = "network-badge warn";
-    } else {
-      netBadge.textContent = `● Chain ${net.chainId}`;
-      netBadge.className = "network-badge warn";
-    }
-    document.getElementById("cfgNetwork").textContent = net.name || `Chain ${net.chainId}`;
-
-    toast(`Wallet connected: ${walletAddress}`, "success");
-    await refreshBalance();
-    await fetchDiscovery();
-    await fetchCreditScore();
-    await fetchHealth();
-    await fetchHistory('');
-
-    // ── Prompt to switch to Base Sepolia ──
-    const currentNet = await provider.getNetwork();
-    if (currentNet.chainId !== 84532n && currentNet.chainId !== 8453n) {
-      const switchResp = confirm("Switch to Base Sepolia (testnet) for on-chain settlement?");
-      if (switchResp) {
-        try {
-          await provider.send("wallet_switchEthereumChain", [{ chainId: "0x14a34" }]);
-          toast("Switched to Base Sepolia", "success");
-        } catch (switchErr) {
-          if (switchErr.code === 4902) {
-            try {
-              await provider.send("wallet_addEthereumChain", [{
-                chainId: "0x14a34",
-                chainName: "Base Sepolia",
-                nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-                rpcUrls: ["https://sepolia.base.org"],
-                blockExplorerUrls: ["https://sepolia.basescan.org"],
-              }]);
-              toast("Added & switched to Base Sepolia", "success");
-            } catch (addErr) {
-              toast("Could not add Base Sepolia: " + addErr.message, "warn");
-            }
-          } else {
-            toast("Could not switch network: " + switchErr.message, "warn");
-          }
-        }
-      }
-    }
-
-    // ── AIMS_GATEWAY_AUTH beacon ──
-    await signAuthBeacon("system");
-    return true;
-  } catch (err) {
-    toast(`Wallet connection failed: ${err.message}`, "error");
-    return false;
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-//  EIP-191 signing (browser-compatible with python backend)
-// ════════════════════════════════════════════════════════════════
-async function eip191SignBody(bodyBytes) {
-  const sig = await signer.signMessage(new Uint8Array(bodyBytes));
-  return sig;
-}
-
-function getAuthHeaders(bodyBytes, signature) {
-  const sigHex = signature.startsWith("0x") ? signature.slice(2) : signature;
-  const headers = {
-    "X-Wallet-Address": walletAddress,
-    "X-Signature": sigHex,
-    "X-Timestamp": Math.floor(Date.now() / 1000).toString(),
-    "Content-Type": "application/json",
-  };
-  // Attach JWT for routes that need user_id context
-  const jwt = localStorage.getItem("aims_jwt");
-  if (jwt) headers["Authorization"] = "Bearer " + jwt;
-  return headers;
-}
-
-function jwtHeaders() {
-  const jwt = localStorage.getItem("aims_jwt");
-  return jwt ? { "Authorization": "Bearer " + jwt, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
-}
-
-/**
- * Smart auth headers — tries EIP-191 (MetaMask) first, falls back to JWT-only.
- * This lets buttons work even without a connected wallet, since the backend
- * middleware accepts JWT Bearer tokens for all /api/* routes.
- */
-async function smartHeaders(body) {
-  const bodyBytes = body ? new TextEncoder().encode(body) : null;
-  if (walletAddress && signer) {
-    try {
-      const sig = await eip191SignBody(bodyBytes || new TextEncoder().encode("{}"));
-      return getAuthHeaders(bodyBytes || new TextEncoder().encode("{}"), sig);
-    } catch (e) {
-      console.warn("EIP-191 signing unavailable, falling back to JWT:", e.message);
-    }
-  }
-  const jwt = localStorage.getItem("aims_jwt");
-  return jwt ? { "Authorization": "Bearer " + jwt, "Content-Type": "application/json" } : { "Content-Type": "application/json" };
-}
-
-// ════════════════════════════════════════════════════════════════
-//  AIMS_GATEWAY_AUTH Beacon
-// ════════════════════════════════════════════════════════════════
-async function signAuthBeacon(skillId) {
-  if (!walletAddress || !signer) return null;
-  const message = `AIMS_GATEWAY_AUTH:${walletAddress}:${skillId}`;
-  try {
-    const sig = await signer.signMessage(message);
-    const sigHex = sig.startsWith("0x") ? sig.slice(2) : sig;
-    const resp = await fetch(`${API_BASE}/api/auth/pre-check`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message, signature: sigHex }),
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      if (data.verified) {
-        consumerLog("success", `🔐 Auth beacon verified — wallet=${walletAddress.slice(0,10)}… skill=${skillId}`);
-        return true;
-      }
-    }
-    consumerLog("error", `⚠️ Auth beacon rejected for skill=${skillId}`);
-    return false;
-  } catch (err) {
-    console.warn("Auth beacon failed:", err.message);
-    return false;
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Balance & Deposit
-// ════════════════════════════════════════════════════════════════
-async function refreshBalance() {
-  if (!walletAddress) return;
-  try {
-    const resp = await fetch(`${API_BASE}/api/wallet/balance?user_id=${walletAddress}`);
-    if (resp.ok) {
-      const data = await resp.json();
-      const balance = data.credits || 0;
-      document.getElementById("consumerBalance").innerHTML = `${balance.toFixed(2)} <span class="unit">USDC</span>`;
-      document.getElementById("balanceDisplay").style.display = "flex";
-      document.getElementById("walletBalance").textContent = balance.toFixed(2);
-    } else {
-      document.getElementById("consumerBalance").innerHTML = `— <span class="unit">USDC</span>`;
-    }
-  } catch (err) {
-    document.getElementById("consumerBalance").innerHTML = `⚠️ <span class="unit">offline</span>`;
-  }
-}
-
-function showDepositModal(balanceUsdc, isTrialEligible) {
-  document.getElementById("modalBody").innerHTML =
-    `Each skill invocation requires a minimum of <strong>0.05 USDC</strong>. ` +
-    `Your current available balance is <strong>${balanceUsdc.toFixed(2)} USDC</strong>.`;
-  document.getElementById("modalContractAddr").textContent = CONTRACT_ADDRESS;
-  const trialNotice = document.getElementById("modalTrialNotice");
-  if (isTrialEligible) {
-    trialNotice.style.display = "block";
-  } else {
-    trialNotice.style.display = "none";
-  }
-  document.getElementById("depositModal").classList.add("open");
-}
-
-function closeDepositModal() {
-  document.getElementById("depositModal").classList.remove("open");
-}
-
-async function handleDeposit() {
-  if (!walletAddress) { toast("Connect wallet first", "error"); return; }
-  closeDepositModal();
-  toast("Depositing 50 USDC…", "info");
-  try {
-    const body = JSON.stringify({ user_id: walletAddress, amount: 50.0 });
-    const headers = await smartHeaders(body);
-    const resp = await fetch(`${API_BASE}/api/wallet/deposit`, { method: "POST", headers, body });
-    if (resp.ok) {
-      const data = await resp.json();
-      consumerDepositedUsdc += 50;
-      document.getElementById("consumerDeposited").innerHTML = `${consumerDepositedUsdc.toFixed(2)} <span class="unit">USDC</span>`;
-      toast("Deposit successful! New balance: " + data.new_balance.toFixed(2) + " USDC", "success");
-      consumerLog("success", "Deposit 50 USDC → new balance " + data.new_balance.toFixed(2) + " USDC");
-      await refreshBalance();
-    } else {
-      const err = await resp.json();
-      toast("Deposit failed: " + (err.detail || resp.statusText), "error");
-    }
-  } catch (err) {
-    toast("Deposit error: " + err.message, "error");
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Skills (Consumer view — invoke)
-// ════════════════════════════════════════════════════════════════
-async function fetchDiscovery() {
-  try {
-    const resp = await fetch(`${API_BASE}/api/discovery`);
-    if (!resp.ok) { document.getElementById("skillsContent").innerHTML = '<div class="empty-state">API unreachable</div>'; return; }
-    const data = await resp.json();
-    skillsCache = data.skills || [];
-
-    // Populate skill select
-    const sel = document.getElementById("skillSelect");
-    sel.innerHTML = '<option value="">— Select a skill —</option>';
-    skillsCache.forEach(s => {
-      const opt = document.createElement("option");
-      opt.value = s.id;
-      opt.textContent = `${s.id} — ${(s.description || "").slice(0,40)}`;
-      sel.appendChild(opt);
-    });
-
-    // Populate Publish Task skill select
-    const pubSel = document.getElementById("pubSkillSelect");
-    if (pubSel) {
-      pubSel.innerHTML = '<option value="">— Select skill —</option>';
-      skillsCache.forEach(s => {
-        const opt = document.createElement("option");
-        opt.value = s.id;
-        opt.textContent = `${s.id} — ${(s.description || "").slice(0,40)}`;
-        pubSel.appendChild(opt);
-      });
-    }
-
-    // Populate skills panel
-    const container = document.getElementById("skillsContent");
-    if (skillsCache.length === 0) {
-      container.innerHTML = '<div class="empty-state">No skills registered</div>';
-      return;
-    }
-    container.innerHTML = skillsCache.map(s => `
-      <div class="skill-card" style="margin-bottom:0.4rem">
-        <div>
-          <div class="name">${s.id}</div>
-          <div class="desc">${(s.description || "").slice(0,60)}</div>
-          <div class="caps">${(s.capabilities||[]).map(c => `<span class="cap-tag">${c}</span>`).join("")}</div>
-        </div>
-      </div>
-    `).join("");
-
-    // Update dev skill count
-    document.getElementById("devSkillCount").textContent = skillsCache.length;
-    document.getElementById("devSkillList").innerHTML = skillsCache.map(s =>
-      `<div style="display:flex;justify-content:space-between;padding:0.3rem 0;font-size:0.75rem;border-bottom:1px solid rgba(255,255,255,0.03)">
-        <span style="color:#fff">${s.id}</span>
-        <span style="color:var(--text-dim)">v${s.manifest?.version || "—"}</span>
-      </div>`
-    ).join("");
-
-    // Dev settlements: show available skills
-    const settlementsEl = document.getElementById("devSettlements");
-    if (settlementsEl && skillsCache.length > 0) {
-      settlementsEl.innerHTML = `<div style="font-size:0.75rem;color:var(--text-dim)">${skillsCache.length} skills registered on network.<br/>Revenue will appear here after tasks are executed and settled.</div>`;
-    }
-
-    toast(`Discovered ${skillsCache.length} skills`, "info");
-  } catch (err) {
-    document.getElementById("skillsContent").innerHTML = '<div class="empty-state">⚠️ ' + err.message + '</div>';
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Invoke skill (Consumer) — with free trial & billing mode
-// ════════════════════════════════════════════════════════════════
-async function invokeSkill(event) {
-  event.preventDefault();
-  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
-
-  const skillId = document.getElementById("skillSelect").value;
-  if (!skillId) { toast("Select a skill", "error"); return; }
-
-  let params = {};
-  try { params = JSON.parse(document.getElementById("skillParams").value || "{}"); } catch(e) {
-    toast("Invalid params JSON", "error"); return;
-  }
-
-  const billingMode = document.getElementById("billingMode").value;
-  const isTrial = billingMode === "trial";
-
-  // Check if trial already used for this skill
-  if (isTrial && usedTrials[skillId]) {
-    toast(`Free trial already used for "${skillId}". Select a billing mode.`, "warn");
-    document.getElementById("billingMode").value = "pay_per_task";
-    return;
-  }
-
-  const worker = document.getElementById("workerAddr").value.trim() || "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
-  const developer = document.getElementById("devAddr").value.trim() || "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266";
-
-  const invokeBtn = document.getElementById("invokeBtn");
-  invokeBtn.disabled = true;
-  invokeBtn.textContent = "⏳ Executing…";
-
-  resetPipeline();
-
-  try {
-    // ── Step 0: Auth ──
-    advancePipeline(0);
-    const bodyPayload = {
-      skill_id: skillId,
-      params: params,
-      user_id: walletAddress,
-      developer_premium: 0.01,
-      max_budget: 2.0,
-      compute_tier: 1,
-      billing_mode: billingMode,
-    };
-    const bodyBytes = new TextEncoder().encode(JSON.stringify(bodyPayload));
-
-    // ── AIMS_GATEWAY_AUTH beacon (MetaMask-signed) ──
-    const beaconOk = await signAuthBeacon(skillId);
-    if (!beaconOk) {
-      consumerLog("warn", "Auth beacon not confirmed — continuing with EIP-191 only");
-    }
-
-    // ── Step 1: Sign & send ──
-    advancePipeline(1);
-    if (isTrial) {
-      setTrialStep();
-      consumerLog("trial", `🎁 Free trial: skill=${skillId} (1st invocation, 0 USDC)`);
-      toast(`Using free trial for "${skillId}" — zero cost`, "trial");
-    }
-    const sig = await eip191SignBody(bodyBytes);
-    const headers = getAuthHeaders(bodyBytes, sig);
-
-    // ── Step 2: Balance check (skipped for free trial on backend) ──
-    advancePipeline(2);
-
-    // ── Step 3: Execute ──
-    advancePipeline(3);
-    consumerLog("info", `POST /api/run → skill=${skillId} mode=${billingMode} address=${walletAddress.slice(0,10)}…`);
-
-    const resp = await fetch(`${API_BASE}/api/run`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(bodyPayload),
-    });
-
-    // ── Handle 402 ──
-    if (resp.status === 402) {
-      const errData = await resp.json().catch(() => ({}));
-      const balanceMatch = errData.detail ? errData.detail.match(/balance:\s*([\d.]+)/) : null;
-      const bal = balanceMatch ? parseFloat(balanceMatch[1]) : 0;
-      consumerLog("error", `402 Insufficient balance: ${bal} USDC`);
-      resetPipeline();
-      showDepositModal(bal, isTrial && !usedTrials[skillId]);
-      invokeBtn.disabled = false;
-      invokeBtn.textContent = "▶ Execute & Settle";
-      return;
-    }
-
-    // ── Handle 403 ──
-    if (resp.status === 403) {
-      const errData = await resp.json().catch(() => ({}));
-      consumerLog("error", `403 Auth failed: ${errData.detail || "signature mismatch"}`);
-      toast("Auth failed — signature rejected by gateway", "error");
-      resetPipeline();
-      invokeBtn.disabled = false;
-      invokeBtn.textContent = "▶ Execute & Settle";
-      return;
-    }
-
-    if (!resp.ok) {
-      const errData = await resp.json().catch(() => ({}));
-      consumerLog("error", `HTTP ${resp.status}: ${errData.detail || resp.statusText}`);
-      toast(`API error: ${errData.detail || resp.statusText}`, "error");
-      resetPipeline();
-      invokeBtn.disabled = false;
-      invokeBtn.textContent = "▶ Execute & Settle";
-      return;
-    }
-
-    const data = await resp.json();
-    const taskId = data.task_id;
-    if (isTrial) {
-      usedTrials[skillId] = true;
-      updateTrialDisplay();
-      consumerLog("trial", `🎁 Free trial consumed for "${skillId}". Task: ${taskId}`);
-    }
-    consumerLog("success", `Task created: ${taskId}`);
-
-    // ── Step 4: Poll for completion ──
-    advancePipeline(4);
-    let settled = false;
-    for (let i = 0; i < 30; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      try {
-        const statusResp = await fetch(`${API_BASE}/api/tasks/${taskId}/status`);
-        if (statusResp.ok) {
-          const statusData = await statusResp.json();
-          if (statusData.status === "SUCCESS" || statusData.pot) {
-            consumerLog("success", `Task completed — Pot: ${statusData.pot ? statusData.pot.slice(0,20) + "…" : "N/A"}`);
-            settled = true;
-            break;
-          }
-          if (statusData.status === "FAILED") {
-            consumerLog("error", `Task failed: ${statusData.outcome || "unknown"}`);
-            // Trial not consumed on failure
-            if (isTrial) {
-              delete usedTrials[skillId];
-              updateTrialDisplay();
-              consumerLog("trial", "🎁 Free trial restored — failure doesn't count");
-            }
-            break;
-          }
-        }
-      } catch(e) {}
-    }
-
-    if (settled) {
-      // ── Step 5: Settlement complete ──
-      advancePipeline(5);
-      await new Promise(r => setTimeout(r, 600));
-      completePipeline();
-
-      consumerTaskCount++;
-      document.getElementById("consumerTasks").textContent = consumerTaskCount;
-
-      // Bump dev + worker simulated revenue
-      devRevenueUsdc += 0.035;  // 70% of 0.05
-      workerEarnedUsdc += 0.0125; // 25% of 0.05
-
-      document.getElementById("devRevenue").innerHTML = `${devRevenueUsdc.toFixed(4)} <span class="unit">USDC</span>`;
-      document.getElementById("devRevenueMeter").style.width = Math.min(devRevenueUsdc * 20, 100) + "%";
-      document.getElementById("workerEarnings").innerHTML = `${workerEarnedUsdc.toFixed(4)} <span class="unit">USDC</span>`;
-      document.getElementById("workerEarningsMeter").style.width = Math.min(workerEarnedUsdc * 20, 100) + "%";
-
-      consumerLog("success", `🎉 Task ${taskId} settled — 70/25/5 on-chain split complete`);
-      toast("Task settled on-chain! 70/25/5 split executed.", "success");
-    } else {
-      consumerLog("warn", `Task ${taskId} created but not yet settled (still PENDING)`);
-      toast("Task submitted, waiting for Worker to pick it up…", "warn");
-    }
-
-    await refreshBalance();
-  } catch (err) {
-    consumerLog("error", `Error: ${err.message}`);
-    toast("Execution error: " + err.message, "error");
-  }
-
-  invokeBtn.disabled = false;
-  invokeBtn.textContent = "▶ Execute & Settle";
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Credit Score & Level
-// ════════════════════════════════════════════════════════════════
-function getCreditLevel(score) {
-  if (score >= 95) return { level: "AAA", color: "#22c55e", label: "Elite" };
-  if (score >= 85) return { level: "AA", color: "#34d399", label: "Excellent" };
-  if (score >= 70) return { level: "A", color: "var(--neon)", label: "Good" };
-  if (score >= 50) return { level: "B", color: "var(--amber)", label: "Fair" };
-  return { level: "C", color: "var(--red)", label: "Poor" };
-}
-
-window.fetchCreditScore = async function() {
-  if (!walletAddress) return;
-  try {
-    const resp = await fetch(`${API_BASE}/api/worker/credit-score/${walletAddress}`);
-    if (!resp.ok) return;
-    const data = await resp.json();
-    const score = data.score || 0;
-    const level = getCreditLevel(score);
-
-    // Consumer tab
-    const scoreEl = document.getElementById("creditScoreDisplay");
-    if (scoreEl) scoreEl.textContent = score;
-    const barEl = document.getElementById("creditScoreBar");
-    if (barEl) barEl.style.width = score + "%";
-    const badgeEl = document.getElementById("creditLevelBadge");
-    if (badgeEl) {
-      badgeEl.textContent = `${level.level} — ${level.label}`;
-      badgeEl.style.background = score >= 70
-        ? "rgba(34,197,94,0.1)" : score >= 50
-        ? "rgba(251,191,36,0.1)" : "rgba(255,107,107,0.1)";
-      badgeEl.style.color = score >= 70 ? "#22c55e" : score >= 50 ? "var(--amber)" : "var(--red)";
-      badgeEl.style.border = `1px solid ${level.color}`;
-    }
-
-    // Developer tab
-    const devScore = document.getElementById("devCreditScore");
-    if (devScore) devScore.textContent = score;
-    const devBar = document.getElementById("devCreditScoreBar");
-    if (devBar) devBar.style.width = score + "%";
-    const devLevel = document.getElementById("devCreditLevel");
-    if (devLevel) devLevel.textContent = `${level.level} — ${level.label}`;
-  } catch (e) { console.warn("fetchCreditScore:", e.message); }
-};
-
-function updateTrialDisplay() {
-  const used = Object.keys(usedTrials).length;
-  const total = skillsCache.length || 1;
-  const remaining = Math.max(0, total - used);
-  document.getElementById("trialsLeft").innerHTML = `${remaining} <span class="unit">/ ${total} Skills</span>`;
-  // Update enhanced trial card
-  const enhancedEl = document.getElementById("trialsLeftEnhanced");
-  if (enhancedEl) {
-    enhancedEl.textContent = remaining === 0 ? "0 — Purchase a plan" : `${remaining} / ${total}`;
-  }
-  const progressText = document.getElementById("trialProgressText");
-  if (progressText) {
-    progressText.textContent = `${used} / ${total} Skills used`;
-  }
-  const progressBar = document.getElementById("trialProgressBar");
-  if (progressBar) {
-    const pct = total > 0 ? (used / total) * 100 : 0;
-    progressBar.style.width = Math.min(pct, 100) + "%";
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Commerce mode switching
-// ════════════════════════════════════════════════════════════════
-function switchBillingMode(mode) {
-  document.getElementById("billingMode").value = mode;
-  const display = document.getElementById("currentBillingModeDisplay");
-  const desc = document.getElementById("commerceModeDesc");
-  const labels = {
-    "pay_per_task": "Metered",
-    "subscription": "Subscription",
-    "buyout": "Buyout",
-    "trial": "Free Trial",
-  };
-  const descs = {
-    "pay_per_task": "Pay per successful invocation. No commitments, no expiration.",
-    "subscription": "Monthly pass with guaranteed rate limits, cancel anytime.",
-    "buyout": "One-time perpetual license. No recurring fees, unlimited usage.",
-    "trial": "First invocation free per Skill. Zero USDC required.",
-  };
-  display.textContent = labels[mode] || "Metered";
-  display.style.color = mode === "trial" ? "#34d399" : "var(--neon)";
-  if (desc) desc.textContent = descs[mode] || "";
-  // Highlight active button
-  document.querySelectorAll("#commercePanel .btn-outline").forEach(b => {
-    b.classList.toggle("active", b.dataset.mode === mode);
-  });
-  toast(`Switched to ${labels[mode] || mode}`, "info");
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Buyout Perpetual License
-// ════════════════════════════════════════════════════════════════
-function openBuyoutModal() {
-  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
-  const skillId = document.getElementById("skillSelect").value || "—";
-  document.getElementById("buyoutSkillName").textContent = skillId;
-  if (!document.getElementById("skillSelect").value) {
-    toast("Select a skill first to see buyout pricing", "warn");
-  }
-  document.getElementById("buyoutModal").classList.add("open");
-}
-
-function closeBuyoutModal() {
-  document.getElementById("buyoutModal").classList.remove("open");
-}
-
-async function confirmBuyout() {
-  if (!walletAddress) { toast("Connect wallet first", "error"); return; }
-  const skillId = document.getElementById("skillSelect").value;
-  if (!skillId) { toast("Select a skill first", "error"); return; }
-  closeBuyoutModal();
-  toast(`Processing buyout for "${skillId}"…`, "info");
-  try {
-    const body = JSON.stringify({
-      skill_id: skillId,
-      user_id: walletAddress,
-      license_type: "buyout",
-      price_usdc: 25.0,
-    });
-    const headers = await smartHeaders(body);
-    const resp = await fetch(`${API_BASE}/api/licensing/request-key`, {
-      method: "POST", headers, body,
-    });
-    if (resp.ok) {
-      toast(`✅ Buyout license acquired for "${skillId}" — perpetual access granted`, "success");
-      consumerLog("success", `🔒 Buyout perpetual license purchased for skill=${skillId} (25.0 USDC)`);
-      switchBillingMode("buyout");
-    } else {
-      const err = await resp.json().catch(() => ({}));
-      toast("Buyout failed: " + (err.detail || resp.statusText), "error");
-    }
-  } catch (err) {
-    toast("Buyout error: " + err.message, "error");
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Publish Task (Task Market)
-// ════════════════════════════════════════════════════════════════
-function toggleCreditReq() {
-  const group = document.getElementById("creditReqGroup");
-  group.style.display = document.getElementById("pubIsCustom").checked ? "flex" : "none";
-}
-
-window.publishTask = async function(event) {
-  event.preventDefault();
-  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
-
-  const skillId = document.getElementById("pubSkillSelect").value;
-  if (!skillId) { toast("Select a skill", "error"); return; }
-
-  const taskName = document.getElementById("pubTaskName").value.trim();
-  if (!taskName) { toast("Enter a task name", "error"); return; }
-
-  const budget = parseFloat(document.getElementById("pubBudget").value);
-  if (!budget || budget < 0.05) { toast("Minimum budget is 0.05 USDC", "error"); return; }
-
-  const isCustom = document.getElementById("pubIsCustom").checked;
-  const creditReq = isCustom ? parseInt(document.getElementById("pubCreditReq").value) || 90 : 0;
-  const description = document.getElementById("pubDescription").value.trim();
-  const resultEl = document.getElementById("publishResult");
-  const btn = document.getElementById("publishBtn");
-
-  btn.disabled = true;
-  btn.textContent = "⏳ Publishing…";
-  resultEl.innerHTML = "";
-
-  try {
-    const body = JSON.stringify({
-      skill_id: skillId,
-      params: {},
-      user_id: walletAddress,
-      developer_premium: 0.01,
-      max_budget: budget,
-      compute_tier: 1,
-      task_name: taskName,
-      description: description,
-      is_custom: isCustom,
-      credit_score_required: creditReq,
-    });
-    const headers = await smartHeaders(body);
-
-    const resp = await fetch(`${API_BASE}/api/tasks/publish`, {
-      method: "POST", headers, body,
-    });
-
-    if (resp.ok) {
-      const data = await resp.json();
-      resultEl.innerHTML = `<span class="pub-success">✅ Published: ${data.task_id} (escrow frozen: ${budget.toFixed(2)} USDC)</span>`;
-      consumerLog("success", `📤 Publish Task: ${data.task_id} name="${taskName}" budget=${budget} custom=${isCustom}`);
-      toast(`Task published: ${data.task_id}`, "success");
-      // Show vault panel for QR/fiat payment (扫码付款)
-      if (data.vault_address) {
-        showVaultPanel(data.task_id, data.vault_address, data.vault_status);
-      }
-      document.getElementById("pubTaskName").value = "";
-      document.getElementById("pubDescription").value = "";
-      document.getElementById("pubIsCustom").checked = false;
-      toggleCreditReq();
-    } else {
-      const err = await resp.json().catch(() => ({}));
-      resultEl.innerHTML = `<span class="pub-error">❌ Publish failed: ${err.detail || resp.statusText}</span>`;
-      toast("Publish failed: " + (err.detail || resp.statusText), "error");
-    }
-  } catch (err) {
-    resultEl.innerHTML = `<span class="pub-error">❌ Error: ${err.message}</span>`;
-    toast("Publish error: " + err.message, "error");
-  }
-
-  btn.disabled = false;
-  btn.textContent = "📤 Publish to Task Market";
-};
-
-// ════════════════════════════════════════════════════════════════
-//  Task Market (抢单池) — fetch pending & claim
-// ════════════════════════════════════════════════════════════════
-
-window.fetchPendingTasks = async function() {
-  const container = document.getElementById("taskMarketBody");
-  if (!container) return;
-
-  try {
-    const resp = await fetch(`${API_BASE}/api/tasks/pending`);
-    if (!resp.ok) {
-      container.innerHTML = '<div class="empty-state"><div class="big-icon">⚠️</div>Market API unavailable</div>';
-      return;
-    }
-    const data = await resp.json();
-    const tasks = data.tasks || [];
-    document.getElementById("mkPendingCount").textContent = `Pending: ${data.count || 0}`;
-
-    if (tasks.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="big-icon">🛒</div>No pending tasks yet. Publish one from the Consumer tab!</div>';
-      return;
-    }
-
-    container.innerHTML = tasks.map(t => {
-      const isCustom = t.is_custom;
-      const creditReq = t.credit_score_required || 0;
-      const creditLabel = isCustom
-        ? `<span class="mt-credit block">🔒 ≥${creditReq}</span>`
-        : `<span class="mt-credit ok">✓ Open</span>`;
-      return `<div class="mt-row">
-        <span class="mt-id">${(t.task_id || "").slice(0,12)}</span>
-        <span class="mt-name">${t.task_name || t.skill_id}<span id="boostBadge-${t.task_id}" class="boost-badge" style="display:none;padding:.1rem .35rem;border-radius:3px;font-size:.6rem;background:rgba(251,191,36,0.1);color:var(--amber);font-weight:600;margin-left:.25rem"></span></span>
-        <span class="mt-skill">${t.skill_id || "—"}</span>
-        <span class="mt-budget">$${(t.max_budget || 0).toFixed(2)}</span>
-        ${creditLabel}
-        <span class="mt-action" style="display:flex;gap:.25rem;align-items:center;min-width:140px;justify-content:flex-end">
-          <button class="btn btn-sm boost-btn" onclick="boostFromMarket('${t.task_id}')" title="Boost Reward" style="padding:.25rem .5rem;font-size:.6rem">⚡</button>
-          <button class="btn btn-sm ${isCustom ? 'btn-plg' : 'btn-outline'}" onclick="claimTask('${t.task_id}', ${creditReq}, ${isCustom})" style="font-size:.6rem;padding:.25rem .5rem;white-space:nowrap">
-            ${isCustom ? 'Claim' : 'Claim'}
-          </button>
-        </span>
-      </div>`;
-    }).join("");
-  } catch (err) {
-    container.innerHTML = '<div class="empty-state"><div class="big-icon">⚠️</div>Error: ' + err.message + '</div>';
-  }
-};
-
-window.claimTask = async function(taskId, creditReq, isCustom) {
-  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
-
-  // Fetch worker's credit score
-  let creditScore = 0;
-  try {
-    const csResp = await fetch(`${API_BASE}/api/worker/credit-score/${walletAddress}`);
-    if (csResp.ok) {
-      const csData = await csResp.json();
-      creditScore = csData.score || 0;
-    }
-  } catch(e) { console.warn("claimTask — credit score fetch:", e.message); }
-
-  // Check credit gate for custom tasks
-  if (isCustom && creditScore < creditReq) {
-    showCreditBlockModal(creditScore, creditReq, taskId);
-    return;
-  }
-
-  toast(`Claiming ${taskId}…`, "info");
-  try {
-    const body = JSON.stringify({
-      task_id: taskId,
-      worker_id: walletAddress,
-      credit_score: creditScore,
-    });
-    const headers = await smartHeaders(body);
-
-    const resp = await fetch(`${API_BASE}/api/tasks/claim-specific`, {
-      method: "POST", headers, body,
-    });
-
-    if (resp.ok) {
-      const data = await resp.json();
-      toast(`✅ Claimed ${taskId} successfully!`, "success");
-      consumerLog("success", `🛒 Claimed task: ${taskId} credit=${creditScore}`);
-      await fetchPendingTasks();
-    } else if (resp.status === 403) {
-      const err = await resp.json().catch(() => ({}));
-      showCreditBlockModal(creditScore, err.credit_score_required || creditReq, taskId);
-    } else {
-      const err = await resp.json().catch(() => ({}));
-      toast("Claim failed: " + (err.detail || resp.statusText), "error");
-    }
-  } catch (err) {
-    toast("Claim error: " + err.message, "error");
-  }
-};
-
-function showCreditBlockModal(creditScore, required, taskId) {
-  const body = document.getElementById("modalBody");
-  const title = document.getElementById("modalTitle") || document.querySelector(".modal h3");
-  if (title) title.textContent = "🔒 Credit Score Insufficient";
-  if (body) {
-    body.innerHTML =
-      `<p><strong style="color:#fbbf24">Credit score too low</strong></p>` +
-      `<p>Your credit score is <strong style="color:var(--red)">${creditScore}</strong>, ` +
-      `but this task requires <strong style="color:#fbbf24">≥ ${required}</strong>.</p>` +
-      `<p style="font-size:0.75rem;color:var(--text-dim)">` +
-      `Complete open tasks (no credit gate) to build your reputation, or ask an admin to ` +
-      `<code style="color:var(--neon)">POST /api/worker/credit-score</code> to raise your score.</p>` +
-      `<p style="font-size:0.7rem;color:var(--text-dim)">Task: <code>${taskId}</code></p>`;
-  }
-  document.getElementById("depositModal").classList.add("open");
-}
-
-// ════════════════════════════════════════════════════════════════
-//  One-Click Integration (一键接入)
-// ════════════════════════════════════════════════════════════════
-window.oneClickIntegrate = async function(event) {
-  event.preventDefault();
-  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
-
-  const input = document.getElementById("integrateInput").value.trim();
-  if (!input) { toast("Enter a skill name or API URL", "error"); return; }
-
-  const wallet = document.getElementById("integrateWallet").value.trim() || walletAddress;
-  if (!wallet.startsWith("0x") || wallet.length !== 42) {
-    toast("Enter a valid EVM wallet address (0x + 40 hex)", "error");
-    return;
-  }
-
-  const btn = document.getElementById("integrateBtn");
-  btn.disabled = true;
-  btn.textContent = "⏳ Integrating…";
-
-  try {
-    // Collect co-contributors from DOM if any
-    const contribRows = document.querySelectorAll("#coContribList .contributor-row");
-    const coContributors = [];
-    contribRows.forEach(r => {
-      const inputs = r.querySelectorAll("input");
-      if (inputs.length >= 2) {
-        const w = inputs[0].value.trim();
-        const p = parseFloat(inputs[1].value);
-        if (w && w.startsWith("0x") && w.length === 42 && p > 0 && p <= 100) {
-          coContributors.push({ wallet: w, share_pct: p });
-        }
-      }
-    });
-    const body = JSON.stringify({
-      skill_name_or_url: input,
-      wallet_address: wallet,
-      co_contributors: coContributors.length > 0 ? coContributors : undefined,
-    });
-    const headers = await smartHeaders(body);
-
-    const resp = await fetch(`${API_BASE}/api/developer/integrate`, {
-      method: "POST", headers, body,
-    });
-
-    const result = document.getElementById("integrateResult");
-    if (resp.ok) {
-      const data = await resp.json();
-      const typeLabel = data.type === "url_proxy" ? "URL Proxy" : "Skill Mapping";
-      result.innerHTML = `<div class="integrate-status success">✅ Mapped "${input}" → ${wallet.slice(0,10)}… (${typeLabel})</div>`;
-      toast(`Integrated: ${input} → revenue to wallet`, "success");
-      consumerLog("success", `🔗 One-Click Integrate: ${input} → ${wallet} (${typeLabel})`);
-      document.getElementById("integrateInput").value = "";
-      await fetchIntegrationStatus();
-    } else {
-      const err = await resp.json().catch(() => ({}));
-      result.innerHTML = `<div class="integrate-status error">❌ Integration failed: ${err.detail || resp.statusText}</div>`;
-      toast("Integration failed: " + (err.detail || resp.statusText), "error");
-    }
-  } catch (err) {
-    document.getElementById("integrateResult").innerHTML = `<div class="integrate-status error">❌ Error: ${err.message}</div>`;
-    toast("Integration error: " + err.message, "error");
-  }
-
-  btn.disabled = false;
-  btn.textContent = "🔗 One-Click Integrate";
-};
-
-window.fetchIntegrationStatus = async function() {
-  if (!walletAddress) return;
-  try {
-    const resp = await fetch(`${API_BASE}/api/developer/integration/${walletAddress}`);
-    if (resp.ok) {
-      const data = await resp.json();
-      const count = data.count || 0;
-      const el = document.getElementById("integrateCount");
-      if (el) el.textContent = `Mapped: ${count}`;
-    }
-  } catch(e) { console.warn("fetchIntegrationStatus:", e.message); }
-};
-
-// ════════════════════════════════════════════════════════════════
-//  Vault (扫码付款唯一托管钱包) UI helpers
-// ════════════════════════════════════════════════════════════════
-let _currentVaultTaskId = null;
-
-function showVaultPanel(taskId, vaultAddress, vaultStatus) {
-  _currentVaultTaskId = taskId;
-  const panel = document.getElementById("vaultPanel");
-  if (!panel) return;
-  panel.style.display = "block";
-  document.getElementById("vaultAddressDisplay").textContent = vaultAddress;
-  document.getElementById("vaultTaskIdDisplay").textContent = taskId;
-  document.getElementById("vaultBalanceDisplay").textContent = "0.00 USDC";
-  const badge = document.getElementById("vaultStatusBadge");
-  badge.textContent = (vaultStatus || "unfunded").toUpperCase();
-  badge.style.background = "rgba(148,163,184,0.1)";
-  badge.style.color = "var(--text-dim)";
-  badge.style.borderColor = "var(--border)";
-  document.getElementById("vaultPayBtn").disabled = false;
-  document.getElementById("vaultPollResult").textContent = "";
-  document.getElementById("qrMockPanel").style.display = "flex";
-  // Reset boost display
-  document.getElementById("boostTotalDisplay").textContent = "Total boosted: 0.00 USDC";
-  document.getElementById("boostResult").textContent = "";
-  document.getElementById("boostAmount").value = "0.5";
-  const status = (vaultStatus || "unfunded").toLowerCase();
-  document.getElementById("boostBtn").disabled = status !== "funded";
-  document.getElementById("boostSection").style.opacity = status === "funded" ? "1" : "0.4";
-}
-
-window.simulateVaultPayment = async function() {
-  const taskId = _currentVaultTaskId;
-  if (!taskId) { toast("No active vault task", "error"); return; }
-  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
-
-  const btn = document.getElementById("vaultPayBtn");
-  btn.disabled = true;
-  btn.textContent = "⏳ Processing payment…";
-  document.getElementById("vaultPollResult").textContent = "";
-
-  try {
-    const body = JSON.stringify({});
-    const headers = await smartHeaders(body);
-
-    const resp = await fetch(`${API_BASE}/api/tasks/${taskId}/simulate-fiat-payment`, {
-      method: "POST", headers, body,
-    });
-
-    if (resp.ok) {
-      const data = await resp.json();
-      document.getElementById("vaultBalanceDisplay").textContent = data.balance.toFixed(2) + " USDC";
-      const badge = document.getElementById("vaultStatusBadge");
-      badge.textContent = "FUNDED";
-      badge.style.background = "rgba(34,197,94,0.1)";
-      badge.style.color = "#22c55e";
-      badge.style.borderColor = "rgba(34,197,94,0.15)";
-      document.getElementById("qrMockPanel").style.display = "none";
-      document.getElementById("vaultPollResult").innerHTML =
-        `<span style="color:#22c55e">✅ Vault funded! ${data.balance.toFixed(2)} USDC locked — task now in market</span>`;
-      // Enable boost section now that vault is funded
-      document.getElementById("boostBtn").disabled = false;
-      const boostSectionEl = document.getElementById("boostSection");
-      if (boostSectionEl) boostSectionEl.style.opacity = "1";
-      if (data.total_boosted) {
-        document.getElementById("boostTotalDisplay").textContent = `Total boosted: ${data.total_boosted.toFixed(2)} USDC`;
-      }
-      toast(`✅ Vault funded: ${data.balance.toFixed(2)} USDC — task is live`, "success");
-      consumerLog("success", `📱 Vault funded: task=${taskId} amount=${data.balance} USDC (fiat simulation)`);
-    } else {
-      const err = await resp.json().catch(() => ({}));
-      document.getElementById("vaultPollResult").innerHTML =
-        `<span style="color:var(--red)">❌ Payment failed: ${err.detail || resp.statusText}</span>`;
-      toast("Payment simulation failed: " + (err.detail || resp.statusText), "error");
-    }
-  } catch (err) {
-    document.getElementById("vaultPollResult").innerHTML =
-      `<span style="color:var(--red)">❌ Error: ${err.message}</span>`;
-    toast("Payment error: " + err.message, "error");
-  }
-
-  btn.disabled = false;
-  btn.textContent = "💳 Simulate Fiat Payment (扫码付款)";
-};
-
-// ════════════════════════════════════════════════════════════════
-//  Boost Reward (动态加价催单)
-// ════════════════════════════════════════════════════════════════
-window.boostReward = async function() {
-  const taskId = _currentVaultTaskId;
-  if (!taskId) { toast("No active vault task", "error"); return; }
-  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
-
-  const amount = parseFloat(document.getElementById("boostAmount").value);
-  if (!amount || amount <= 0) { toast("Enter a valid boost amount", "error"); return; }
-
-  const btn = document.getElementById("boostBtn");
-  btn.disabled = true;
-  btn.textContent = "⏳ Boosting…";
-  document.getElementById("boostResult").textContent = "";
-
-  try {
-    const body = JSON.stringify({ amount: amount });
-    const headers = await smartHeaders(body);
-
-    const resp = await fetch(`${API_BASE}/api/tasks/${taskId}/boost-reward`, {
-      method: "POST", headers, body,
-    });
-
-    if (resp.ok) {
-      const data = await resp.json();
-      document.getElementById("boostTotalDisplay").textContent = `Total boosted: ${data.total_boosted.toFixed(2)} USDC`;
-      document.getElementById("boostResult").innerHTML = `<span style="color:var(--amber)">⚡ +${data.boost_amount.toFixed(2)} USDC boosted!</span>`;
-      toast(`⚡ Boosted! +${data.boost_amount.toFixed(2)} USDC — total reward: ${data.balance.toFixed(2)} USDC`, "success");
-      consumerLog("success", `⚡ Boost reward: task=${taskId} +${data.boost_amount} USDC total_boosted=${data.total_boosted} USDC`);
-      document.getElementById("vaultBalanceDisplay").textContent = data.balance.toFixed(2) + " USDC";
-    } else {
-      const err = await resp.json().catch(() => ({}));
-      document.getElementById("boostResult").innerHTML = `<span style="color:var(--red)">❌ ${err.detail || resp.statusText}</span>`;
-      toast("Boost failed: " + (err.detail || resp.statusText), "error");
-    }
-  } catch (err) {
-    document.getElementById("boostResult").innerHTML = `<span style="color:var(--red)">❌ ${err.message}</span>`;
-    toast("Boost error: " + err.message, "error");
-  }
-
-  btn.disabled = false;
-  btn.textContent = "⚡ Boost Reward";
-};
-
-// ════════════════════════════════════════════════════════════════
-//  Co-Contributors Split
-// ════════════════════════════════════════════════════════════════
-let contributorRowCount = 0;
-
-window.addContributorRow = function(wallet, pct) {
-  const list = document.getElementById("coContribList");
-  if (!list) return;
-  const idx = contributorRowCount++;
-  const row = document.createElement("div");
-  row.className = "contributor-row";
-  row.id = "contrib-row-" + idx;
-  row.style.cssText = "display:flex;gap:.5rem;align-items:center;margin-bottom:.35rem";
-  row.innerHTML = `
-    <input class="input" id="contrib-wallet-${idx}" placeholder="Co-contributor wallet (0x...)" style="flex:1;min-width:200px" value="${wallet || ''}">
-    <input class="input" id="contrib-pct-${idx}" type="number" step="0.1" min="0" max="100" placeholder="%" style="width:70px;flex-shrink:0" value="${pct || ''}">
-    <span style="font-size:.65rem;color:var(--text-dim);min-width:40px">%</span>
-    <button class="btn btn-sm btn-ghost" onclick="removeContributorRow(${idx})" style="color:var(--red)">✕</button>
-  `;
-  list.appendChild(row);
-  updateContribTotalPct();
-};
-
-window.removeContributorRow = function(idx) {
-  const row = document.getElementById("contrib-row-" + idx);
-  if (row) row.remove();
-  updateContribTotalPct();
-};
-
-function updateContribTotalPct() {
-  const rows = document.querySelectorAll("#coContribList .contributor-row");
-  let total = 0;
-  rows.forEach(r => {
-    const pctInput = r.querySelector("input[type=number]");
-    if (pctInput) total += parseFloat(pctInput.value) || 0;
-  });
-  document.getElementById("contribTotalPct").textContent = `Total: ${total.toFixed(1)}%`;
-}
-
-// Auto-update total when values change
-document.addEventListener("input", function(e) {
-  if (e.target.closest("#coContribList") && e.target.type === "number") {
-    updateContribTotalPct();
-  }
-});
-
-window.saveContributors = async function() {
-  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
-
-  const skillName = document.getElementById("integrateInput").value.trim();
-  if (!skillName) { toast("Enter a skill name first", "error"); return; }
-
-  const wallet = document.getElementById("integrateWallet").value.trim() || walletAddress;
-  if (!wallet.startsWith("0x") || wallet.length !== 42) {
-    toast("Enter a valid EVM wallet address", "error"); return;
-  }
-
-  // Collect co-contributors from DOM
-  const rows = document.querySelectorAll("#coContribList .contributor-row");
-  const coContributors = [];
-  rows.forEach(r => {
-    const inputs = r.querySelectorAll("input");
-    if (inputs.length >= 2) {
-      const w = inputs[0].value.trim();
-      const p = parseFloat(inputs[1].value);
-      if (w && w.startsWith("0x") && w.length === 42 && p > 0 && p <= 100) {
-        coContributors.push({ wallet: w, share_pct: p });
-      }
-    }
-  });
-
-  if (coContributors.length === 0) {
-    toast("Add at least one valid co-contributor (wallet + share %)", "error");
-    return;
-  }
-
-  document.getElementById("contribSaveResult").textContent = "⏳ Saving…";
-  try {
-    const body = JSON.stringify({
-      skill_name: skillName,
-      wallet_address: wallet,
-      co_contributors: coContributors,
-    });
-    const headers = await smartHeaders(body);
-
-    const resp = await fetch(`${API_BASE}/api/developer/set-contributors`, {
-      method: "POST", headers, body,
-    });
-
-    if (resp.ok) {
-      const data = await resp.json();
-      document.getElementById("contribSaveResult").innerHTML = `<span style="color:#22c55e">✅ ${data.message}</span>`;
-      toast("✅ Co-contributors saved: " + data.message, "success");
-      consumerLog("success", `👥 Co-contributors set: skill=${skillName} count=${coContributors.length} total_pct=${data.total_share_pct}%`);
-    } else {
-      const err = await resp.json().catch(() => ({}));
-      document.getElementById("contribSaveResult").innerHTML = `<span style="color:var(--red)">❌ ${err.detail || resp.statusText}</span>`;
-      toast("Save failed: " + (err.detail || resp.statusText), "error");
-    }
-  } catch (err) {
-    document.getElementById("contribSaveResult").innerHTML = `<span style="color:var(--red)">❌ ${err.message}</span>`;
-    toast("Save error: " + err.message, "error");
-  }
-};
-
-window.pollVaultStatus = async function() {
-  const taskId = _currentVaultTaskId;
-  if (!taskId) { toast("No active vault task", "error"); return; }
-
-  try {
-    const resp = await fetch(`${API_BASE}/api/tasks/${taskId}/vault-status`);
-    if (resp.ok) {
-      const data = await resp.json();
-      document.getElementById("vaultBalanceDisplay").textContent = data.balance.toFixed(2) + " USDC";
-      const badge = document.getElementById("vaultStatusBadge");
-      badge.textContent = data.status.toUpperCase();
-      // Update boost section
-      const boosted = data.total_boosted || 0;
-      const boostSection = document.getElementById("boostSection");
-      document.getElementById("boostTotalDisplay").textContent = `Total boosted: ${boosted.toFixed(2)} USDC`;
-      if (data.status === "funded") {
-        badge.style.background = "rgba(34,197,94,0.1)";
-        badge.style.color = "#22c55e";
-        badge.style.borderColor = "rgba(34,197,94,0.15)";
-        document.getElementById("qrMockPanel").style.display = "none";
-        document.getElementById("boostBtn").disabled = false;
-        if (boostSection) boostSection.style.opacity = "1";
-      } else if (data.status === "released") {
-        badge.style.background = "rgba(222,255,154,0.1)";
-        badge.style.color = "var(--neon)";
-        badge.style.borderColor = "var(--neon-glow)";
-        document.getElementById("qrMockPanel").style.display = "none";
-        document.getElementById("vaultPayBtn").disabled = true;
-        document.getElementById("boostBtn").disabled = true;
-        if (boostSection) boostSection.style.opacity = "0.4";
-      } else {
-        document.getElementById("boostBtn").disabled = true;
-        if (boostSection) boostSection.style.opacity = "0.4";
-      }
-      document.getElementById("vaultPollResult").textContent =
-        `Status: ${data.status} | Balance: ${data.balance.toFixed(2)} USDC | Boosted: ${boosted.toFixed(2)} USDC | Vault: ${data.vault_address.slice(0,14)}…`;
-    } else {
-      document.getElementById("vaultPollResult").textContent = "⚠️ Vault not found";
-    }
-  } catch (err) {
-    document.getElementById("vaultPollResult").textContent = "⚠️ " + err.message;
-  }
-};
-
-// ════════════════════════════════════════════════════════════════
-//  Consumer log
-// ════════════════════════════════════════════════════════════════
-function consumerLog(type, msg) {
-  const log = document.getElementById("consumerLog");
-  const entry = document.createElement("div");
-  entry.className = `log-entry ${type}`;
-  const now = new Date();
-  const time = now.toLocaleTimeString();
-  entry.innerHTML = `<span class="time">${time}</span><span class="msg">${msg}</span>`;
-  log.appendChild(entry);
-  log.scrollTop = log.scrollHeight;
-}
-
-function clearLog() {
-  document.getElementById("consumerLog").innerHTML = '';
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Worker simulation
-// ════════════════════════════════════════════════════════════════
-function startWorkerSim() {
-  const btn = document.getElementById("workerStartBtn");
-  if (workerInterval) {
-    clearInterval(workerInterval);
-    workerInterval = null;
-    btn.textContent = "▶ Start Node";
-    btn.className = "btn btn-sm btn-neon";
-    document.getElementById("workerStatusDot").className = "status-dot offline";
-    document.getElementById("workerStatusText").textContent = "Offline";
-    document.getElementById("workerNodeId").textContent = "—";
-    updateCanaryStatus(false);
-    toast("Worker node stopped", "info");
-    return;
-  }
-
-  workerStartTime = Date.now();
-  const nodeId = "node-" + Math.random().toString(36).slice(2, 8);
-  document.getElementById("workerNodeId").textContent = nodeId;
-  document.getElementById("workerStatusDot").className = "status-dot idle";
-  document.getElementById("workerStatusText").textContent = "Online (Idle)";
-  updateCanaryStatus(true);
-  btn.textContent = "⏹ Stop Node";
-  btn.className = "btn btn-sm btn-outline";
-
-  if (workerInterval) clearInterval(workerInterval);
-  workerInterval = setInterval(() => {
-    const uptime = Math.floor((Date.now() - workerStartTime) / 1000);
-    document.getElementById("workerUptime").textContent = `${uptime}s`;
-  }, 1000);
-
-  const hbInterval = setInterval(() => sendHeartbeat(), 15000);
-  workerInterval._hbInterval = hbInterval;
-
-  sendHeartbeat();
-  toast("Worker node started — heartbeating every 15s", "success");
-}
-
-async function sendHeartbeat() {
-  if (!walletAddress) { toast("Connect wallet first", "error"); return; }
-  try {
-    const body = JSON.stringify({ worker_id: walletAddress });
-    const headers = await smartHeaders(body);
-    const resp = await fetch(`${API_BASE}/api/workers/heartbeat`, { method: "POST", headers, body });
-    if (resp.ok) {
-      document.getElementById("workerStatusDot").className = "status-dot online";
-      document.getElementById("workerStatusText").textContent = "Online (Active)";
-    }
-  } catch(err) {
-    console.warn("sendHeartbeat:", err.message);
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Canary Watermark Status
-// ════════════════════════════════════════════════════════════════
-function updateCanaryStatus(active) {
-  const dot = document.getElementById("canaryStatusDot");
-  const text = document.getElementById("canaryStatusText");
-  const badge = document.getElementById("canaryStatusBadge");
-  const blacklist = document.getElementById("canaryBlacklistStatus");
-  if (!dot || !text || !badge) return;
-  if (active) {
-    dot.className = "status-dot online";
-    text.textContent = "Protection Active";
-    badge.innerHTML = "● ACTIVE";
-    badge.style.color = "#22c55e";
-    badge.style.borderColor = "rgba(34,197,94,0.15)";
-    badge.style.background = "rgba(34,197,94,0.1)";
-    if (blacklist) blacklist.textContent = "Clean — no strikes";
-  } else {
-    dot.className = "status-dot offline";
-    text.textContent = "Protection Disabled";
-    badge.innerHTML = "● INACTIVE";
-    badge.style.color = "var(--text-dim)";
-    badge.style.borderColor = "var(--border)";
-    badge.style.background = "transparent";
-    if (blacklist) blacklist.textContent = "Unknown";
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Health check
-// ════════════════════════════════════════════════════════════════
-async function fetchHealth() {
-  try {
-    const resp = await fetch(`${API_BASE}/api/health`);
-    if (!resp.ok) {
-      document.getElementById("healthStatus").textContent = "⚠️ Unreachable";
-      document.getElementById("healthStatus").style.color = "var(--red)";
-      return;
-    }
-    const data = await resp.json();
-    document.getElementById("healthStatus").textContent = "● Healthy";
-    document.getElementById("healthStatus").style.color = "#22c55e";
-    document.getElementById("healthBlock").textContent = data.tasks_succeeded || "—";
-    document.getElementById("healthPending").textContent = data.tasks_pending ?? "—";
-    document.getElementById("healthSucceeded").textContent = data.tasks_succeeded ?? "—";
-    document.getElementById("healthWorkers").textContent = data.workers_active ?? "—";
-    document.getElementById("healthTreasury").textContent = (data.treasury_usdt || 0).toFixed(2) + " USDT";
-  } catch(err) {
-    document.getElementById("healthStatus").textContent = "⚠️ Offline";
-    document.getElementById("healthStatus").style.color = "var(--red)";
-  }
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Role switching
-// ════════════════════════════════════════════════════════════════
-let _savedVaultTaskId = null;
-
-function switchRole(role) {
-  // Save vault context when leaving consumer tab
-  if (currentRole === "consumer" && role !== "consumer") {
-    _savedVaultTaskId = _currentVaultTaskId;
-  }
-  currentRole = role;
-  document.querySelectorAll(".role-tab").forEach(t => t.classList.toggle("active", t.dataset.role === role));
-  document.querySelectorAll(".tab-content").forEach(t => t.classList.toggle("active", t.id === "tab-" + role));
-  // Restore vault context when returning to consumer tab
-  if (role === "consumer" && _savedVaultTaskId && !_currentVaultTaskId) {
-    _currentVaultTaskId = _savedVaultTaskId;
-    // Re-show vault panel if we have a cached vault task
-    if (typeof showVaultPanel === "function") {
-      // Re-render vault from cached data — vault address can't be recovered without storage,
-      // but at least boost/check/pay buttons will have a valid taskId
-      const vaultStatusEl = document.getElementById("vaultStatusBadge");
-      if (vaultStatusEl) {
-        vaultStatusEl.textContent = "READY";
-        vaultStatusEl.style.background = "rgba(222,255,154,0.1)";
-        vaultStatusEl.style.color = "var(--neon)";
-      }
-    }
-  }
-  if (role === "developer") fetchPendingTasks();
-}
-
-// ════════════════════════════════════════════════════════════════
-//  Console Settlement Feed — Real SSE Stream
-// ════════════════════════════════════════════════════════════════
-(function(){
-  const feed = document.getElementById('consoleFeed');
-  if (!feed) return;
-  let cnt = 0, vol = 0;
-  const elCnt = document.getElementById('consoleFeedCount');
-  const elVol = document.getElementById('consoleFeedVol');
-
-  function addEntry(data) {
-    const action = data.action || 'settle';
-    const isPass = action !== 'refund' && action !== 'pool_shortfall';
-    const taskId = (data.task_id || '').slice(0, 8);
-    const amt = data.amounts
-      ? (data.amounts.total_deducted || data.amounts.user_deduction || 0) / 1000000
-      : 0;
-    const skillLabel = data.detail ? data.detail.match(/skill=(\S+)/) : null;
-    const skillName = skillLabel ? skillLabel[1] : taskId;
-
-    cnt++;
-    vol += amt;
-
-    const d = document.createElement('div');
-    d.className = `feed-entry-c ${isPass ? 'pass' : 'refund'}`;
-    d.innerHTML =
-      `<span class="fc-time">${new Date(data.ts * 1000).toLocaleTimeString()}</span>` +
-      `<span class="fc-main">` +
-        `<span class="fc-skill">${skillName}</span>` +
-        `<span class="fc-score ${isPass ? 'pass' : 'refund'}">${isPass ? '✓' : '✗'} ${action}</span>` +
-        `<span class="fc-split">${amt.toFixed(4)} USDC</span>` +
-        `<span class="fc-dex">${data.action}</span>` +
-      `</span>`;
-
-    feed.insertBefore(d, feed.firstChild);
-    while (feed.children.length > 15) feed.removeChild(feed.lastChild);
-    elCnt.textContent = cnt;
-    elVol.textContent = vol.toFixed(4);
-  }
-
-  // Connect to the real SSE endpoint
-  let eventSource = null;
-  function connectSSE() {
-    if (eventSource) { eventSource.close(); }
-    eventSource = new EventSource(`${API_BASE}/api/v2/feed/stream`);
-    eventSource.onmessage = (ev) => {
-      try {
-        const data = JSON.parse(ev.data);
-        addEntry(data);
-      } catch (e) { /* ignore parse errors */ }
-    };
-    eventSource.onerror = () => {
-      // Reconnect after 5s on error
-      setTimeout(connectSSE, 5000);
-    };
-  }
-
-  // Start SSE connection after a short delay (let page init first)
-  setTimeout(connectSSE, 2000);
-})();
-
-// ════════════════════════════════════════════════════════════════
-//  Skill Upload — Drag & Drop + API
-// ════════════════════════════════════════════════════════════════
-(function(){
-  const zone = document.getElementById('skillDropZone');
-  const input = document.getElementById('skillFileInput');
-  const btn = document.getElementById('uploadSkillBtn');
-  const status = document.getElementById('uploadStatus');
-  const info = document.getElementById('dzFileInfo');
-  let selectedFile = null;
-
-  if (!zone) return;
-
-  zone.addEventListener('click', () => input.click());
-
-  zone.addEventListener('dragover', (e) => {
-    e.preventDefault();
-    zone.classList.add('drag-over');
-  });
-  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-  zone.addEventListener('drop', (e) => {
-    e.preventDefault();
-    zone.classList.remove('drag-over');
-    if (e.dataTransfer.files.length > 0) {
-      handleFile(e.dataTransfer.files[0]);
-    }
-  });
-  input.addEventListener('change', () => {
-    if (input.files.length > 0) handleFile(input.files[0]);
-  });
-
-  function handleFile(file) {
-    if (!file.name.endsWith('.zip')) {
-      toast('Only .zip files are accepted', 'error');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      toast('File exceeds 10 MB limit', 'error');
-      return;
-    }
-    selectedFile = file;
-    zone.classList.add('has-file');
-    info.style.display = 'block';
-    info.textContent = '📎 ' + file.name + ' (' + (file.size / 1024).toFixed(1) + ' KB)';
-    btn.disabled = false;
-    status.textContent = 'Ready to upload — ' + file.name;
-    status.style.color = 'var(--neon)';
-    toast('Selected: ' + file.name, 'info');
-  }
-
-  window.handleSkillFile = handleFile;
-})();
-
-window.uploadSkill = async function() {
-  const fileInput = document.getElementById('skillFileInput');
-  const btn = document.getElementById('uploadSkillBtn');
-  const status = document.getElementById('uploadStatus');
-  const file = fileInput.files[0];
-
-  if (!file) { toast('Select a ZIP file first', 'error'); return; }
-  if (!walletAddress) { toast('Connect your wallet first', 'error'); return; }
-
-  btn.disabled = true;
-  btn.textContent = '⏳ Uploading…';
-  status.textContent = 'Uploading ' + file.name + ' …';
-  status.style.color = 'var(--text-dim)';
-
-  try {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('user_id', walletAddress);
-
-    // EIP-191 sign the filename as simple auth proof
-    const authMsg = 'AIMS_UPLOAD:' + walletAddress + ':' + file.name;
-    const sig = await signer.signMessage(authMsg);
-    const sigHex = sig.startsWith('0x') ? sig.slice(2) : sig;
-
-    const resp = await fetch(API_BASE + '/api/skills/upload', {
-      method: 'POST',
-      headers: {
-        'X-Wallet-Address': walletAddress,
-        'X-Signature': sigHex,
-        'X-Timestamp': Math.floor(Date.now() / 1000).toString(),
-      },
-      body: formData,
-    });
-
-    if (resp.ok) {
-      const data = await resp.json();
-      toast('✅ Skill uploaded: ' + (data.skill_id || 'registered'), 'success');
-      status.textContent = '✅ Uploaded — refresh skills list';
-      status.style.color = '#22c55e';
-      btn.textContent = '⬆ Upload Another';
-      btn.disabled = false;
-      consumerLog('success', '📦 Skill uploaded: ' + (data.skill_id || file.name));
-      await fetchDiscovery();
-    } else {
-      const err = await resp.json().catch(() => ({}));
-      toast('Upload failed: ' + (err.detail || resp.statusText), 'error');
-      status.textContent = '❌ Upload failed — ' + (err.detail || resp.statusText);
-      status.style.color = 'var(--red)';
-      btn.textContent = '⬆ Upload Skill';
-      btn.disabled = false;
-    }
-  } catch (err) {
-    toast('Upload error: ' + err.message, 'error');
-    status.textContent = '❌ Error: ' + err.message;
-    status.style.color = 'var(--red)';
-    btn.textContent = '⬆ Upload Skill';
-    btn.disabled = false;
-  }
-};
-
-// ════════════════════════════════════════════════════════════════
-//  Recharge Reserves
-// ════════════════════════════════════════════════════════════════
-window.rechargeReserves = async function(amount) {
-  if (!walletAddress) { toast('Connect your wallet first', 'error'); return; }
-  if (!amount || amount <= 0) { toast('Enter a valid amount', 'error'); return; }
-
-  toast('Depositing ' + amount.toFixed(2) + ' USDC…', 'info');
-  try {
-    const body = JSON.stringify({ user_id: walletAddress, amount: amount });
-    const headers = await smartHeaders(body);
-    const resp = await fetch(API_BASE + '/api/wallet/deposit', {
-      method: 'POST', headers, body,
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      consumerDepositedUsdc += amount;
-      document.getElementById('rechargeTotal').textContent = consumerDepositedUsdc.toFixed(2) + ' USDC';
-      toast('✅ Deposited ' + amount.toFixed(2) + ' USDC — balance: ' + (data.new_balance || '?').toFixed(2), 'success');
-      consumerLog('success', '💰 Recharge ' + amount.toFixed(2) + ' USDC → balance ' + (data.new_balance || '?').toFixed(2));
-      await refreshBalance();
-      if (document.getElementById('rechargeBalance')) {
-        document.getElementById('rechargeBalance').textContent = (data.new_balance || 0).toFixed(2) + ' USDC';
-      }
-    } else {
-      const err = await resp.json().catch(() => ({}));
-      toast('Deposit failed: ' + (err.detail || resp.statusText), 'error');
-    }
-  } catch (err) {
-    toast('Deposit error: ' + err.message, 'error');
-  }
-};
-
-// ════════════════════════════════════════════════════════════════
-//  Audit Ledger
-// ════════════════════════════════════════════════════════════════
-window.fetchAudit = async function(taskFilter) {
-  const container = document.getElementById('auditLedgerBody');
-  if (!container) return;
-
-  try {
-    let url = API_BASE + '/api/admin/audit';
-    if (taskFilter) {
-      url += '?task_id=' + encodeURIComponent(taskFilter);
-    }
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      container.innerHTML = '<div class="empty-state"><div class="big-icon">⚠️</div>Audit API unavailable (HTTP ' + resp.status + ')</div>';
-      return;
-    }
-    const data = await resp.json();
-    const ledger = data.ledger || data.audit_ledger || [];
-
-    if (ledger.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="big-icon">📭</div>No audit entries yet — execute and settle tasks to populate the ledger</div>';
-      return;
-    }
-
-    container.innerHTML = `
-      <table>
-        <thead><tr>
-          <th>Time</th><th>Action</th><th>Task</th><th>Amount</th><th>Roles</th>
-        </tr></thead>
-        <tbody>
-          ${ledger.slice(0, 50).map(e => {
-            const ts = e.ts ? new Date(e.ts * 1000).toLocaleTimeString() : '—';
-            const action = (e.action || '—');
-            const isPass = action !== 'refund';
-            const amt = e.amounts
-              ? ((e.amounts.total_deducted || e.amounts.user_deduction || 0) / 1000000).toFixed(4)
-              : (e.amount || 0).toFixed(4);
-            const taskId = (e.task_id || e.taskId || '').slice(0, 12);
-            const roles = e.roles || {};
-            const roleStr = Object.values(roles).slice(0, 2).map(a => (a || '').slice(0, 6)).join('…');
-            return `<tr>
-              <td style="color:var(--text-dim);font-size:.6rem">${ts}</td>
-              <td class="${isPass ? 'tx-pass' : 'tx-refund'}">${action}</td>
-              <td style="font-family:monospace;font-size:.6rem">${taskId || '—'}</td>
-              <td style="color:var(--neon)">${amt}</td>
-              <td class="tx-role">${roleStr || '—'}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-      ${ledger.length > 50 ? '<div style="text-align:center;padding:.5rem;font-size:.65rem;color:var(--text-dim)">… showing 50 of ' + ledger.length + ' entries</div>' : ''}
-    `;
-  } catch (err) {
-    container.innerHTML = '<div class="empty-state"><div class="big-icon">⚠️</div>Error loading audit: ' + err.message + '</div>';
-  }
-};
-
-// ════════════════════════════════════════════════════════════════
-//  Withdraw Funds
-// ════════════════════════════════════════════════════════════════
-window.withdrawFunds = async function() {
-  if (!walletAddress) { toast('Connect your wallet first', 'error'); return; }
-  const amt = parseFloat(document.getElementById('withdrawAmt').value);
-  if (!amt || amt <= 0) { toast('Enter a valid withdraw amount', 'error'); return; }
-
-  toast('Withdrawing ' + amt.toFixed(2) + ' USDC…', 'info');
-  try {
-    const body = JSON.stringify({ user_id: walletAddress, amount: amt });
-    const headers = await smartHeaders(body);
-    const resp = await fetch(API_BASE + '/api/wallet/withdraw', {
-      method: 'POST', headers, body,
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      toast('✅ Withdrew ' + amt.toFixed(2) + ' USDC — tx: ' + data.tx_id, 'success');
-      consumerLog('success', '💸 Withdrew ' + amt.toFixed(2) + ' USDC — tx=' + data.tx_id);
-      await refreshBalance();
-      if (document.getElementById('rechargeBalance')) {
-        document.getElementById('rechargeBalance').textContent = data.new_balance.toFixed(2) + ' USDC';
-      }
-    } else {
-      const err = await resp.json().catch(() => ({}));
-      toast('Withdraw failed: ' + (err.detail || resp.statusText), 'error');
-      consumerLog('error', '💸 Withdraw failed: ' + (err.detail || resp.statusText));
-    }
-  } catch (err) {
-    toast('Withdraw error: ' + err.message, 'error');
-  }
-};
-
-// ════════════════════════════════════════════════════════════════
-//  Fiat / Credit Card Deposit (mock Stripe)
-// ════════════════════════════════════════════════════════════════
-window.fiatDeposit = async function(amount) {
-  if (!walletAddress) { toast('Connect your wallet first', 'error'); return; }
-  if (!amount || amount <= 0) { toast('Enter a valid amount', 'error'); return; }
-
-  toast('💳 Processing $' + amount.toFixed(2) + ' credit card payment…', 'info');
-  try {
-    const body = JSON.stringify({
-      user_id: walletAddress,
-      amount: amount,
-      card_token: 'tok_mock_' + Math.random().toString(36).slice(2, 10),
-    });
-    const headers = await smartHeaders(body);
-    const resp = await fetch(API_BASE + '/api/wallet/fiat-deposit', {
-      method: 'POST', headers, body,
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      consumerDepositedUsdc += amount;
-      document.getElementById('rechargeTotal').textContent = consumerDepositedUsdc.toFixed(2) + ' USDC';
-      toast('✅ Credit card deposit successful! $' + amount.toFixed(2) + ' → ' + data.new_balance.toFixed(2) + ' USDC', 'success');
-      consumerLog('success', '💳 Fiat deposit $' + amount.toFixed(2) + ' (Stripe mock) → balance ' + data.new_balance.toFixed(2) + ' USDC, tx=' + data.tx_id);
-      await refreshBalance();
-      if (document.getElementById('rechargeBalance')) {
-        document.getElementById('rechargeBalance').textContent = data.new_balance.toFixed(2) + ' USDC';
-      }
-    } else {
-      const err = await resp.json().catch(() => ({}));
-      toast('Card payment failed: ' + (err.detail || resp.statusText), 'error');
-    }
-  } catch (err) {
-    toast('Fiat deposit error: ' + err.message, 'error');
-  }
-};
-
-// ════════════════════════════════════════════════════════════════
-//  User History Ledger
-// ════════════════════════════════════════════════════════════════
-window.fetchHistory = async function(typeFilter) {
-  const container = document.getElementById('userHistoryBody');
-  if (!container) return;
-  if (!walletAddress) {
-    container.innerHTML = '<div class="empty-state"><div class="big-icon">🔌</div>Connect your wallet to view history</div>';
-    return;
-  }
-
-  try {
-    const url = API_BASE + '/api/wallet/history?user_id=' + encodeURIComponent(walletAddress) + '&limit=50';
-    const resp = await fetch(url);
-    if (!resp.ok) {
-      container.innerHTML = '<div class="empty-state"><div class="big-icon">⚠️</div>History API unavailable (HTTP ' + resp.status + ')</div>';
-      return;
-    }
-    const data = await resp.json();
-    let entries = data.entries || [];
-
-    // Filter by type if specified
-    if (typeFilter) {
-      entries = entries.filter(e => (e.type || '') === typeFilter);
-    }
-
-    if (entries.length === 0) {
-      container.innerHTML = '<div class="empty-state"><div class="big-icon">📭</div>No history entries found' +
-        (typeFilter ? ' for type "' + typeFilter + '"' : '') + '</div>';
-      return;
-    }
-
-    container.innerHTML = `
-      <table>
-        <thead><tr>
-          <th>Time</th><th>Type</th><th>Amount</th><th>Description</th><th>Tx ID</th>
-        </tr></thead>
-        <tbody>
-          ${entries.map(e => {
-            const ts = e.timestamp ? new Date(e.timestamp * 1000).toLocaleString() : '—';
-            const type = e.type || '—';
-            const amt = (e.amount || 0);
-            const amtStr = amt >= 0 ? amt.toFixed(2) : '(' + Math.abs(amt).toFixed(2) + ')';
-            const desc = (e.description || '—').slice(0, 50);
-            const txId = (e.tx_id || '').slice(0, 12);
-            return `<tr>
-              <td style="color:var(--text-dim);font-size:.6rem;white-space:nowrap">${ts}</td>
-              <td><span class="history-type ${type}">${type}</span></td>
-              <td style="color:${type === 'withdraw' ? 'var(--amber)' : 'var(--neon)'};font-weight:600">${amtStr}</td>
-              <td style="font-size:.6rem;color:var(--text-dim);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${desc}</td>
-              <td style="font-family:monospace;font-size:.6rem;color:var(--text-dim)">${txId || '—'}</td>
-            </tr>`;
-          }).join('')}
-        </tbody>
-      </table>
-      ${entries.length >= 50 ? '<div style="text-align:center;padding:.5rem;font-size:.65rem;color:var(--text-dim)">Showing last 50 entries</div>' : ''}
-    `;
-  } catch (err) {
-    container.innerHTML = '<div class="empty-state"><div class="big-icon">⚠️</div>Error loading history: ' + err.message + '</div>';
-  }
-};
-
-// ════════════════════════════════════════════════════════════════
-//  Init
-// ════════════════════════════════════════════════════════════════
-fetchHealth();
-fetchDiscovery();
-
-// Initialize: contract address display, commerce panel, canary
-if (document.getElementById('rechargeContract')) {
-  document.getElementById('rechargeContract').textContent = CONTRACT_ADDRESS;
-}
-switchBillingMode('pay_per_task');
-updateCanaryStatus(true);
-
-window.boostFromMarket = async function(taskId) {
-  if (!walletAddress) { toast("Connect your wallet first", "error"); return; }
-  try {
-    const vaultPanel = document.getElementById("vaultPanel");
-    if (vaultPanel) { showVaultPanel(taskId); vaultPanel.scrollIntoView({ behavior: "smooth" }); }
-    const boostSection = document.querySelector(".boost-section") || document.querySelector("#boostAmount");
-    if (boostSection) boostSection.style.display = "block";
-    toast("Ready to boost " + taskId.slice(0,12), "info");
-  } catch(e) {
-    toast("boostFromMarket error: " + e.message, "error");
-  }
-};
-
-// ════════════════════════════════════════════════════════════════
-//  API Key Management (安全密钥)
-// ════════════════════════════════════════════════════════════════
-window.fetchApiKeys = async function() {
-  const container = document.getElementById("apiKeyList");
-  const jwt = localStorage.getItem("aims_jwt");
-  if (!jwt) { container.innerHTML = '<div style="color:var(--text-dim);padding:.5rem">Not authenticated.</div>'; return; }
-  try {
-    const resp = await fetch(API_BASE + "/api/auth/api-keys", { headers: jwtHeaders() });
-    if (!resp.ok) { container.innerHTML = '<div style="color:var(--red);padding:.5rem">Failed to load keys.</div>'; return; }
-    const data = await resp.json();
-    if (!data.keys || data.keys.length === 0) {
-      container.innerHTML = '<div style="color:var(--text-dim);padding:.5rem">No API keys generated yet.</div>';
-      return;
-    }
-    container.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr>' +
-      '<th style="text-align:left;padding:.4rem .5rem;border-bottom:1px solid rgba(222,255,154,0.08);color:var(--text-dim);font-weight:400">Label</th>' +
-      '<th style="text-align:left;padding:.4rem .5rem;border-bottom:1px solid rgba(222,255,154,0.08);color:var(--text-dim);font-weight:400">Key Prefix</th>' +
-      '<th style="text-align:left;padding:.4rem .5rem;border-bottom:1px solid rgba(222,255,154,0.08);color:var(--text-dim);font-weight:400">Created</th>' +
-      '<th style="text-align:left;padding:.4rem .5rem;border-bottom:1px solid rgba(222,255,154,0.08);color:var(--text-dim);font-weight:400">Last Used</th>' +
-      '<th style="padding:.4rem .5rem;border-bottom:1px solid rgba(222,255,154,0.08)"></th></tr></thead><tbody>' +
-      data.keys.map(k => '<tr>' +
-        '<td style="padding:.35rem .5rem;color:var(--text)">' + (k.label || "—") + '</td>' +
-        '<td style="padding:.35rem .5rem"><code style="color:var(--neon);font-size:.7rem">' + k.key_prefix + '</code></td>' +
-        '<td style="padding:.35rem .5rem;color:var(--text-dim)">' + new Date(k.created_at * 1000).toLocaleDateString() + '</td>' +
-        '<td style="padding:.35rem .5rem;color:var(--text-dim)">' + (k.last_used_at ? new Date(k.last_used_at * 1000).toLocaleDateString() : "Never") + '</td>' +
-        '<td style="padding:.35rem .5rem"><button class="btn btn-sm" style="background:rgba(255,107,107,0.1);color:var(--red);border:1px solid rgba(255,107,107,0.15);padding:.15rem .5rem;font-size:.65rem" onclick="revokeApiKey(' + k.id + ')">Revoke</button></td>' +
-      '</tr>').join("") + '</tbody></table>';
-  } catch(e) {
-    container.innerHTML = '<div style="color:var(--red);padding:.5rem">Error: ' + e.message + '</div>';
-  }
-};
-
-window.createApiKey = async function() {
-  const label = document.getElementById("apiKeyLabel").value.trim();
-  const resultDiv = document.getElementById("apiKeyResult");
-  const jwt = localStorage.getItem("aims_jwt");
-  if (!jwt) { toast("Not authenticated", "error"); return; }
-  try {
-    const resp = await fetch(API_BASE + "/api/auth/api-keys", {
-      method: "POST",
-      headers: jwtHeaders(),
-      body: JSON.stringify({ label }),
-    });
-    if (!resp.ok) { toast("Failed to create API key", "error"); return; }
-    const data = await resp.json();
-    resultDiv.innerHTML = '<div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.15);border-radius:6px;padding:.75rem;margin-bottom:.5rem">' +
-      '<div style="color:#34d399;font-weight:600;font-size:.75rem;margin-bottom:.35rem">✅ API Key Generated</div>' +
-      '<div style="font-size:.72rem;color:var(--text-dim);margin-bottom:.25rem">Copy this key now — it will not be shown again:</div>' +
-      '<div style="background:var(--bg);padding:.5rem;border-radius:4px;word-break:break-all;font-family:monospace;color:var(--neon);font-size:.72rem;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast(\'Copied!\',\'success\')">' + data.api_key + '</div>' +
-      '<div style="font-size:.65rem;color:var(--text-dim);margin-top:.35rem">Click to copy | Prefix: <code style="color:var(--neon)">' + data.key_prefix + '</code></div></div>';
-    document.getElementById("apiKeyLabel").value = "";
-    fetchApiKeys();
-  } catch(e) {
-    resultDiv.innerHTML = '<div style="color:var(--red);font-size:.75rem">Error: ' + e.message + '</div>';
-  }
-};
-
-window.revokeApiKey = async function(keyId) {
-  if (!confirm("Revoke this API key? It will stop working immediately.")) return;
-  const jwt = localStorage.getItem("aims_jwt");
-  if (!jwt) { toast("Not authenticated", "error"); return; }
-  try {
-    const resp = await fetch(API_BASE + "/api/auth/api-keys/" + keyId, {
-      method: "DELETE",
-      headers: jwtHeaders(),
-    });
-    if (resp.ok) {
-      toast("API key revoked", "success");
-      fetchApiKeys();
-    } else {
-      toast("Failed to revoke key", "error");
-    }
-  } catch(e) {
-    toast("Error: " + e.message, "error");
-  }
-};
-
-// Auto-connect if MetaMask already authorized
-if (typeof window.ethereum !== "undefined") {
-  window.ethereum.request({ method: "eth_accounts" }).then(accounts => {
-    if (accounts.length > 0) connectWallet();
-  }).catch(() => {});
-}
-
-// Listen for account changes
-if (typeof window.ethereum !== "undefined") {
-  window.ethereum.on("accountsChanged", (accounts) => {
-    if (accounts.length === 0) {
-      walletAddress = "";
-      document.getElementById("connectBtn").textContent = "Connect Wallet";
-      document.getElementById("connectBtn").classList.remove("connected");
-      document.getElementById("walletAddress").textContent = "";
-      document.getElementById("balanceDisplay").style.display = "none";
-      document.getElementById("trialBadge").style.display = "none";
-      toast("Wallet disconnected", "warn");
-    } else {
-      connectWallet();
-    }
-  });
-}
-
-// ── Page init: load skills & try wallet reconnect ─────────────────
-document.addEventListener("DOMContentLoaded", async function() {
-  try {
-    await fetchDiscovery();
-  } catch (e) {
-    console.warn("Page init — fetchDiscovery failed:", e.message);
-  }
-  // Pre-load API keys (will show "Not authenticated" if no JWT)
-  try {
-    await fetchApiKeys();
-  } catch (e) {
-    console.warn("Page init — fetchApiKeys skipped:", e.message);
-  }
-  // Auto-connect wallet if MetaMask already authorized
-  if (typeof window.ethereum !== "undefined") {
-    try {
-      const accounts = await window.ethereum.request({ method: "eth_accounts" });
-      if (accounts.length > 0) {
-        await connectWallet();
-      }
-    } catch (e) {
-      console.warn("Page init — wallet reconnect skipped:", e.message);
-    }
-  }
+// Fill CORS doc content and static text from docs-content.js on load
+document.addEventListener("DOMContentLoaded", function(){
+  const corsEl = document.getElementById("corsDocContent");
+  if (corsEl && typeof DOCS_CONTENT !== "undefined") corsEl.innerHTML = DOCS_CONTENT.corsSetup;
+  const tbt = document.getElementById("trialBannerText");
+  if (tbt && typeof DOCS_CONTENT !== "undefined") tbt.innerHTML = DOCS_CONTENT.trialBannerText;
+  const cdh = document.getElementById("consumerDashboardHint");
+  if (cdh && typeof DOCS_CONTENT !== "undefined") cdh.innerHTML = DOCS_CONTENT.consumerDashboardHint;
+  const ddh = document.getElementById("developerDashboardHint");
+  if (ddh && typeof DOCS_CONTENT !== "undefined") ddh.innerHTML = DOCS_CONTENT.developerDashboardHint;
+  const wdh = document.getElementById("workerDashboardHint");
+  if (wdh && typeof DOCS_CONTENT !== "undefined") wdh.innerHTML = DOCS_CONTENT.workerDashboardHint;
+  const cft = document.getElementById("commerceFreeTrialNote");
+  if (cft && typeof DOCS_CONTENT !== "undefined") cft.innerHTML = DOCS_CONTENT.freeTrialNote;
 });
 </script>
-
 </body>
 </html>

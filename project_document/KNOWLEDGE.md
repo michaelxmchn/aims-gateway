@@ -13,6 +13,13 @@
 - **商业动线设计**：用户通过 `/` 了解产品 → 点击 "Launch App" → 进入 `/console` 触发 JWT 检查 → 无令牌则重定向至 `/login` → 注册/登录后自动跳回 `/console`
 - **EXEMPT_PATHS 端点 JWT 自解析**：`/api/auth/me`、`/api/auth/api-keys` 等端点在 EXEMPT_PATHS 中，middleware 跳过后 `request.state.user_id` 不会设置。使用 `_get_jwt_user_id()` helper 自行从 Cookie 或 Authorization header 解析 JWT 获取 user_id
 
+### Console v2 三文件架构
+- **`static/console.html`**（~385 行）— 纯 HTML 骨架，无内联样式或脚本；引用 Tailwind CDN + 3 个外部文件；所有 `id` 属性与 JS 函数 DOM 查询匹配
+- **`static/css/console-v2.css`**（~297 行）— 全部样式提取；Stitch-inspired 黑暗青色主题（`#0f172a` 背景，`#deff9a` 荧光绿 accent）；玻璃拟态（`backdrop-filter`）；几何体字体栈
+- **`static/js/console-core.js`**（~1624 行）— 全部 50+ 个业务 JS 函数；`smartHeaders()` 统一鉴权（EIP-191 → JWT 降级）；vault 跨 Tab 保护（`_savedVaultTaskId`）；自动 `window.*` 暴露使内联 `onclick` 可用
+- **`static/js/docs-content.js`**（~44 行）— 平台文档文本（CORS 配置、dashboard 提示等）在 `DOCS_CONTENT` 全局对象中
+- **迁移原则**：`console.html` 保持纯骨架，所有逻辑在外部文件中，`DOMContentLoaded` 时填充文档文本
+
 ### Console DOM 元素空值防护
 - **`getElementById()` 可能返回 null**：当 HTML 元素在特定 Tab（如 Developer Tab）才渲染时，跨 Tab 调用的 JS 函数需先 null 检查再访问
 - **标准模式**：`const el = document.getElementById("xxx"); if (el) el.innerHTML = ...;` — 避免 `Cannot set properties of null (setting 'innerHTML')`

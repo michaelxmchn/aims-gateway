@@ -6,6 +6,8 @@
 > **提交规范**: 遵循 commitlint 规范（type(scope): subject）
 
 ## [2026-06-17]
+### 重构
+- refactor(console): `static/console.html` 从 2993 行压缩至 385 行（87% 缩减） — 提取全部 CSS 至 `static/css/console-v2.css`（297 行），提取全部 50 个 JS 函数至 `static/js/console-core.js`（1624 行），提取平台文档文本至 `static/js/docs-content.js`（44 行）；Stitch 玻璃拟态设计系统 + Tailwind CDN；vault 跨 Tab 保护保留；消除所有空 `catch` 块
 ### 修复
 - fix(console-syntax): `const net` 重复声明 + `invokeSkill()` 多余 `}` — 两个 SyntaxError 导致整个 `<script>` 块不执行，所有按钮点击无反应；第二个声明重命名为 `const currentNet`，删除多余闭合括号
 - fix(console-fallback): 5 个关键函数（`handleDeposit`/`rechargeReserves`/`withdrawFunds`/`fiatDeposit`/`sendHeartbeat`）追加 `smartHeaders(body)` JWT fallback — 无 MetaMask 时不再静默失败
