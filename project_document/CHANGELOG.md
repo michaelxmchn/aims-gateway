@@ -18,6 +18,8 @@
 - feat(settings-tab): `static/js/console-core.js` 新增 `loadUserProfile()`（自动加载用户信息至设置面板）、`saveProfile()`（PUT 更新 display_name）、`changePassword()`（POST 提交新旧密码，前后端双重 min_length=8 校验）— DOMContentLoaded 自动调用 `loadUserProfile()`
 - feat(settings-tab): `static/css/console-v2.css` — **无需修改**（复用现有 glass/card/input/btn 类）
 - feat(settings-tab): `scripts/qa_console_test.py` — 124/124 PASS，全量回归通过
+### 修复
+- fix(console-css): `.app` 缺少 `flex-direction: column` 导致 top-bar 与 dashboard-container 左右并排布局 — top-bar 仅占 754px（约半屏），dashboard-container 仅 680px，图表和卡片网格被挤窄。添加 `flex-direction: column` 后 top-bar 全宽 1434px 置顶，dashboard-container 全宽 1434px 堆叠其下
 ### 重构
 ### 重构
 - refactor(console-income-expense): `static/console.html` 从 4 Tab 侧边栏重构为 **5 Tab 收支分离布局**（Dashboard → Publish → Earn → Keys → Docs）— Publish（`currency_exchange` 图标）专用于支出（发布任务/充值/vault/加价），Earn（`payments` 图标）专用于收入（任务市场/Worker/接入/技能上传）；侧边栏通过图标+文案清晰区分收入与支出功能

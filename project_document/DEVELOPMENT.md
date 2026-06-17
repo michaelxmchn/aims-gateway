@@ -25,6 +25,7 @@
 - [x] **Settings Tab 用户设置中心** — 侧边栏 Keys → Settings（`settings` 图标），集中管理 Profile（邮箱/显示名/注册时间）、Password（修改密码表单）、Wallet（链接钱包显示+连接/切换）、API Keys（密钥管理+折叠使用说明）；后端新增 `change_password()` / `update_profile()` + `POST /api/auth/change-password` / `PUT /api/auth/update-profile` 端点；前端新增 `loadUserProfile()` / `saveProfile()` / `changePassword()` 函数；QA 124/124 PASS 回归
 - [x] **QA 全量联调测试脚本** — `scripts/qa_console_test.py` 124 个测试用例覆盖 4 个 Tab、52 个全局函数、DOM 元素存在性、静默 catch 审计、Console error 审计，通过率 100%
 - [x] **Console v2.1 Apple-style 全量改版** — `static/console.html` 778 行单页仪表盘架构，移除侧边栏和 Tab 面板，替换为 3 图表卡片（Revenue Line Chart + Task Flow Donut + System Health）+ 6 商业操作卡片（Publish/Skills/Market/Auth/Activity/Worker）+ 6 全功能模态框 + Advanced Dev Mode 右侧抽屉；Chart.js CDN 可视化；`static/css/console-v2.css` 扩展至 665 行（dashboard-grid/chart-card/stats-row/card-grid/drawer/modal-wide 布局类）；`static/js/console-core.js` 零修改（所有 DOM ID 保留在模态框/抽屉中）；QA 185/185 PASS 验证
+- [x] **fix(console-css): `.app` flex-direction 修复** — 根因：v2.1 移除侧边栏后 `.app` 的 `display:flex` 保持默认 `row` 方向，导致 top-bar 与 dashboard-container 左右并排（top-bar 754px + container 680px），页面被挤压。修复：`.app{display:flex;flex-direction:column;min-height:100vh}`
 - [x] **静默 catch 审计优化** — 上下文窗口从 8 行扩至 15 行，支持 DOM 错误显示模式（⚠️/offline/error），SSE 空 catch 添加 `console.warn`
 - [x] Phase 4: E2E 测试 — Hardhat 本地链完成 run_skill→claim→submit→on-chain settlement 全流程验证
 - [x] **Full Settlement Lifecycle 验证** — `scripts/full_settlement_test.py` 完整开发者注册 + 70/25/5 链上分账 + Worker/Developer PoT 领取全流程通过
