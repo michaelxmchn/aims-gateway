@@ -4,10 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AIMS Gateway Console v2</title>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Inter:wght@100..900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,0..200&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js"></script>
 <link rel="stylesheet" href="/static/css/console-v2.css">
 </head>
 <body>
+
+<!-- Toast Container -->
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Deposit Modal -->
@@ -40,331 +44,508 @@
   </div>
 </div>
 
+<!-- App Layout -->
 <div class="app">
-  <!-- Top Bar -->
-  <header class="topbar">
-    <div class="logo">AIMS Gateway <span>Console</span></div>
-    <nav class="top-nav" style="display:flex;gap:.75rem;align-items:center;font-size:.72rem;margin-left:1.5rem;flex:1">
-      <a href="/console" style="color:var(--neon);text-decoration:none;font-weight:600">Console</a>
-      <a href="/integration-docs" style="color:var(--text-dim);text-decoration:none">Integration</a>
-      <a href="/rules-and-docs" style="color:var(--text-dim);text-decoration:none">Rules</a>
-      <a href="/api/discovery" style="color:var(--text-dim);text-decoration:none">API</a>
+
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <h1>AIMS GATEWAY</h1>
+      <p>V1.0.4-ALPHA CONSOLE</p>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="sidebar-link active" data-tab="dashboard" onclick="switchSidebarTab('dashboard')">
+        <span class="material-symbols-outlined">dashboard</span> 全局大盘
+      </button>
+      <button class="sidebar-link" data-tab="mission" onclick="switchSidebarTab('mission')">
+        <span class="material-symbols-outlined">rocket_launch</span> 任务中心
+      </button>
+      <button class="sidebar-link" data-tab="security" onclick="switchSidebarTab('security')">
+        <span class="material-symbols-outlined">vpn_key</span> 密钥中心
+      </button>
+      <button class="sidebar-link" data-tab="docs" onclick="switchSidebarTab('docs')">
+        <span class="material-symbols-outlined">menu_book</span> 接入指南
+      </button>
     </nav>
-    <div class="wallet-area">
-      <span class="plg-badge" id="trialBadge" style="display:none">&#9733; 1 Free Trial / Skill</span>
-      <span class="network-badge ok" id="networkBadge">● Base L2</span>
-      <div class="wallet-bal" id="balanceDisplay" style="display:none">Balance: <span class="num" id="walletBalance">0.00</span> <span style="font-size:0.65rem;color:var(--text-dim)">USDC</span></div>
-      <span class="wallet-addr" id="walletAddress"></span>
-      <button class="wallet-btn" id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
-      <div class="social-btn-group">
+    <div class="sidebar-footer">
+      <button class="deploy-btn">
+        <span class="material-symbols-outlined" style="font-size:16px">add_circle</span> Deploy New Agent
+      </button>
+      <div class="footer-links">
+        <a><span class="material-symbols-outlined" style="font-size:16px">settings</span> Settings</a>
+        <a><span class="material-symbols-outlined" style="font-size:16px">contact_support</span> Support</a>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="main-content">
+
+    <!-- Top Bar -->
+    <header class="top-bar">
+      <div class="status-group">
+        <span class="status-dot online pulse-green" style="margin:0"></span>
+        <span class="status-text" id="networkBadge">● Base L2</span>
+        <span class="divider"></span>
+        <span class="meta-text">Block: <span id="healthBlock">—</span></span>
+        <span class="meta-text">Latency: <span id="healthPending">—</span></span>
+        <span class="divider"></span>
+        <span class="plg-badge" id="trialBadge" style="display:none">&#9733; 1 Free Trial / Skill</span>
+      </div>
+      <div class="wallet-group">
+        <div class="wallet-bal" id="balanceDisplay" style="display:none">Balance: <span class="num" id="walletBalance">0.00</span> <span style="font-size:0.65rem;color:var(--text-dim)">USDC</span></div>
+        <span class="wallet-addr" id="walletAddress"></span>
+        <button class="wallet-btn" id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
         <button class="social-btn-sm" onclick="toast('Social login coming soon — use MetaMask','info')"><svg viewBox="0 0 24 24" fill="none" style="width:12px;height:12px"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg> Google <span class="cs">Soon</span></button>
         <button class="social-btn-sm" onclick="toast('Social login coming soon — use MetaMask','info')"><svg viewBox="0 0 24 24" fill="currentColor" style="width:12px;height:12px"><path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/></svg> Apple <span class="cs">Soon</span></button>
+        <button class="btn btn-sm btn-ghost" style="padding:0.35rem 0.5rem"><span class="material-symbols-outlined" style="font-size:18px">settings</span></button>
       </div>
-    </div>
-  </header>
+    </header>
 
-  <!-- Pipeline -->
-  <div class="card" style="padding:0.75rem 1.25rem">
-    <div class="card-header" style="margin-bottom:0.5rem"><span class="card-title"><span class="icon">⛓️</span> AIMS Execution Pipeline</span><span id="pipelineStatus" style="font-size:0.7rem;color:var(--text-dim)">Idle</span></div>
-    <div class="pipeline" id="pipeline">
-      <div class="pipeline-step" data-step="0"><div class="circle">①</div><span class="label">Auth</span></div><span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="1"><div class="circle">②</div><span class="label">Free Trial Check</span></div><span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="2"><div class="circle">③</div><span class="label">Balance Check</span></div><span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="3"><div class="circle">④</div><span class="label">Execute Task</span></div><span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="4"><div class="circle">⑤</div><span class="label">Proof of Task</span></div><span class="pipeline-arrow">▸</span>
-      <div class="pipeline-step" data-step="5"><div class="circle">⑥</div><span class="label">Settle 70/25/5</span></div>
-    </div>
-  </div>
+    <!-- Content Area -->
+    <div class="content-area">
 
-  <!-- Role Tabs -->
-  <div class="role-tabs">
-    <button class="role-tab active" data-role="consumer" onclick="switchRole('consumer')">🛒 Consumer <span class="badge">Run Skills</span></button>
-    <button class="role-tab" data-role="developer" onclick="switchRole('developer')">🔧 Developer <span class="badge">70% Revenue</span></button>
-    <button class="role-tab" data-role="worker" onclick="switchRole('worker')">⚡ Worker <span class="badge">25% Commission</span></button>
-  </div>
+      <!-- ════════════════════════════════════════════════════════
+           TAB: DASHBOARD (全局大盘)
+           Contains: Consumer + System content
+           ════════════════════════════════════════════════════════ -->
+      <section class="tab-panel active" id="tab-dashboard">
 
-  <!-- CONSUMER TAB -->
-  <div class="tab-content active" id="tab-consumer">
-    <div class="role-header"><div class="avatar consumer">🛒</div><div class="info"><h3>Consumer Dashboard</h3><p id="consumerDashboardHint">Invoke AI skills with your wallet</p></div></div>
-
-    <div class="card" style="border-color:rgba(52,211,153,0.15)">
-      <div class="card-header"><span class="card-title">🎁 Free Trial Status</span><span id="trialStatusBadge" class="plg-badge active">&#9733; PLG Enabled</span></div>
-      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
-        <div class="stat"><span class="stat-label">Remaining Trials</span><span class="stat-value" style="color:#34d399" id="trialsLeftEnhanced">—</span></div>
-        <div style="flex:1;min-width:200px">
-          <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-dim);margin-bottom:0.25rem"><span>Trial Usage</span><span id="trialProgressText">0 / 0 Skills used</span></div>
-          <div class="gas-meter"><div class="fill" id="trialProgressBar" style="width:0%;background:linear-gradient(90deg,#34d399,#22c55e)"></div></div>
-        </div>
-        <div style="font-size:0.72rem;color:var(--text-dim);max-width:300px;line-height:1.5" id="trialBannerText"></div>
-      </div>
-    </div>
-
-    <div class="grid-2">
-      <div class="card">
-        <div class="card-header"><span class="card-title">💰 Account</span><button class="btn btn-sm btn-outline" onclick="refreshBalance()">⟳ Refresh</button></div>
-        <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
-          <div class="stat"><span class="stat-label">Available Balance</span><span class="stat-value neon" id="consumerBalance">— <span class="unit">USDC</span></span></div>
-          <div class="stat"><span class="stat-label">Total Deposited</span><span class="stat-value" id="consumerDeposited">— <span class="unit">USDC</span></span></div>
-          <div class="stat"><span class="stat-label">Tasks Executed</span><span class="stat-value" id="consumerTasks">0</span></div>
-          <div class="stat"><span class="stat-label">Free Trials Left</span><span class="stat-value" style="color:#34d399" id="trialsLeft">— <span class="unit">/ Skills</span></span></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-header"><span class="card-title">🚀 Invoke Skill</span></div>
-        <form onsubmit="invokeSkill(event)" style="display:flex;flex-direction:column;gap:0.75rem">
-          <div style="display:flex;gap:0.75rem">
-            <select class="input" id="skillSelect" required style="flex:1"><option value="">— Select a skill —</option></select>
-            <select class="input" id="billingMode" style="width:160px;flex-shrink:0"><option value="pay_per_task">⚡ Metered</option><option value="trial" selected>🎁 Free Trial (1st)</option></select>
-          </div>
-          <input class="input" id="skillParams" placeholder='Params JSON' value='{"url":"https://example.com"}'>
-          <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
-            <input class="input" id="workerAddr" placeholder="Worker address" style="flex:1" value="0x70997970C51812dc3A010C7d01b50e0d17dc79C8">
-            <input class="input" id="devAddr" placeholder="Developer address" style="flex:1" value="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266">
-          </div>
-          <div style="display:flex;gap:0.75rem">
-            <button class="btn btn-neon" id="invokeBtn" type="submit" style="flex:1">▶ Execute &amp; Settle</button>
-            <button class="btn btn-sm btn-plg" id="trialBtn" type="button" onclick="document.getElementById('billingMode').value='trial'">🎁 Free</button>
-          </div>
-        </form>
-      </div>
-    </div>
-
-    <div class="card" style="border-color:rgba(251,191,36,0.1)">
-      <div class="card-header"><span class="card-title">🛡️ Credit Score</span><span id="creditLevelBadge" style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600">—</span></div>
-      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
-        <div class="stat"><span class="stat-label">Score</span><span class="stat-value neon" id="creditScoreDisplay">—</span></div>
-        <div style="flex:1;min-width:150px"><div style="position:relative;height:8px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden"><div class="fill" id="creditScoreBar" style="height:100%;border-radius:4px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e)"></div></div></div>
-        <button class="btn btn-sm btn-ghost" onclick="fetchCreditScore()">⟳ Refresh</button>
-      </div>
-    </div>
-
-    <div class="card" style="border-color:rgba(167,139,250,0.15)">
-      <div class="card-header"><span class="card-title">🚀 Publish Task</span></div>
-      <form onsubmit="publishTask(event)" style="display:flex;flex-direction:column;gap:0.75rem">
-        <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
-          <input class="input" id="pubTaskName" placeholder="Task name" required style="flex:2">
-          <input class="input" id="pubBudget" type="number" step="0.01" min="0.05" placeholder="Budget (USDC)" required style="flex:1" value="2.0">
-        </div>
-        <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center">
-          <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.78rem;color:var(--text-dim);cursor:pointer"><input type="checkbox" id="pubIsCustom" onchange="toggleCreditReq()"> 🔒 Custom Task</label>
-          <div id="creditReqGroup" style="display:none;align-items:center;gap:0.5rem"><span style="font-size:0.72rem;color:var(--text-dim)">Min credit:</span><input class="input" id="pubCreditReq" type="number" min="0" max="100" value="90" style="width:80px"></div>
-          <select class="input" id="pubSkillSelect" required style="flex:1;min-width:150px"><option value="">— Select skill —</option></select>
-        </div>
-        <textarea class="input" id="pubDescription" placeholder="Description" rows="2" style="resize:vertical;min-height:50px"></textarea>
-        <button class="btn btn-neon" id="publishBtn" type="submit" style="flex:1">📤 Publish to Task Market</button>
-      </form>
-      <div id="publishResult" style="margin-top:0.5rem;font-size:0.75rem;color:var(--text-dim)"></div>
-      <div id="vaultPanel" class="vault-panel" style="display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--neon);font-weight:700;font-size:.8rem">📱 Task Vault</span><span id="vaultStatusBadge" style="font-size:.65rem;padding:.15rem .5rem;border-radius:4px;background:rgba(148,163,184,0.1);color:var(--text-dim);border:1px solid var(--border)">UNFUNDED</span></div>
-        <div class="vp-row"><span class="vp-label">Vault Address</span><span class="vp-value neon" id="vaultAddressDisplay">—</span></div>
-        <div class="vp-row"><span class="vp-label">Task ID</span><span class="vp-value" id="vaultTaskIdDisplay">—</span></div>
-        <div class="vp-row"><span class="vp-label">Balance</span><span class="vp-value" id="vaultBalanceDisplay">0.00 USDC</span></div>
-        <div class="qr-mock" id="qrMockPanel"><div class="qr-box">SCAN TO PAY</div><div class="qr-info"><strong>Scan to Pay</strong><br>Stripe · Credit Card · QR</div></div>
-        <div style="display:flex;gap:.75rem;margin-top:.5rem;flex-wrap:wrap">
-          <button class="btn btn-sm fiat-deposit-btn" onclick="simulateVaultPayment()" id="vaultPayBtn">💳 Simulate Payment</button>
-          <button class="btn btn-sm btn-ghost" onclick="pollVaultStatus()" id="vaultPollBtn">⟳ Check Status</button>
-          <span style="font-size:.65rem;color:var(--text-dim);align-self:center" id="vaultPollResult"></span>
-        </div>
-        <div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)" id="boostSection">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--amber);font-weight:600;font-size:.8rem">⚡ Boost Reward</span><span id="boostTotalDisplay" style="font-size:.65rem;color:var(--text-dim)">Total boosted: 0.00 USDC</span></div>
-          <div style="display:flex;gap:.5rem;align-items:center">
-            <input class="input" id="boostAmount" type="number" step="0.01" min="0.05" placeholder="Amount" style="width:150px" value="0.5">
-            <button class="btn btn-sm withdraw-btn" onclick="boostReward()" id="boostBtn" disabled>⚡ Boost</button><span id="boostResult" style="font-size:.65rem;color:var(--text-dim)"></span>
+        <!-- Pipeline -->
+        <div class="glass" style="padding:0.75rem 1.25rem;margin-bottom:1.25rem">
+          <div class="card-header" style="margin-bottom:0.5rem"><span class="card-title"><span class="icon">⛓️</span> AIMS Execution Pipeline</span><span id="pipelineStatus" style="font-size:0.7rem;color:var(--text-dim)">Idle</span></div>
+          <div class="pipeline" id="pipeline" style="padding:0.75rem;background:rgba(10,15,29,0.4)">
+            <div class="pipeline-step" data-step="0"><div class="circle">①</div><span class="label">Auth</span></div><span class="pipeline-arrow">▸</span>
+            <div class="pipeline-step" data-step="1"><div class="circle">②</div><span class="label">Free Trial Check</span></div><span class="pipeline-arrow">▸</span>
+            <div class="pipeline-step" data-step="2"><div class="circle">③</div><span class="label">Balance Check</span></div><span class="pipeline-arrow">▸</span>
+            <div class="pipeline-step" data-step="3"><div class="circle">④</div><span class="label">Execute Task</span></div><span class="pipeline-arrow">▸</span>
+            <div class="pipeline-step" data-step="4"><div class="circle">⑤</div><span class="label">Proof of Task</span></div><span class="pipeline-arrow">▸</span>
+            <div class="pipeline-step" data-step="5"><div class="circle">⑥</div><span class="label">Settle 70/25/5</span></div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <div class="card" id="commercePanel">
-      <div class="card-header"><span class="card-title">💳 Commerce Mode</span><span id="currentBillingModeDisplay" style="font-size:0.7rem;padding:0.2rem 0.6rem;border-radius:4px;background:var(--neon-glow);color:var(--neon)">Metered</span></div>
-      <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
-        <div style="display:flex;gap:0.5rem"><button class="btn btn-sm btn-outline active" data-mode="pay_per_task" onclick="switchBillingMode('pay_per_task')">⚡ Metered</button><button class="btn btn-sm btn-outline" data-mode="trial" onclick="switchBillingMode('trial')">🎁 Free Trial</button></div>
-        <button class="btn btn-sm btn-plg" onclick="openBuyoutModal()">🔒 Buyout License</button>
-      </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border);font-size:0.75rem"><span style="color:var(--text-dim)" id="commerceModeDesc">Pay per successful invocation.</span><span style="color:var(--neon-dim);font-size:0.7rem" id="commerceFreeTrialNote">✓ Free trial available</span></div>
-    </div>
-
-    <div class="card">
-      <div class="card-header"><span class="card-title">📋 Activity Log</span><button class="btn btn-sm btn-ghost" onclick="clearLog()">Clear</button></div>
-      <div class="log-feed" id="consumerLog"><div class="log-entry info"><span class="time">—</span><span class="msg">Connect wallet to begin. <strong style="color:#34d399">First task free!</strong></span></div></div>
-    </div>
-
-    <div class="card" style="border-color:rgba(222,255,154,0.1)">
-      <div class="card-header"><span class="card-title">💰 Recharge</span></div>
-      <div style="flex:1;min-width:200px">
-        <div class="recharge-grid">
-          <button class="recharge-amt" onclick="rechargeReserves(10)">10 <span class="currency">USDC</span></button>
-          <button class="recharge-amt" onclick="rechargeReserves(25)">25 <span class="currency">USDC</span></button>
-          <button class="recharge-amt" onclick="rechargeReserves(50)" style="border-color:var(--neon)">50 <span class="currency">USDC ★</span></button>
-          <button class="recharge-amt" onclick="rechargeReserves(100)">100 <span class="currency">USDC</span></button>
-          <button class="recharge-amt" onclick="rechargeReserves(250)">250 <span class="currency">USDC</span></button>
-          <button class="recharge-amt" onclick="rechargeReserves(500)">500 <span class="currency">USDC</span></button>
+        <!-- Role Tabs (legacy — hidden but preserved for switchRole compatibility) -->
+        <div class="role-tabs" style="display:none">
+          <button class="role-tab active" data-role="consumer" onclick="switchRole('consumer')">🛒 Consumer</button>
+          <button class="role-tab" data-role="developer" onclick="switchRole('developer')">🔧 Developer</button>
+          <button class="role-tab" data-role="worker" onclick="switchRole('worker')">⚡ Worker</button>
         </div>
-        <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap">
-          <input class="input" id="customRechargeAmt" type="number" placeholder="Custom" min="1" style="width:100px">
-          <button class="btn btn-sm btn-neon" onclick="rechargeReserves(parseFloat(document.getElementById('customRechargeAmt').value))">Deposit</button>
-          <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(25)">💳 $25 Card</button>
-          <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(50)">💳 $50 Card</button>
-          <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(100)">💳 $100 Card</button>
+        <div class="tab-content active" id="tab-consumer" style="display:none"></div>
+        <div class="tab-content" id="tab-developer" style="display:none"></div>
+        <div class="tab-content" id="tab-worker" style="display:none"></div>
+
+        <!-- Free Trial Status -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(52,211,153,0.15)">
+          <div class="card-header"><span class="card-title">🎁 Free Trial Status</span><span id="trialStatusBadge" class="plg-badge active">&#9733; PLG Enabled</span></div>
+          <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
+            <div class="stat"><span class="stat-label">Remaining Trials</span><span class="stat-value" style="color:#34d399" id="trialsLeftEnhanced">—</span></div>
+            <div style="flex:1;min-width:200px">
+              <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-dim);margin-bottom:0.25rem"><span>Trial Usage</span><span id="trialProgressText">0 / 0 Skills used</span></div>
+              <div class="gas-meter"><div class="fill" id="trialProgressBar" style="width:0%;background:linear-gradient(90deg,#34d399,#22c55e)"></div></div>
+            </div>
+            <div style="font-size:0.72rem;color:var(--text-dim);max-width:300px;line-height:1.5" id="trialBannerText"></div>
+          </div>
         </div>
-        <div class="withdraw-row">
-          <span style="font-size:.75rem;color:var(--text-dim)">Withdraw:</span>
-          <input class="input" id="withdrawAmt" type="number" placeholder="Amount" min="1" value="10" style="width:100px">
-          <button class="btn btn-sm withdraw-btn" onclick="withdrawFunds()">💸 Withdraw</button>
+
+        <!-- Account + Invoke Skill -->
+        <div class="grid-2" style="margin-bottom:1.25rem">
+          <div class="card">
+            <div class="card-header"><span class="card-title">💰 Account</span><button class="btn btn-sm btn-outline" onclick="refreshBalance()">⟳ Refresh</button></div>
+            <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
+              <div class="stat"><span class="stat-label">Available Balance</span><span class="stat-value neon" id="consumerBalance">— <span class="unit">USDC</span></span></div>
+              <div class="stat"><span class="stat-label">Total Deposited</span><span class="stat-value" id="consumerDeposited">— <span class="unit">USDC</span></span></div>
+              <div class="stat"><span class="stat-label">Tasks Executed</span><span class="stat-value" id="consumerTasks">0</span></div>
+              <div class="stat"><span class="stat-label">Free Trials Left</span><span class="stat-value" style="color:#34d399" id="trialsLeft">— <span class="unit">/ Skills</span></span></div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="card-header"><span class="card-title">🚀 Invoke Skill</span></div>
+            <form onsubmit="invokeSkill(event)" style="display:flex;flex-direction:column;gap:0.75rem">
+              <div style="display:flex;gap:0.75rem">
+                <select class="input" id="skillSelect" required style="flex:1"><option value="">— Select a skill —</option></select>
+                <select class="input" id="billingMode" style="width:160px;flex-shrink:0"><option value="pay_per_task">⚡ Metered</option><option value="trial" selected>🎁 Free Trial (1st)</option></select>
+              </div>
+              <input class="input" id="skillParams" placeholder='Params JSON' value='{"url":"https://example.com"}'>
+              <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+                <input class="input" id="workerAddr" placeholder="Worker address" style="flex:1" value="0x70997970C51812dc3A010C7d01b50e0d17dc79C8">
+                <input class="input" id="devAddr" placeholder="Developer address" style="flex:1" value="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266">
+              </div>
+              <div style="display:flex;gap:0.75rem">
+                <button class="btn btn-neon" id="invokeBtn" type="submit" style="flex:1">▶ Execute &amp; Settle</button>
+                <button class="btn btn-sm btn-plg" id="trialBtn" type="button" onclick="document.getElementById('billingMode').value='trial'">🎁 Free</button>
+              </div>
+            </form>
+          </div>
+        </div>
+
+        <!-- Credit Score -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(251,191,36,0.1)">
+          <div class="card-header"><span class="card-title">🛡️ Credit Score</span><span id="creditLevelBadge" style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600">—</span></div>
+          <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
+            <div class="stat"><span class="stat-label">Score</span><span class="stat-value neon" id="creditScoreDisplay">—</span></div>
+            <div style="flex:1;min-width:150px"><div style="position:relative;height:8px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden"><div class="fill" id="creditScoreBar" style="height:100%;border-radius:4px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e)"></div></div></div>
+            <button class="btn btn-sm btn-ghost" onclick="fetchCreditScore()">⟳ Refresh</button>
+          </div>
+        </div>
+
+        <!-- Publish Task + Vault -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(167,139,250,0.15)">
+          <div class="card-header"><span class="card-title">🚀 Publish Task</span></div>
+          <form onsubmit="publishTask(event)" style="display:flex;flex-direction:column;gap:0.75rem">
+            <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+              <input class="input" id="pubTaskName" placeholder="Task name" required style="flex:2">
+              <input class="input" id="pubBudget" type="number" step="0.01" min="0.05" placeholder="Budget (USDC)" required style="flex:1" value="2.0">
+            </div>
+            <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center">
+              <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.78rem;color:var(--text-dim);cursor:pointer"><input type="checkbox" id="pubIsCustom" onchange="toggleCreditReq()"> 🔒 Custom Task</label>
+              <div id="creditReqGroup" style="display:none;align-items:center;gap:0.5rem"><span style="font-size:0.72rem;color:var(--text-dim)">Min credit:</span><input class="input" id="pubCreditReq" type="number" min="0" max="100" value="90" style="width:80px"></div>
+              <select class="input" id="pubSkillSelect" required style="flex:1;min-width:150px"><option value="">— Select skill —</option></select>
+            </div>
+            <textarea class="input" id="pubDescription" placeholder="Description" rows="2" style="resize:vertical;min-height:50px"></textarea>
+            <button class="btn btn-neon" id="publishBtn" type="submit" style="flex:1">📤 Publish to Task Market</button>
+          </form>
+          <div id="publishResult" style="margin-top:0.5rem;font-size:0.75rem;color:var(--text-dim)"></div>
+          <div id="vaultPanel" class="vault-panel" style="display:none">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--neon);font-weight:700;font-size:.8rem">📱 Task Vault</span><span id="vaultStatusBadge" style="font-size:.65rem;padding:.15rem .5rem;border-radius:4px;background:rgba(148,163,184,0.1);color:var(--text-dim);border:1px solid var(--border)">UNFUNDED</span></div>
+            <div class="vp-row"><span class="vp-label">Vault Address</span><span class="vp-value neon" id="vaultAddressDisplay">—</span></div>
+            <div class="vp-row"><span class="vp-label">Task ID</span><span class="vp-value" id="vaultTaskIdDisplay">—</span></div>
+            <div class="vp-row"><span class="vp-label">Balance</span><span class="vp-value" id="vaultBalanceDisplay">0.00 USDC</span></div>
+            <div class="qr-mock" id="qrMockPanel"><div class="qr-box">SCAN TO PAY</div><div class="qr-info"><strong>Scan to Pay</strong><br>Stripe · Credit Card · QR</div></div>
+            <div style="display:flex;gap:.75rem;margin-top:.5rem;flex-wrap:wrap">
+              <button class="btn btn-sm fiat-deposit-btn" onclick="simulateVaultPayment()" id="vaultPayBtn">💳 Simulate Payment</button>
+              <button class="btn btn-sm btn-ghost" onclick="pollVaultStatus()" id="vaultPollBtn">⟳ Check Status</button>
+              <span style="font-size:.65rem;color:var(--text-dim);align-self:center" id="vaultPollResult"></span>
+            </div>
+            <div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)" id="boostSection">
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--amber);font-weight:600;font-size:.8rem">⚡ Boost Reward</span><span id="boostTotalDisplay" style="font-size:.65rem;color:var(--text-dim)">Total boosted: 0.00 USDC</span></div>
+              <div style="display:flex;gap:.5rem;align-items:center">
+                <input class="input" id="boostAmount" type="number" step="0.01" min="0.05" placeholder="Amount" style="width:150px" value="0.5">
+                <button class="btn btn-sm withdraw-btn" onclick="boostReward()" id="boostBtn" disabled>⚡ Boost</button><span id="boostResult" style="font-size:.65rem;color:var(--text-dim)"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Commerce Mode -->
+        <div class="card" id="commercePanel" style="margin-bottom:1.25rem">
+          <div class="card-header"><span class="card-title">💳 Commerce Mode</span><span id="currentBillingModeDisplay" style="font-size:0.7rem;padding:0.2rem 0.6rem;border-radius:4px;background:var(--neon-glow);color:var(--neon)">Metered</span></div>
+          <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
+            <div style="display:flex;gap:0.5rem"><button class="btn btn-sm btn-outline active" data-mode="pay_per_task" onclick="switchBillingMode('pay_per_task')">⚡ Metered</button><button class="btn btn-sm btn-outline" data-mode="trial" onclick="switchBillingMode('trial')">🎁 Free Trial</button></div>
+            <button class="btn btn-sm btn-plg" onclick="openBuyoutModal()">🔒 Buyout License</button>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border);font-size:0.75rem"><span style="color:var(--text-dim)" id="commerceModeDesc">Pay per successful invocation.</span><span style="color:var(--neon-dim);font-size:0.7rem" id="commerceFreeTrialNote">✓ Free trial available</span></div>
+        </div>
+
+        <!-- Activity Log -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem">
+          <div class="card-header"><span class="card-title">📋 Activity Log</span><button class="btn btn-sm btn-ghost" onclick="clearLog()">Clear</button></div>
+          <div class="log-feed" id="consumerLog"><div class="log-entry info"><span class="time">—</span><span class="msg">Connect wallet to begin. <strong style="color:#34d399">First task free!</strong></span></div></div>
+        </div>
+
+        <!-- Recharge -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(222,255,154,0.1)">
+          <div class="card-header"><span class="card-title">💰 Recharge</span></div>
+          <div style="flex:1;min-width:200px">
+            <div class="recharge-grid">
+              <button class="recharge-amt" onclick="rechargeReserves(10)">10 <span class="currency">USDC</span></button>
+              <button class="recharge-amt" onclick="rechargeReserves(25)">25 <span class="currency">USDC</span></button>
+              <button class="recharge-amt" onclick="rechargeReserves(50)" style="border-color:var(--neon)">50 <span class="currency">USDC ★</span></button>
+              <button class="recharge-amt" onclick="rechargeReserves(100)">100 <span class="currency">USDC</span></button>
+              <button class="recharge-amt" onclick="rechargeReserves(250)">250 <span class="currency">USDC</span></button>
+              <button class="recharge-amt" onclick="rechargeReserves(500)">500 <span class="currency">USDC</span></button>
+            </div>
+            <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap">
+              <input class="input" id="customRechargeAmt" type="number" placeholder="Custom" min="1" style="width:100px">
+              <button class="btn btn-sm btn-neon" onclick="rechargeReserves(parseFloat(document.getElementById('customRechargeAmt').value))">Deposit</button>
+              <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(25)">💳 $25 Card</button>
+              <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(50)">💳 $50 Card</button>
+              <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(100)">💳 $100 Card</button>
+            </div>
+            <div class="withdraw-row">
+              <span style="font-size:.75rem;color:var(--text-dim)">Withdraw:</span>
+              <input class="input" id="withdrawAmt" type="number" placeholder="Amount" min="1" value="10" style="width:100px">
+              <button class="btn btn-sm withdraw-btn" onclick="withdrawFunds()">💸 Withdraw</button>
+            </div>
+          </div>
+          <div style="flex:1;min-width:200px;font-size:.78rem;color:var(--text-dim);line-height:1.6;margin-top:.75rem">
+            <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)"><span>Available</span><span class="stat-value neon" style="font-size:1rem" id="rechargeBalance">0.00 USDC</span></div>
+            <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)"><span>Total Deposited</span><span id="rechargeTotal" style="color:#fff;font-weight:600">0.00 USDC</span></div>
+            <div style="display:flex;justify-content:space-between;padding:.35rem 0"><span>Contract</span><span style="color:var(--text-dim);font-size:.65rem;word-break:break-all" id="rechargeContract">—</span></div>
+          </div>
+        </div>
+
+        <!-- Audit Ledger -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(96,165,250,0.1)">
+          <div class="card-header"><span class="card-title">📜 Audit Ledger</span><div style="display:flex;gap:.35rem"><button class="btn btn-sm btn-ghost" onclick="fetchAudit('')">All</button><button class="btn btn-sm btn-ghost" onclick="fetchAudit('settle')">Settlements</button><button class="btn btn-sm btn-ghost" onclick="fetchAudit('refund')">Refunds</button></div></div>
+          <div class="audit-filter"><input class="input" id="auditTaskFilter" placeholder="Filter by task ID…" style="max-width:200px"><button class="btn btn-sm btn-outline" onclick="fetchAudit(document.getElementById('auditTaskFilter').value.trim())">Search</button><button class="btn btn-sm btn-ghost" onclick="fetchHealth();refreshBalance()">⟳ Refresh</button></div>
+          <div class="audit-table" id="auditLedgerBody"><div class="empty-state"><div class="big-icon">📜</div>Connect wallet to see audit trail</div></div>
+        </div>
+
+        <!-- User History -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(222,255,154,0.1)">
+          <div class="card-header"><span class="card-title">📋 User History</span><div style="display:flex;gap:.35rem"><button class="btn btn-sm btn-ghost" onclick="fetchHistory('')">All</button><button class="btn btn-sm btn-ghost" onclick="fetchHistory('deposit')">Deposits</button><button class="btn btn-sm btn-ghost" onclick="fetchHistory('withdraw')">Withdrawals</button></div></div>
+          <div style="display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap"><button class="btn btn-sm btn-outline" onclick="fetchHistory('')">⟳ Refresh</button></div>
+          <div class="history-table" id="userHistoryBody"><div class="empty-state"><div class="big-icon">📋</div>Connect wallet to see history</div></div>
+        </div>
+
+        <!-- System Stats: Health + Skills + Config -->
+        <div class="grid-3" style="margin-bottom:1.25rem">
+          <div class="card"><div class="card-header"><span class="card-title">🏥 Network Health</span></div>
+            <div id="healthContent" style="font-size:0.78rem">
+              <div><span style="color:var(--text-dim)">Status:</span> <span id="healthStatus" style="color:#22c55e;font-weight:600">—</span></div>
+              <div><span style="color:var(--text-dim)">Block:</span> <span id="healthBlock">—</span></div>
+              <div><span style="color:var(--text-dim)">Pending:</span> <span id="healthPending">—</span></div>
+              <div><span style="color:var(--text-dim)">Succeeded:</span> <span id="healthSucceeded">—</span></div>
+              <div><span style="color:var(--text-dim)">Workers:</span> <span id="healthWorkers">—</span></div>
+              <div><span style="color:var(--text-dim)">Treasury:</span> <span id="healthTreasury">—</span></div>
+            </div>
+            <button class="btn btn-sm btn-ghost" onclick="fetchHealth()">⟳ Refresh</button>
+          </div>
+          <div class="card"><div class="card-header"><span class="card-title">🧩 Skills</span></div><div id="skillsContent" style="max-height:200px;overflow-y:auto"><div class="empty-state">Connect to load</div></div><button class="btn btn-sm btn-ghost" onclick="fetchDiscovery()">⟳ Refresh</button></div>
+          <div class="card"><div class="card-header"><span class="card-title">⚙️ Config</span></div>
+            <div style="font-size:0.78rem"><div><span style="color:var(--text-dim)">API:</span> <span id="cfgApiBase" style="color:var(--neon)"></span></div>
+            <div><span style="color:var(--text-dim)">Wallet:</span> <span id="cfgWallet">—</span></div>
+            <div><span style="color:var(--text-dim)">Network:</span> <span id="cfgNetwork">—</span></div>
+            <div><span style="color:var(--text-dim)">Free Trial:</span> <span id="cfgTrial" style="color:#34d399">1 per Skill</span></div></div>
+          </div>
+        </div>
+
+        <!-- Settlement Feed -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(34,197,94,0.1)">
+          <div class="card-header"><span class="card-title" style="color:#22c55e">⚡ Live Settlement Feed</span>
+            <div style="display:flex;gap:.75rem;font-size:.7rem;color:var(--text-dim)">
+              <span>Settled: <strong style="color:var(--neon)" id="consoleFeedCount">0</strong></span>
+              <span>Vol: <strong style="color:#a78bfa" id="consoleFeedVol">0.00</strong></span>
+              <span style="display:inline-flex;align-items:center;gap:.3rem;padding:.15rem .4rem;background:rgba(34,197,94,0.08);border-radius:3px;font-size:.6rem;color:#22c55e"><span style="display:inline-block;width:4px;height:4px;border-radius:50%;background:#22c55e;animation:pulse 1.5s infinite"></span>LIVE</span>
+            </div>
+          </div>
+          <div class="feed-console" id="consoleFeed"><div style="text-align:center;padding:2rem;color:var(--text-dim)">⏳ Connecting to stream…</div></div>
+        </div>
+
+        <!-- CORS Docs -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:var(--neon-dim)">
+          <div class="card-header"><span class="card-title" style="color:var(--neon)">🔌 CORS Setup</span></div>
+          <div style="font-size:0.78rem;line-height:1.7;color:var(--text-dim)" id="corsDocContent"></div>
+        </div>
+
+      </section>
+
+      <!-- ════════════════════════════════════════════════════════
+           TAB: MISSION (任务中心)
+           Contains: Developer + Worker content
+           ════════════════════════════════════════════════════════ -->
+      <section class="tab-panel" id="tab-mission">
+
+        <!-- Developer Dashboard Stats -->
+        <div class="grid-3" style="margin-bottom:1.25rem">
+          <div class="card"><div class="card-header"><span class="card-title">📦 Skills</span></div><div class="stat"><span class="stat-label">Registered</span><span class="stat-value" id="devSkillCount">—</span></div><div style="margin-top:0.75rem" id="devSkillList"></div></div>
+          <div class="card"><div class="card-header"><span class="card-title">💎 Revenue (70%)</span></div><div class="stat"><span class="stat-label">Cumulative</span><span class="stat-value neon" id="devRevenue">— <span class="unit">USDC</span></span></div><div class="gas-meter"><div class="fill" id="devRevenueMeter" style="width:0%"></div></div></div>
+          <div class="card"><div class="card-header"><span class="card-title">🛡️ Credit</span></div><div class="stat"><span class="stat-label">Score</span><span class="stat-value neon" id="devCreditScore">—</span></div><div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;margin-top:.5rem"><div class="fill" id="devCreditScoreBar" style="height:100%;border-radius:3px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e)"></div></div><span style="font-size:0.6rem;color:var(--text-dim)" id="devCreditLevel">—</span></div>
+        </div>
+
+        <!-- One-Click Integration -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(167,139,250,0.15)">
+          <div class="card-header"><span class="card-title">🔗 One-Click Integration</span></div>
+          <form onsubmit="oneClickIntegrate(event)" style="display:flex;flex-direction:column;gap:.75rem">
+            <div class="integrate-row">
+              <input class="input" id="integrateInput" placeholder="Skill name or API URL" required>
+              <input class="input" id="integrateWallet" placeholder="Your wallet (0x...)" style="flex:0.6;min-width:280px" value="">
+            </div>
+            <div style="display:flex;gap:.75rem;align-items:center">
+              <button class="btn btn-neon" type="submit" id="integrateBtn">🔗 Integrate</button>
+              <span style="font-size:0.65rem;color:var(--text-dim)" id="integrateCount">Mapped: —</span>
+              <button class="btn btn-sm btn-ghost" type="button" onclick="fetchIntegrationStatus()">⟳ Refresh</button>
+            </div>
+          </form>
+          <div id="integrateResult"></div>
+          <!-- Co-Contributors -->
+          <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--neon);font-weight:600;font-size:.8rem">👥 Co-Contributors</span></div>
+            <div id="coContribList"></div>
+            <div style="display:flex;gap:.5rem;margin-top:.5rem;align-items:center;flex-wrap:wrap">
+              <button class="btn btn-sm btn-ghost" onclick="addContributorRow()">+ Add</button>
+              <button class="btn btn-sm btn-outline" onclick="saveContributors()">💾 Save Split</button>
+              <span id="contribTotalPct" style="font-size:.65rem;color:var(--text-dim)">Total: 0%</span>
+              <span id="contribSaveResult" style="font-size:.65rem;color:var(--text-dim)"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- API Keys -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(167,139,250,0.15)">
+          <div class="card-header"><span class="card-title">🔑 API Keys</span></div>
+          <div style="display:flex;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap">
+            <input class="input" id="apiKeyLabel" placeholder="Label (e.g. Cursor)" style="max-width:260px;font-size:.78rem">
+            <button class="btn btn-sm btn-neon" onclick="createApiKey()">+ Generate Key</button>
+            <button class="btn btn-sm btn-ghost" onclick="fetchApiKeys()">⟳ Refresh</button>
+          </div>
+          <div id="apiKeyResult" style="margin-bottom:.5rem"></div>
+          <div id="apiKeyList" style="font-size:.75rem"><div style="color:var(--text-dim);padding:.5rem">No API keys yet.</div></div>
+        </div>
+
+        <!-- Task Market -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(251,191,36,0.15)">
+          <div class="card-header"><span class="card-title">🛒 Task Market</span><div style="display:flex;gap:.5rem"><span style="font-size:0.65rem;color:var(--text-dim)" id="mkPendingCount">Pending: —</span><button class="btn btn-sm btn-ghost" onclick="fetchPendingTasks()">⟳ Refresh</button></div></div>
+          <div class="market-table" id="taskMarketBody"><div class="empty-state"><div class="big-icon">🛒</div>No pending tasks</div></div>
+        </div>
+
+        <!-- Skill Upload (ZIP) -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(222,255,154,0.1)">
+          <div class="card-header"><span class="card-title">📦 Upload Skill (ZIP)</span></div>
+          <div class="drop-zone" id="skillDropZone">
+            <div class="dz-icon">📦</div>
+            <div class="dz-text"><strong>Click</strong> or drag ZIP here</div>
+            <div class="dz-hint">Requires manifest.json + main.py</div>
+            <div class="dz-file" id="dzFileInfo"></div>
+            <input type="file" id="skillFileInput" accept=".zip" style="display:none">
+          </div>
+          <div style="display:flex;gap:.75rem;margin-top:.75rem;align-items:center">
+            <button class="btn btn-neon btn-sm" id="uploadSkillBtn" disabled onclick="uploadSkill()">⬆ Upload</button>
+            <span id="uploadStatus" style="font-size:.72rem;color:var(--text-dim)">Select a ZIP file</span>
+          </div>
+        </div>
+
+        <!-- Worker Node Status -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem">
+          <div class="card-header"><span class="card-title">🔌 Worker Node</span></div>
+          <div class="grid-3">
+            <div class="card">
+              <div class="card-header"><span class="card-title">🔌 Node Status</span></div>
+              <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem"><span class="status-dot idle" id="workerStatusDot"></span><span style="font-size:0.85rem;font-weight:600;color:#fff" id="workerStatusText">Disconnected</span></div>
+              <div style="font-size:0.78rem"><div style="margin-bottom:0.35rem"><span style="color:var(--text-dim)">Node ID:</span> <span id="workerNodeId" style="color:#fff">—</span></div><div><span style="color:var(--text-dim)">Uptime:</span> <span id="workerUptime" style="color:#fff">0s</span></div></div>
+              <div style="margin-top:1rem"><button class="btn btn-sm btn-neon" onclick="startWorkerSim()" id="workerStartBtn">▶ Start Node</button></div>
+            </div>
+            <div class="card"><div class="card-header"><span class="card-title">💰 Commission (25%)</span></div><div class="stat"><span class="stat-label">Earned</span><span class="stat-value neon" id="workerEarnings">— <span class="unit">USDC</span></span></div><div class="gas-meter"><div class="fill" id="workerEarningsMeter" style="width:0%"></div></div></div>
+            <div class="card"><div class="card-header"><span class="card-title">📋 Last Payouts</span></div><div id="workerPayouts"><div class="empty-state"><div class="big-icon">📭</div>No payouts yet</div></div></div>
+          </div>
+        </div>
+
+        <!-- Canary Watermark -->
+        <div class="glass" style="padding:1.25rem;border-color:rgba(52,211,153,0.15)">
+          <div class="card-header"><span class="card-title">🛡️ Canary Watermark</span><span id="canaryStatusBadge" style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:4px;background:rgba(34,197,94,0.1);color:#22c55e;font-weight:600">● ACTIVE</span></div>
+          <div style="display:flex;align-items:center;gap:1.5rem"><span id="canaryStatusDot" class="status-dot online"></span><span id="canaryStatusText" style="color:#fff;font-weight:600">Protection Active</span><span style="color:var(--text-dim);font-size:.78rem" id="canaryBlacklistStatus">Clean — no strikes</span></div>
+        </div>
+
+      </section>
+
+      <!-- ════════════════════════════════════════════════════════
+           TAB: SECURITY (密钥中心)
+           Contains: API Key management
+           ════════════════════════════════════════════════════════ -->
+      <section class="tab-panel" id="tab-security">
+
+        <div class="glass" style="padding:1.25rem;max-width:800px">
+          <div class="panel-header">
+            <span class="panel-title">🔑 Protocol Gateway Keys</span>
+          </div>
+          <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1.5rem">Generate encrypted keys for your AI agents to access AIMS resources.</p>
+          <div style="display:flex;gap:.5rem;margin-bottom:1.25rem;flex-wrap:wrap">
+            <input class="input" id="apiKeyLabel" placeholder="Label (e.g. Cursor)" style="max-width:260px;font-size:.78rem">
+            <button class="btn btn-neon" onclick="createApiKey()">+ Generate Key</button>
+            <button class="btn btn-sm btn-ghost" onclick="fetchApiKeys()">⟳ Refresh</button>
+          </div>
+          <div id="apiKeyResult" style="margin-bottom:.5rem"></div>
+          <div id="apiKeyList" style="font-size:.75rem"><div style="color:var(--text-dim);padding:.5rem">No API keys yet.</div></div>
+        </div>
+
+      </section>
+
+      <!-- ════════════════════════════════════════════════════════
+           TAB: DOCS (接入指南)
+           Contains: Integration cards + Contributors + Docs content
+           ════════════════════════════════════════════════════════ -->
+      <section class="tab-panel" id="tab-docs">
+
+        <!-- Integration Cards -->
+        <div style="margin-bottom:1.25rem">
+          <div class="panel-title" style="margin-bottom:1rem">1-Click AI Integrations</div>
+          <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1.25rem" id="consumerDashboardHint">Invoke AI skills with your wallet</p>
+
+          <div class="integrate-row" style="margin-bottom:1rem">
+            <input class="input" id="integrateInput" placeholder="Skill name or API URL" required>
+            <input class="input" id="integrateWallet" placeholder="Your wallet (0x...)" style="flex:0.6;min-width:280px" value="">
+          </div>
+          <div style="display:flex;gap:.75rem;align-items:center;margin-bottom:1.5rem">
+            <button class="btn btn-neon" id="integrateBtn" onclick="oneClickIntegrate(event)">🔗 Integrate</button>
+            <span style="font-size:0.65rem;color:var(--text-dim)" id="integrateCount">Mapped: —</span>
+          </div>
+          <div id="integrateResult" style="margin-bottom:1rem"></div>
+        </div>
+
+        <!-- Contributors -->
+        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem">
+          <div class="panel-header">
+            <span class="panel-title">👥 Revenue Split Config</span>
+            <button class="btn btn-sm btn-ghost" onclick="addContributorRow()">+ Add Contributor</button>
+          </div>
+          <div id="coContribList"></div>
+          <div style="display:flex;gap:.5rem;margin-top:1rem;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-sm btn-outline" onclick="saveContributors()">💾 Save Split</button>
+            <span id="contribTotalPct" style="font-size:.65rem;color:var(--text-dim)">Total: 0%</span>
+            <span id="contribSaveResult" style="font-size:.65rem;color:var(--text-dim)"></span>
+          </div>
+        </div>
+
+        <!-- CORS Doc / Integration Docs -->
+        <div class="glass" style="padding:1.25rem;border-color:var(--neon-dim)">
+          <div class="card-header"><span class="card-title" style="color:var(--neon)">🔌 CORS Setup</span></div>
+          <div style="font-size:0.78rem;line-height:1.7;color:var(--text-dim)" id="corsDocContent"></div>
+        </div>
+
+        <!-- Legacy hint elements (preserved for docs-content.js) -->
+        <div id="developerDashboardHint" style="display:none">Your skills, 70% revenue</div>
+        <div id="workerDashboardHint" style="display:none">Run a node — earn 25% commission</div>
+        <div id="commerceFreeTrialNote" style="display:none"></div>
+        <div id="trialBannerText" style="display:none"></div>
+
+      </section>
+
+    </div><!-- /content-area -->
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <div class="footer-inner">
+        <div>
+          <div class="footer-brand">AIMS Gateway</div>
+          <div class="footer-text">The definitive decentralized protocol for autonomous agent data acquisition and secure credential management.</div>
+          <div class="footer-text" style="font-size:12px;margin-top:8px">© 2024 AIMS Decentralized Protocol. All rights reserved.</div>
+        </div>
+        <div class="footer-links">
+          <a href="#">Whitepaper</a>
+          <a href="#">GitHub</a>
+          <a href="#">Status</a>
+          <a href="#">Terms</a>
+          <a href="#">Privacy</a>
         </div>
       </div>
-      <div style="flex:1;min-width:200px;font-size:.78rem;color:var(--text-dim);line-height:1.6;margin-top:.75rem">
-        <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)"><span>Available</span><span class="stat-value neon" style="font-size:1rem" id="rechargeBalance">0.00 USDC</span></div>
-        <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)"><span>Total Deposited</span><span id="rechargeTotal" style="color:#fff;font-weight:600">0.00 USDC</span></div>
-        <div style="display:flex;justify-content:space-between;padding:.35rem 0"><span>Contract</span><span style="color:var(--text-dim);font-size:.65rem;word-break:break-all" id="rechargeContract">—</span></div>
-      </div>
-    </div>
+    </footer>
 
-    <div class="card" style="border-color:rgba(96,165,250,0.1)">
-      <div class="card-header"><span class="card-title">📜 Audit Ledger</span><div style="display:flex;gap:.35rem"><button class="btn btn-sm btn-ghost" onclick="fetchAudit('')">All</button><button class="btn btn-sm btn-ghost" onclick="fetchAudit('settle')">Settlements</button><button class="btn btn-sm btn-ghost" onclick="fetchAudit('refund')">Refunds</button></div></div>
-      <div class="audit-filter"><input class="input" id="auditTaskFilter" placeholder="Filter by task ID…" style="max-width:200px"><button class="btn btn-sm btn-outline" onclick="fetchAudit(document.getElementById('auditTaskFilter').value.trim())">Search</button><button class="btn btn-sm btn-ghost" onclick="fetchHealth();refreshBalance()">⟳ Refresh</button></div>
-      <div class="audit-table" id="auditLedgerBody"><div class="empty-state"><div class="big-icon">📜</div>Connect wallet to see audit trail</div></div>
-    </div>
-
-    <div class="card" style="border-color:rgba(222,255,154,0.1)">
-      <div class="card-header"><span class="card-title">📋 User History</span><div style="display:flex;gap:.35rem"><button class="btn btn-sm btn-ghost" onclick="fetchHistory('')">All</button><button class="btn btn-sm btn-ghost" onclick="fetchHistory('deposit')">Deposits</button><button class="btn btn-sm btn-ghost" onclick="fetchHistory('withdraw')">Withdrawals</button></div></div>
-      <div style="display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap"><button class="btn btn-sm btn-outline" onclick="fetchHistory('')">⟳ Refresh</button></div>
-      <div class="history-table" id="userHistoryBody"><div class="empty-state"><div class="big-icon">📋</div>Connect wallet to see history</div></div>
-    </div>
-  </div>
-
-  <!-- DEVELOPER TAB -->
-  <div class="tab-content" id="tab-developer">
-    <div class="role-header"><div class="avatar developer">🔧</div><div class="info"><h3>Developer Dashboard</h3><p id="developerDashboardHint">Your skills, 70% revenue</p></div></div>
-    <div class="grid-3">
-      <div class="card"><div class="card-header"><span class="card-title">📦 Skills</span></div><div class="stat"><span class="stat-label">Registered</span><span class="stat-value" id="devSkillCount">—</span></div><div style="margin-top:0.75rem" id="devSkillList"></div></div>
-      <div class="card"><div class="card-header"><span class="card-title">💎 Revenue (70%)</span></div><div class="stat"><span class="stat-label">Cumulative</span><span class="stat-value neon" id="devRevenue">— <span class="unit">USDC</span></span></div><div class="gas-meter"><div class="fill" id="devRevenueMeter" style="width:0%"></div></div></div>
-      <div class="card"><div class="card-header"><span class="card-title">🛡️ Credit</span></div><div class="stat"><span class="stat-label">Score</span><span class="stat-value neon" id="devCreditScore">—</span></div><div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;margin-top:.5rem"><div class="fill" id="devCreditScoreBar" style="height:100%;border-radius:3px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e)"></div></div><span style="font-size:0.6rem;color:var(--text-dim)" id="devCreditLevel">—</span></div>
-    </div>
-
-    <div class="card" style="border-color:rgba(167,139,250,0.15);margin-top:1.25rem">
-      <div class="card-header"><span class="card-title">🔗 One-Click Integration</span></div>
-      <form onsubmit="oneClickIntegrate(event)" style="display:flex;flex-direction:column;gap:.75rem">
-        <div class="integrate-row">
-          <input class="input" id="integrateInput" placeholder="Skill name or API URL" required>
-          <input class="input" id="integrateWallet" placeholder="Your wallet (0x...)" style="flex:0.6;min-width:280px" value="">
-        </div>
-        <div style="display:flex;gap:.75rem;align-items:center">
-          <button class="btn btn-neon" type="submit" id="integrateBtn">🔗 Integrate</button>
-          <span style="font-size:0.65rem;color:var(--text-dim)" id="integrateCount">Mapped: —</span>
-          <button class="btn btn-sm btn-ghost" type="button" onclick="fetchIntegrationStatus()">⟳ Refresh</button>
-        </div>
-      </form>
-      <div id="integrateResult"></div>
-      <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border)">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--neon);font-weight:600;font-size:.8rem">👥 Co-Contributors</span></div>
-        <div id="coContribList"></div>
-        <div style="display:flex;gap:.5rem;margin-top:.5rem;align-items:center;flex-wrap:wrap">
-          <button class="btn btn-sm btn-ghost" onclick="addContributorRow()">+ Add</button>
-          <button class="btn btn-sm btn-outline" onclick="saveContributors()">💾 Save Split</button>
-          <span id="contribTotalPct" style="font-size:.65rem;color:var(--text-dim)">Total: 0%</span>
-          <span id="contribSaveResult" style="font-size:.65rem;color:var(--text-dim)"></span>
-        </div>
-      </div>
-    </div>
-
-    <div class="card" style="margin-top:1.25rem;border-color:rgba(167,139,250,0.15)">
-      <div class="card-header"><span class="card-title">🔑 API Keys</span></div>
-      <div style="display:flex;gap:.5rem;margin-bottom:.75rem;flex-wrap:wrap">
-        <input class="input" id="apiKeyLabel" placeholder="Label (e.g. Cursor)" style="max-width:260px;font-size:.78rem">
-        <button class="btn btn-sm btn-neon" onclick="createApiKey()">+ Generate Key</button>
-        <button class="btn btn-sm btn-ghost" onclick="fetchApiKeys()">⟳ Refresh</button>
-      </div>
-      <div id="apiKeyResult" style="margin-bottom:.5rem"></div>
-      <div id="apiKeyList" style="font-size:.75rem"><div style="color:var(--text-dim);padding:.5rem">No API keys yet.</div></div>
-    </div>
-
-    <div class="card" style="margin-top:1.25rem;border-color:rgba(251,191,36,0.15)">
-      <div class="card-header"><span class="card-title">🛒 Task Market</span><div style="display:flex;gap:.5rem"><span style="font-size:0.65rem;color:var(--text-dim)" id="mkPendingCount">Pending: —</span><button class="btn btn-sm btn-ghost" onclick="fetchPendingTasks()">⟳ Refresh</button></div></div>
-      <div class="market-table" id="taskMarketBody"><div class="empty-state"><div class="big-icon">🛒</div>No pending tasks</div></div>
-    </div>
-
-    <div class="card" style="margin-top:1.25rem;border-color:rgba(222,255,154,0.1)">
-      <div class="card-header"><span class="card-title">📦 Upload Skill (ZIP)</span></div>
-      <div class="drop-zone" id="skillDropZone">
-        <div class="dz-icon">📦</div>
-        <div class="dz-text"><strong>Click</strong> or drag ZIP here</div>
-        <div class="dz-hint">Requires manifest.json + main.py</div>
-        <div class="dz-file" id="dzFileInfo"></div>
-        <input type="file" id="skillFileInput" accept=".zip" style="display:none">
-      </div>
-      <div style="display:flex;gap:.75rem;margin-top:.75rem;align-items:center">
-        <button class="btn btn-neon btn-sm" id="uploadSkillBtn" disabled onclick="uploadSkill()">⬆ Upload</button>
-        <span id="uploadStatus" style="font-size:.72rem;color:var(--text-dim)">Select a ZIP file</span>
-      </div>
-    </div>
-  </div>
-
-  <!-- WORKER TAB -->
-  <div class="tab-content" id="tab-worker">
-    <div class="role-header"><div class="avatar worker">⚡</div><div class="info"><h3>Worker Dashboard</h3><p id="workerDashboardHint">Run a node — earn 25% commission</p></div></div>
-    <div class="grid-3">
-      <div class="card">
-        <div class="card-header"><span class="card-title">🔌 Node Status</span></div>
-        <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem"><span class="status-dot idle" id="workerStatusDot"></span><span style="font-size:0.85rem;font-weight:600;color:#fff" id="workerStatusText">Disconnected</span></div>
-        <div style="font-size:0.78rem"><div style="margin-bottom:0.35rem"><span style="color:var(--text-dim)">Node ID:</span> <span id="workerNodeId" style="color:#fff">—</span></div><div><span style="color:var(--text-dim)">Uptime:</span> <span id="workerUptime" style="color:#fff">0s</span></div></div>
-        <div style="margin-top:1rem"><button class="btn btn-sm btn-neon" onclick="startWorkerSim()" id="workerStartBtn">▶ Start Node</button></div>
-      </div>
-      <div class="card"><div class="card-header"><span class="card-title">💰 Commission (25%)</span></div><div class="stat"><span class="stat-label">Earned</span><span class="stat-value neon" id="workerEarnings">— <span class="unit">USDC</span></span></div><div class="gas-meter"><div class="fill" id="workerEarningsMeter" style="width:0%"></div></div></div>
-      <div class="card"><div class="card-header"><span class="card-title">📋 Last Payouts</span></div><div id="workerPayouts"><div class="empty-state"><div class="big-icon">📭</div>No payouts yet</div></div></div>
-    </div>
-    <div class="card" style="border-color:rgba(52,211,153,0.15)">
-      <div class="card-header"><span class="card-title">🛡️ Canary Watermark</span><span id="canaryStatusBadge" style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:4px;background:rgba(34,197,94,0.1);color:#22c55e;font-weight:600">● ACTIVE</span></div>
-      <div style="display:flex;align-items:center;gap:1.5rem"><span id="canaryStatusDot" class="status-dot online"></span><span id="canaryStatusText" style="color:#fff;font-weight:600">Protection Active</span><span style="color:var(--text-dim);font-size:.78rem" id="canaryBlacklistStatus">Clean — no strikes</span></div>
-    </div>
-  </div>
-
-  <!-- System Stats -->
-  <div class="grid-3">
-    <div class="card"><div class="card-header"><span class="card-title">🏥 Network Health</span></div>
-      <div id="healthContent" style="font-size:0.78rem">
-        <div><span style="color:var(--text-dim)">Status:</span> <span id="healthStatus" style="color:#22c55e;font-weight:600">—</span></div>
-        <div><span style="color:var(--text-dim)">Block:</span> <span id="healthBlock">—</span></div>
-        <div><span style="color:var(--text-dim)">Pending:</span> <span id="healthPending">—</span></div>
-        <div><span style="color:var(--text-dim)">Succeeded:</span> <span id="healthSucceeded">—</span></div>
-        <div><span style="color:var(--text-dim)">Workers:</span> <span id="healthWorkers">—</span></div>
-        <div><span style="color:var(--text-dim)">Treasury:</span> <span id="healthTreasury">—</span></div>
-      </div>
-      <button class="btn btn-sm btn-ghost" onclick="fetchHealth()">⟳ Refresh</button>
-    </div>
-    <div class="card"><div class="card-header"><span class="card-title">🧩 Skills</span></div><div id="skillsContent" style="max-height:200px;overflow-y:auto"><div class="empty-state">Connect to load</div></div><button class="btn btn-sm btn-ghost" onclick="fetchDiscovery()">⟳ Refresh</button></div>
-    <div class="card"><div class="card-header"><span class="card-title">⚙️ Config</span></div>
-      <div style="font-size:0.78rem"><div><span style="color:var(--text-dim)">API:</span> <span id="cfgApiBase" style="color:var(--neon)"></span></div>
-      <div><span style="color:var(--text-dim)">Wallet:</span> <span id="cfgWallet">—</span></div>
-      <div><span style="color:var(--text-dim)">Network:</span> <span id="cfgNetwork">—</span></div>
-      <div><span style="color:var(--text-dim)">Free Trial:</span> <span id="cfgTrial" style="color:#34d399">1 per Skill</span></div></div>
-    </div>
-  </div>
-
-  <!-- Settlement Feed -->
-  <div class="card" style="border-color:rgba(34,197,94,0.1)">
-    <div class="card-header"><span class="card-title" style="color:#22c55e">⚡ Live Settlement Feed</span>
-      <div style="display:flex;gap:.75rem;font-size:.7rem;color:var(--text-dim)">
-        <span>Settled: <strong style="color:var(--neon)" id="consoleFeedCount">0</strong></span>
-        <span>Vol: <strong style="color:#a78bfa" id="consoleFeedVol">0.00</strong></span>
-        <span style="display:inline-flex;align-items:center;gap:.3rem;padding:.15rem .4rem;background:rgba(34,197,94,0.08);border-radius:3px;font-size:.6rem;color:#22c55e"><span style="display:inline-block;width:4px;height:4px;border-radius:50%;background:#22c55e;animation:pulse 1.5s infinite"></span>LIVE</span>
-      </div>
-    </div>
-    <div class="feed-console" id="consoleFeed"><div style="text-align:center;padding:2rem;color:var(--text-dim)">⏳ Connecting to stream…</div></div>
-  </div>
-
-  <!-- CORS Docs -->
-  <div class="card" style="border-color:var(--neon-dim)">
-    <div class="card-header"><span class="card-title" style="color:var(--neon)">🔌 CORS Setup</span></div>
-    <div style="font-size:0.78rem;line-height:1.7;color:var(--text-dim)" id="corsDocContent"></div>
-  </div>
-</div>
+  </main>
+</div><!-- /app -->
 
 <script src="/static/js/docs-content.js"></script>
 <script src="/static/js/console-core.js"></script>
 <script>
-// Fill CORS doc content and static text from docs-content.js on load
+// ── Sidebar Tab Switching ─────────────────────────────────
+function switchSidebarTab(tabName) {
+  // Update sidebar links
+  document.querySelectorAll('.sidebar-link').forEach(b => b.classList.remove('active'));
+  const activeLink = document.querySelector(`[data-tab="${tabName}"]`);
+  if (activeLink) activeLink.classList.add('active');
+
+  // Toggle tab panels
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  const targetPanel = document.getElementById('tab-' + tabName);
+  if (targetPanel) targetPanel.classList.add('active');
+
+  // Map sidebar tab to API role for data loading
+  const roleMap = { dashboard: 'consumer', mission: 'developer', security: 'developer', docs: 'consumer' };
+  switchRole(roleMap[tabName] || 'consumer');
+}
+
+// ── Page Init ─────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", function(){
+  // Fill CORS doc and static text from docs-content.js
   const corsEl = document.getElementById("corsDocContent");
   if (corsEl && typeof DOCS_CONTENT !== "undefined") corsEl.innerHTML = DOCS_CONTENT.corsSetup;
   const tbt = document.getElementById("trialBannerText");

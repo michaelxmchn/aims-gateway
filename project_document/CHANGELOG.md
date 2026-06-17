@@ -7,8 +7,10 @@
 
 ## [2026-06-17]
 ### 重构
-- refactor(console): `static/console.html` 从 2993 行压缩至 385 行（87% 缩减） — 提取全部 CSS 至 `static/css/console-v2.css`（297 行），提取全部 50 个 JS 函数至 `static/js/console-core.js`（1624 行），提取平台文档文本至 `static/js/docs-content.js`（44 行）；Stitch 玻璃拟态设计系统；vault 跨 Tab 保护保留；消除所有空 `catch` 块
-- refactor(console): 移除 Tailwind Play CDN — 所有样式已由 console-v2.css 覆盖，CDN 的 `document.write` 导致 "Unexpected token '}'" 页面错误，移除后 0 红色报错
+- refactor(console-v1-split): `static/console.html` 从 2993 行压缩至 385 行（87% 缩减） — 提取全部 CSS 至 `static/css/console-v2.css`（297 行），提取全部 50 个 JS 函数至 `static/js/console-core.js`（1624 行），提取平台文档文本至 `static/js/docs-content.js`（44 行）
+- refactor(console-v1-split): 移除 Tailwind Play CDN — 所有样式已由 console-v2.css 覆盖，CDN 的 `document.write` 导致 "Unexpected token '}'" 页面错误，移除后 0 红色报错
+- refactor(console-v2-stitch): `static/console.html` 从角色标签切换（Consumer/Developer/Worker/System）重构为 **Stitch 固定侧边栏布局**（全局大盘/任务中心/密钥中心/接入指南 4 Tab）— 新增 `switchSidebarTab()` 面板切换函数；顶部粘性状态栏（区块信息/延迟/钱包）；玻璃拟态卡片容器；Material Symbols 图标；Google Fonts（Geist + Inter）；侧边栏 256px 固定宽度 + 768px/600px 两档响应式断点；保持全部 97+ DOM IDs 不变
+- refactor(console-v2-stitch): `static/css/console-v2.css` 从 297 → 495 行 — Deep Space 设计系统（`#0a0f1d` 背景，`#00dbe7` 主色，`#ddb7ff` 次要）；CSS 变量体系（`--primary`/`--primary-bright`/`--primary-glow`/`--surface-card` 等）；玻璃拟态 `.glass-card`（`backdrop-filter: blur(12px)` + 1px `rgba(255,255,255,0.08)` 边框）；`--neon` → `--primary` 别名确保向后兼容；新增 `.sidebar`/`.sidebar-link`/`.top-bar`/`.panel-header`/`.app-footer` 布局类；`fadeIn` 动画
 ### 修复
 - fix(console-syntax): `const net` 重复声明 + `invokeSkill()` 多余 `}` — 两个 SyntaxError 导致整个 `<script>` 块不执行，所有按钮点击无反应；第二个声明重命名为 `const currentNet`，删除多余闭合括号
 - fix(console-fallback): 5 个关键函数（`handleDeposit`/`rechargeReserves`/`withdrawFunds`/`fiatDeposit`/`sendHeartbeat`）追加 `smartHeaders(body)` JWT fallback — 无 MetaMask 时不再静默失败
