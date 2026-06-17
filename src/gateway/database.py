@@ -263,14 +263,18 @@ async def verify_jwt(token: str) -> dict[str, Any] | None:
         unverified = pyjwt.decode(token, options={"verify_signature": False})
         user_id = unverified.get("sub")
         if not user_id:
+            logger.warning("verify_jwt: no sub in token payload")
             return None
-    except Exception:
+    except Exception as exc:
+        logger.warning("verify_jwt: first decode failed: %s", exc)
         return None
 
     user = await get_user_by_id(user_id)
     if not user:
+        logger.warning("verify_jwt: get_user_by_id(%s) returned None", user_id)
         return None
 
+    logger.info("verify_jwt: found user %s, fetching jwt_secret", user_id)
     # Fetch jwt_secret
     loop = asyncio.get_event_loop()
 
@@ -279,16 +283,25 @@ async def verify_jwt(token: str) -> dict[str, Any] | None:
         row = conn.execute(
             "SELECT jwt_secret FROM users WHERE id = ?", (user_id,)
         ).fetchone()
+        if row is None:
+            logger.warning("verify_jwt: user %s not found in _get_secret", user_id)
+        elif not row["jwt_secret"]:
+            logger.warning("verify_jwt: jwt_secret is empty for user %s", user_id)
         return row["jwt_secret"] if row else None
 
     secret = await loop.run_in_executor(None, _get_secret)
     if not secret:
+        logger.warning("verify_jwt: no jwt_secret for user %s", user_id)
         return None
 
     try:
         payload = pyjwt.decode(token, secret, algorithms=[JWT_ALGORITHM])
         return payload
-    except (pyjwt.ExpiredSignatureError, pyjwt.InvalidTokenError):
+    except pyjwt.ExpiredSignatureError:
+        logger.warning("verify_jwt: token expired for user %s", user_id)
+        return None
+    except pyjwt.InvalidTokenError as exc:
+        logger.warning("verify_jwt: invalid token for user %s: %s", user_id, exc)
         return None
 
 
