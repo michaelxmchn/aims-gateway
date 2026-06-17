@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-AIMS Console v2.0 — Full Button Integration QA Test Suite
-==========================================================
-Tests every interactive element across all 4 tabs.
+AIMS Console v2.1 — Full Button Integration QA Test Suite
+===========================================================
+Tests every interactive element across the dashboard, 6 business modals,
+and Advanced Dev Mode drawer.
 Uses Playwright for browser automation + eth_account for EIP-191 auth.
 Generates a structured PASS/FAIL reconciliation report.
 """
@@ -53,7 +54,7 @@ def do_http(url, data=None, headers=None):
 
 async def run_qa():
     print("=" * 72)
-    print("  AIMS Console v2.0 — 全功能联调测试对账报告")
+    print("  AIMS Console v2.1 — 全功能联调测试对账报告")
     print("  Full Integration QA Test Reconciliation Report")
     print("=" * 72)
     print(f"  Test Account: {QA_WALLET}")
@@ -128,12 +129,11 @@ async def run_qa():
 
     # ── Navigate to console with JWT injection ─────────────────────
     await page.goto(f"{API_BASE}/login", wait_until="networkidle")
-    # Inject JWT into BOTH localStorage (client-side guard) and cookie (server-side check)
+    # Inject JWT into BOTH localStorage and cookie
     await page.evaluate(f"""() => {{
         const jwt = "{jwt_token or ''}";
         localStorage.setItem("aims_jwt", jwt);
         localStorage.setItem("aims_api_base", "{API_BASE}");
-        // Also set cookie so the server-side JWT check passes
         document.cookie = "aims_jwt=" + jwt + "; path=/; max-age=86400";
     }}""")
     await page.goto(f"{API_BASE}/console", wait_until="domcontentloaded")
@@ -151,10 +151,10 @@ async def run_qa():
     if on_login_page:
         print("       ⚠️  Redirected to login — JWT invalid, continuing with static DOM checks")
     else:
-        print("       ✅ Console v2 loaded!")
+        print("       ✅ Console v2.1 loaded!")
 
     # ══════════════════════════════════════════════════════════════════
-    #  HELPER: check if function is defined
+    #  HELPER
     # ══════════════════════════════════════════════════════════════════
     def is_func_defined(name):
         if on_login_page:
@@ -184,6 +184,10 @@ async def run_qa():
         "updateCanaryStatus", "resetPipeline", "advancePipeline",
         "completePipeline", "getCreditLevel", "eip191SignBody",
         "getAuthHeaders", "jwtHeaders", "smartHeaders", "signAuthBeacon",
+        # v2.1 new functions
+        "openBizModal", "closeBizModal", "toggleDevDrawer", "closeDevDrawer",
+        "renderRevenueChart", "renderTaskFlowChart",
+        "updateRevenueChart", "updateTaskFlowChart",
     ]
 
     if on_login_page:
@@ -207,190 +211,254 @@ async def run_qa():
             print(f"       ✅ All {len(global_funcs)} functions defined on window")
 
     # ══════════════════════════════════════════════════════════════════
-    #  TEST SUITE B: DOM Element Presence (ALL 4 TABS)
+    #  TEST SUITE B: DOM Element Presence (Dashboard + Modals + Drawer)
     # ══════════════════════════════════════════════════════════════════
 
     if on_login_page:
         print("\n  ── B. DOM Element 存在性检查 (DOM Presence) ──")
         print("       ⏭ SKIPPED — on login page")
     else:
-        # ── Tab 1: Consumer ─────────────────────────────────────────
-        print("\n  ── 📊 Tab 1: Consumer Dashboard (消费者) ──")
+        # ── Dashboard: Charts ────────────────────────────────────────
+        print("\n  ── 📊 Dashboard: Chart Canvases ──")
+        for eid, label in [("revenueChart", "Revenue chart"), ("taskFlowChart", "Task flow chart")]:
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"{label} (#{eid})", "Dashboard", "renderChart",
+                          "present", "PASS" if exists else "FAIL")
 
-        # Switch to consumer
-        await page.evaluate("switchRole('consumer')")
-        await page.wait_for_timeout(300)
+        # ── Dashboard: Stats Row ─────────────────────────────────────
+        print("\n  ── 📊 Dashboard: Stats Row ──")
+        for eid in ("consumerBalance","consumerTasks","trialsLeft",
+                    "consumerDeposited","creditScoreDisplay"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Stat #{eid}", "Dashboard", "refreshBalance/various",
+                          "present", "PASS" if exists else "FAIL")
 
-        # 1-1: connect wallet button
-        exists = await page.locator("#connectBtn").count()
-        register_test("Wallet Connect button (#connectBtn)", "Consumer", "connectWallet",
+        # ── Dashboard: Pipeline ──────────────────────────────────────
+        print("\n  ── 📊 Dashboard: Pipeline ──")
+        cnt = await page.locator(".pipeline-step").count()
+        register_test("Pipeline steps (6)", "Dashboard", "advancePipeline",
+                      "≥6", "PASS" if cnt >= 6 else "FAIL", f"Found {cnt}")
+        exists = await page.locator("#pipeline").count()
+        register_test("Pipeline container (#pipeline)", "Dashboard", "advancePipeline",
                       "present", "PASS" if exists else "FAIL")
-        text = await page.locator("#connectBtn").text_content() if exists else ""
-        if text: register_test("Wallet btn text check", "Consumer", "connectWallet",
-                               "Connect Wallet", "PASS" if "Connect" in text else "FAIL", text)
 
-        # 1-2: skill select
-        exists = await page.locator("#skillSelect").count()
-        register_test("Skill dropdown (#skillSelect)", "Consumer", "invokeSkill",
-                      "present", "PASS" if exists else "FAIL")
-
-        # 1-3: billing mode & trial button
-        for eid, label in [("billingMode","Billing mode"), ("trialBtn","Free Trial btn"),
-                           ("invokeBtn","Execute btn")]:
-            exists = await page.locator(f"#{eid}").count()
-            register_test(f"{label} (#{eid})", "Consumer", "invokeSkill",
-                          "present", "PASS" if exists else "FAIL")
-
-        # 1-4: balance / account
-        for eid in ("consumerBalance","consumerDeposited","consumerTasks","trialsLeft"):
-            exists = await page.locator(f"#{eid}").count()
-            register_test(f"Account stat (#{eid})", "Consumer", "refreshBalance",
-                          "present", "PASS" if exists else "FAIL")
-
-        # 1-5: credit score
-        for eid in ("creditScoreDisplay","creditScoreBar","creditLevelBadge"):
-            exists = await page.locator(f"#{eid}").count()
-            register_test(f"Credit {eid}", "Consumer", "fetchCreditScore",
-                          "present", "PASS" if exists else "FAIL")
-
-        # 1-6: publish task form
-        for eid in ("pubTaskName","pubBudget","pubSkillSelect","pubDescription","publishBtn","pubIsCustom"):
-            exists = await page.locator(f"#{eid}").count()
-            register_test(f"Publish form #{eid}", "Consumer", "publishTask",
-                          "present", "PASS" if exists else "FAIL")
-
-        # 1-7: vault panel
-        for eid in ("vaultPanel","vaultPayBtn","vaultPollBtn","boostBtn","boostAmount"):
-            exists = await page.locator(f"#{eid}").count()
-            register_test(f"Vault #{eid}", "Consumer", "simulateVaultPayment/boost",
-                          "present", "PASS" if exists else "FAIL")
-
-        # 1-8: recharge grid (6 amount buttons)
-        cnt = await page.locator(".recharge-amt").count()
-        register_test("Recharge buttons (6)", "Consumer", "rechargeReserves",
+        # ── Dashboard: 6 Action Cards ────────────────────────────────
+        print("\n  ── 📊 Dashboard: 6 Action Cards ──")
+        cnt = await page.locator(".action-card").count()
+        register_test("Action cards (6)", "Dashboard", "openBizModal",
                       "≥6", "PASS" if cnt >= 6 else "FAIL", f"Found {cnt}")
 
-        # 1-9: custom recharge
-        for eid in ("customRechargeAmt",):
-            exists = await page.locator(f"#{eid}").count()
-            register_test(f"Custom recharge #{eid}", "Consumer", "rechargeReserves",
+        card_labels = ["Publish Task", "Skills", "Task Market",
+                       "Auth & Settings", "Activity", "Worker Guide"]
+        for label in card_labels:
+            exists = await page.locator(f".action-card:has-text('{label}')").count()
+            register_test(f"Action card: {label}", "Dashboard", "openBizModal",
                           "present", "PASS" if exists else "FAIL")
 
-        # 1-10: fiat deposit buttons
+        # ── Dashboard: Health ────────────────────────────────────────
+        print("\n  ── 📊 Dashboard: System Health ──")
+        for eid in ("healthContent","healthStatus","healthSucceeded","healthWorkers","healthTreasury"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Health #{eid}", "Dashboard", "fetchHealth",
+                          "present", "PASS" if exists else "FAIL")
+
+        # ── Dev Mode Trigger ─────────────────────────────────────────
+        print("\n  ── 📊 Dashboard: Dev Mode Trigger ──")
+        exists = await page.locator(".dev-mode-trigger").count()
+        register_test("Advanced Dev Mode trigger", "Dashboard", "toggleDevDrawer",
+                      "present", "PASS" if exists else "FAIL")
+
+        # ── Modal: Publish Task ──────────────────────────────────────
+        print("\n  ── 🚀 Modal: Publish Task ──")
+        # Open modal
+        await page.locator(".action-card:has-text('Publish Task')").click()
+        await page.wait_for_timeout(400)
+        modal_open = await page.locator("#bizModal-publish.open").count()
+        register_test("Publish modal opens", "Publish", "openBizModal",
+                      "open", "PASS" if modal_open else "FAIL")
+
+        for eid in ("pubTaskName","pubBudget","pubSkillSelect","pubDescription","publishBtn","pubIsCustom"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Publish form #{eid}", "Publish", "publishTask",
+                          "present", "PASS" if exists else "FAIL")
+
+        for eid in ("vaultPanel","vaultPayBtn","vaultPollBtn","boostAmount","boostBtn"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Vault #{eid}", "Publish", "simulateVaultPayment/boost",
+                          "present", "PASS" if exists else "FAIL")
+
+        cnt = await page.locator(".recharge-amt").count()
+        register_test("Recharge buttons (≥6)", "Publish", "rechargeReserves",
+                      "≥6", "PASS" if cnt >= 6 else "FAIL", f"Found {cnt}")
+
+        for eid in ("customRechargeAmt","withdrawAmt","rechargeBalance","rechargeTotal","rechargeContract"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Recharge #{eid}", "Publish", "rechargeReserves",
+                          "present", "PASS" if exists else "FAIL")
+
         cnt = await page.locator("button.fiat-deposit-btn").count()
-        register_test("Fiat deposit buttons (≥3)", "Consumer", "fiatDeposit",
+        register_test("Fiat deposit buttons", "Publish", "fiatDeposit",
                       "≥3", "PASS" if cnt >= 3 else "FAIL", f"Found {cnt}")
 
-        # 1-11: withdraw
-        for eid in ("withdrawAmt",):
-            exists = await page.locator(f"#{eid}").count()
-            register_test(f"Withdraw #{eid}", "Consumer", "withdrawFunds",
-                          "present", "PASS" if exists else "FAIL")
-
-        # 1-12: audit ledger
-        for eid in ("auditLedgerBody","auditTaskFilter"):
-            exists = await page.locator(f"#{eid}").count()
-            register_test(f"Audit #{eid}", "Consumer", "fetchAudit",
-                          "present", "PASS" if exists else "FAIL")
-
-        # 1-13: user history
-        for eid in ("userHistoryBody",):
-            exists = await page.locator(f"#{eid}").count()
-            register_test(f"History #{eid}", "Consumer", "fetchHistory",
-                          "present", "PASS" if exists else "FAIL")
-
-        # 1-14: activity log
-        exists = await page.locator("#consumerLog").count()
-        register_test("Activity log (#consumerLog)", "Consumer", "consumerLog",
-                      "present", "PASS" if exists else "FAIL")
-
-        # 1-15: commerce/billing mode
         cnt = await page.locator("#commercePanel button").count()
-        register_test("Commerce mode buttons", "Consumer", "switchBillingMode",
+        register_test("Commerce mode buttons", "Publish", "switchBillingMode",
                       "≥3", "PASS" if cnt >= 3 else "FAIL", f"Found {cnt}")
 
-        # 1-16: buyout
-        exists = await page.locator("button:has-text('Buyout License')").count()
-        register_test("Buyout License button", "Consumer", "openBuyoutModal",
+        exists = await page.locator(".modal-close").count()
+        register_test("Modal close button", "Publish", "closeBizModal",
                       "present", "PASS" if exists else "FAIL")
-
-        # ── Tab 2: Developer ────────────────────────────────────────
-        print("\n  ── 🔧 Tab 2: Developer Dashboard (开发者) ──")
-        await page.evaluate("switchRole('developer')")
+        # Close modal
+        await page.evaluate("closeBizModal('publish')")
         await page.wait_for_timeout(300)
 
-        for eid in ("devSkillCount","devRevenue","devCreditScore",
-                    "integrateInput","integrateWallet","integrateBtn",
-                    "apiKeyLabel","apiKeyList",
-                    "skillDropZone","uploadSkillBtn","skillFileInput",
-                    "taskMarketBody","mkPendingCount",
-                    "coContribList","contribTotalPct"):
+        # ── Modal: Skills ────────────────────────────────────────────
+        print("\n  ── 💡 Modal: Skills ──")
+        await page.locator(".action-card:has-text('Skills')").click()
+        await page.wait_for_timeout(400)
+        modal_open = await page.locator("#bizModal-skills.open").count()
+        register_test("Skills modal opens", "Skills", "openBizModal",
+                      "open", "PASS" if modal_open else "FAIL")
+
+        for eid in ("devSkillCount","devRevenue","devSkillList",
+                    "devRevenueMeter","devCreditScore","devCreditScoreBar","devCreditLevel"):
             exists = await page.locator(f"#{eid}").count()
-            register_test(f"Developer #{eid}", "Developer", "various",
+            register_test(f"Dev stat #{eid}", "Skills", "fetchDiscovery",
+                          "present", "PASS" if exists else "FAIL")
+
+        for eid in ("skillDropZone","uploadSkillBtn","skillFileInput","dzFileInfo"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Upload #{eid}", "Skills", "uploadSkill",
+                          "present", "PASS" if exists else "FAIL")
+
+        for eid in ("integrateInput","integrateWallet","integrateBtn","integrateCount"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Integration #{eid}", "Skills", "oneClickIntegrate",
+                          "present", "PASS" if exists else "FAIL")
+
+        await page.evaluate("closeBizModal('skills')")
+        await page.wait_for_timeout(300)
+
+        # ── Modal: Task Market ───────────────────────────────────────
+        print("\n  ── 📥 Modal: Task Market ──")
+        await page.locator(".action-card:has-text('Task Market')").click()
+        await page.wait_for_timeout(400)
+        for eid in ("taskMarketBody","mkPendingCount"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Market #{eid}", "Market", "fetchPendingTasks",
+                          "present", "PASS" if exists else "FAIL")
+        await page.evaluate("closeBizModal('market')")
+        await page.wait_for_timeout(300)
+
+        # ── Modal: Auth & Settings ───────────────────────────────────
+        print("\n  ── 🔐 Modal: Auth & Settings ──")
+        await page.locator(".action-card:has-text('Auth & Settings')").click()
+        await page.wait_for_timeout(400)
+        for eid in ("settingsEmail","settingsDisplayName","settingsMemberSince",
+                    "settingsOldPw","settingsNewPw","settingsConfirmPw","settingsPwResult",
+                    "settingsWalletAddr"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Settings #{eid}", "Auth", "loadUserProfile/changePassword",
+                          "present", "PASS" if exists else "FAIL")
+
+        for eid in ("apiKeyLabel","apiKeyResult","apiKeyList","apiKeyCount"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"API Key #{eid}", "Auth", "fetchApiKeys/createApiKey",
                           "present", "PASS" if exists else "FAIL")
 
         cnt = await page.locator("button:has-text('Generate Key')").count()
-        register_test("Generate Key button", "Developer", "createApiKey",
+        register_test("Generate Key button", "Auth", "createApiKey",
                       "present", "PASS" if cnt > 0 else "FAIL")
 
-        cnt = await page.locator("button:has-text('+ Add')").count()
-        register_test("Add Contributor button", "Developer", "addContributorRow",
-                      "present", "PASS" if cnt > 0 else "FAIL")
-
-        cnt = await page.locator("button:has-text('Save Split')").count()
-        register_test("Save Split button", "Developer", "saveContributors",
-                      "present", "PASS" if cnt > 0 else "FAIL")
-
-        # ── Tab 3: Worker ───────────────────────────────────────────
-        print("\n  ── ⚡ Tab 3: Worker Dashboard (工作者) ──")
-        await page.evaluate("switchRole('worker')")
+        await page.evaluate("closeBizModal('auth')")
         await page.wait_for_timeout(300)
 
-        for eid in ("workerStartBtn","workerEarnings","workerPayouts",
-                    "canaryStatusBadge","canaryStatusDot","canaryStatusText"):
+        # ── Modal: Activity ──────────────────────────────────────────
+        print("\n  ── 💬 Modal: Activity ──")
+        await page.locator(".action-card:has-text('Activity')").click()
+        await page.wait_for_timeout(400)
+        for eid in ("consumerLog","auditLedgerBody","auditTaskFilter","userHistoryBody"):
             exists = await page.locator(f"#{eid}").count()
-            register_test(f"Worker #{eid}", "Worker", "startWorkerSim/canary",
+            register_test(f"Activity #{eid}", "Activity", "consumerLog/fetchAudit",
+                          "present", "PASS" if exists else "FAIL")
+        await page.evaluate("closeBizModal('activity')")
+        await page.wait_for_timeout(300)
+
+        # ── Modal: Worker Guide ──────────────────────────────────────
+        print("\n  ── 📖 Modal: Worker Guide ──")
+        await page.locator(".action-card:has-text('Worker Guide')").click()
+        await page.wait_for_timeout(400)
+        for eid in ("workerStartBtn","workerStatusDot","workerStatusText","workerNodeId",
+                    "workerEarnings","workerEarningsMeter","workerPayouts"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Worker #{eid}", "Worker", "startWorkerSim",
                           "present", "PASS" if exists else "FAIL")
 
-        # ── System / Global ──────────────────────────────────────────
-        print("\n  ── 📊 System Stats (全局) ──")
-
-        for eid in ("healthContent","skillsContent","consoleFeed","corsDocContent",
-                    "toastContainer","pipelineStatus","networkBadge","walletAddress"):
+        for eid in ("canaryStatusBadge","canaryStatusDot","canaryStatusText","canaryBlacklistStatus"):
             exists = await page.locator(f"#{eid}").count()
-            register_test(f"System #{eid}", "System", "fetchHealth/various",
+            register_test(f"Canary #{eid}", "Worker", "updateCanaryStatus",
                           "present", "PASS" if exists else "FAIL")
 
-        # Pipeline steps
-        cnt = await page.locator(".pipeline-step").count()
-        register_test("Pipeline steps (6)", "System", "advancePipeline",
-                      "≥6", "PASS" if cnt >= 6 else "FAIL", f"Found {cnt}")
+        for eid in ("coContribList","contribTotalPct","contribSaveResult"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Contributor #{eid}", "Worker", "saveContributors",
+                          "present", "PASS" if exists else "FAIL")
 
-        # Check CORS docs are injected
-        cors_len = await page.evaluate("document.getElementById('corsDocContent')?.innerHTML?.length || 0")
-        register_test("CORS docs injected", "System", "DOCS_CONTENT.corsSetup",
-                      ">0", "PASS" if cors_len > 0 else "FAIL", f"len={cors_len}")
+        cnt = await page.locator("button:has-text('Save Split')").count()
+        register_test("Save Split button", "Worker", "saveContributors",
+                      "present", "PASS" if cnt > 0 else "FAIL")
 
-        # ── Cross-tab vault test ────────────────────────────────────
-        print("\n  ── 🔄 Cross-tab Vault TaskID Persistence ──")
-        await page.evaluate("switchRole('consumer')")
-        await page.wait_for_timeout(200)
-        await page.evaluate("""() => { window._currentVaultTaskId = 'vlt-test-999'; }""")
-        await page.evaluate("switchRole('developer')")
-        await page.wait_for_timeout(200)
-        await page.evaluate("switchRole('consumer')")
-        await page.wait_for_timeout(200)
-        vid = await page.evaluate("window._currentVaultTaskId")
-        r = "PASS" if vid == "vlt-test-999" else "FAIL"
-        register_test("Vault TaskID cross-tab persistence", "Consumer",
-                      "_savedVaultTaskId / switchRole", "vlt-test-999", r, f"got={vid}")
+        await page.evaluate("closeBizModal('worker')")
+        await page.wait_for_timeout(300)
 
-        # ── Toast render test ───────────────────────────────────────
-        await page.evaluate("toast('QA: toast test message', 'info')")
+        # ── Advanced Dev Mode Drawer ─────────────────────────────────
+        print("\n  ── ⚙️ Advanced Dev Mode Drawer ──")
+        await page.evaluate("toggleDevDrawer()")
+        await page.wait_for_timeout(500)
+
+        drawer_open = await page.locator("#devDrawer.open").count()
+        register_test("Dev drawer opens", "DevMode", "toggleDevDrawer",
+                      "open", "PASS" if drawer_open else "FAIL")
+
+        for eid in ("consoleFeed","consoleFeedCount","consoleFeedVol",
+                    "cfgApiBase","cfgWallet","cfgNetwork","cfgTrial",
+                    "corsDocContent","skillsContent","trialProgressBar",
+                    "trialsLeftEnhanced","trialProgressText","trialStatusBadge"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Drawer #{eid}", "DevMode", "fetchHealth/various",
+                          "present", "PASS" if exists else "FAIL")
+
+        # Config section
+        for eid in ("skillSelect","billingMode","skillParams","workerAddr","devAddr","invokeBtn","trialBtn"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Drawer invoke #{eid}", "DevMode", "invokeSkill",
+                          "present", "PASS" if exists else "FAIL")
+
+        # Close drawer
+        await page.evaluate("closeDevDrawer()")
+        await page.wait_for_timeout(300)
+        drawer_closed = await page.locator("#devDrawer.open").count()
+        register_test("Dev drawer closes", "DevMode", "closeDevDrawer",
+                      "closed", "PASS" if drawer_closed == 0 else "FAIL")
+
+        # ── Global Elements ─────────────────────────────────────────
+        print("\n  ── 🌐 Global Elements ──")
+        for eid in ("toastContainer","networkBadge","walletAddress",
+                    "connectBtn","healthBlock","healthPending"):
+            exists = await page.locator(f"#{eid}").count()
+            register_test(f"Global #{eid}", "Global", "various",
+                          "present", "PASS" if exists else "FAIL")
+
+        # Toast render test
+        await page.evaluate("toast('QA: toast test', 'info')")
         await page.wait_for_timeout(400)
         cnt = await page.locator(".toast").count()
         register_test("Toast renders on screen", "Global", "toast()",
                       "≥1", "PASS" if cnt > 0 else "FAIL", f"Found {cnt}")
+
+        # CORS docs injected
+        cors_len = await page.evaluate("document.getElementById('corsDocContent')?.innerHTML?.length || 0")
+        register_test("CORS docs injected", "Global", "DOCS_CONTENT.corsSetup",
+                      ">0", "PASS" if cors_len > 0 else "FAIL", f"len={cors_len}")
 
     # ══════════════════════════════════════════════════════════════════
     #  TEST SUITE C: Silent Catch Audit (source code)
@@ -404,11 +472,9 @@ async def run_qa():
     silent = []
     for i, line in enumerate(lines, 1):
         stripped = line.strip()
-        # Skip .catch(() => ({})) promise chains — intentional JSON parse fallback
         if ".catch(()" in stripped:
             continue
         if "catch(" in stripped or "catch (" in stripped:
-            # Check context window for error handling (wider window for nested blocks)
             context = " ".join(l.strip() for l in lines[i-1:min(len(lines), i+15)])
             has_warn = "console.warn" in context
             has_toast = "toast(" in context
@@ -433,7 +499,6 @@ async def run_qa():
     # ══════════════════════════════════════════════════════════════════
     print("\n  ── D. 🖥️ 浏览器 Console 错误审计 (Browser Console Errors) ──")
 
-    # Collect errors that happened during page load
     err_count = len(js_errors)
     page_err_count = len(page_errors)
     register_test("Console errors during page load", "Global", "All JS",
@@ -459,7 +524,7 @@ async def run_qa():
     #  REPORT
     # ══════════════════════════════════════════════════════════════════
     print("\n" + "=" * 72)
-    print("  📋 AIMS Console v2.0 全功能联调测试对账报告")
+    print("  📋 AIMS Console v2.1 全功能联调测试对账报告")
     print("  Full Integration QA Test Reconciliation Report")
     print("=" * 72)
 
@@ -468,8 +533,7 @@ async def run_qa():
     failed = sum(1 for r in test_results if r["result"] == "FAIL")
     skipped = sum(1 for r in test_results if r["result"] == "SKIP")
 
-    # Table header
-    print(f"\n  {'✅/❌':<6} {'测试用例 (Test Case)':<34} {'Tab':<12} {'绑定JS函数 (Function)':<26} {'期望 (Expected)':<14} {'结果 (Result)':<8}")
+    print(f"\n  {'✅/❌':<6} {'测试用例 (Test Case)':<34} {'Tab':<12} {'绑定JS函数':<26} {'期望':<14} {'结果':<8}")
     print(f"  {'─'*6} {'─'*34} {'─'*12} {'─'*26} {'─'*14} {'─'*8}")
 
     for r in test_results:
@@ -483,7 +547,6 @@ async def run_qa():
         if res == "FAIL" and r.get("detail"):
             print(f"         └─ {r['detail'][:120]}")
 
-    # Summary
     print(f"\n  {'─'*6} {'─'*34} {'─'*12} {'─'*26} {'─'*14} {'─'*8}")
     print(f"\n  📊 汇总 / SUMMARY")
     print(f"  {'─'*55}")
@@ -502,11 +565,10 @@ async def run_qa():
         for e in js_errors:
             print(f"     - {e['text'][:120]}")
 
-    # Verdict
     print(f"\n  {'='*55}")
     if failed == 0 and err_count == 0 and not on_login_page:
-        print("  ✅ VERDICT: ALL TESTS PASSED — Console v2.0 is production-ready!")
-        print("  ✅ 裁决：全部测试通过 — Console v2.0 可以上线！")
+        print("  ✅ VERDICT: ALL TESTS PASSED — Console v2.1 is production-ready!")
+        print("  ✅ 裁决：全部测试通过 — Console v2.1 可以上线！")
     elif on_login_page:
         print("  ⚠️  VERDICT: Login page only — auth required for full console test")
         print("  ⚠️  裁决：仅在登录页 — 需要认证才能测试完整控制台")

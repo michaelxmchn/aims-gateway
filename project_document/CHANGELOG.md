@@ -7,6 +7,11 @@
 
 ## [2026-06-18]
 ### 新增
+- feat(console-v2.1): `static/console.html` 全量重写为 **Apple-style 单页仪表盘** — 移除侧边栏和 5 Tab 面板；新增 3 图表卡片（Revenue Line Chart、Task Flow Donut、System Health Traffic Lights）使用 Chart.js CDN 渲染；6 个商业操作卡片（Publish Task/Skills/Task Market/Auth & Settings/Activity/Worker Guide）点击打开全功能模态框；底部 ⚙️ Advanced Dev Mode 触发右侧抽屉面板（调试数据/信用分/Invoke Skill/CORS/docs）
+- feat(console-v2.1): **6 业务模态框** — `bizModal-publish`（发布任务表单 + Vault + Boost + Commerce Mode + 充值/提现）、`bizModal-skills`（Dev Stats + Skill Upload + One-Click Integration）、`bizModal-market`（Task Market 抢单池）、`bizModal-auth`（Profile + Password + Wallet + API Keys）、`bizModal-activity`（Activity Log + Audit Ledger + User History）、`bizModal-worker`（Worker Node + Co-Contributors + Canary Watermark）
+- feat(console-v2.1): **Advanced Dev Mode 抽屉** — 右侧滑动面板（`devDrawer`）包含 Free Trial 状态、Credit Score 进度条/等级徽章、Invoke Skill 表单（`devSkillSelect`/`devInvokePayload`/`devInvokeBtn`）、Settlement Feed 滚动面板、Skills 列表、Credit Score 条、CORS docs、网络配置/节点路由调试
+- feat(console-v2.1): `static/css/console-v2.css` 扩展至 665 行 — 新增 `.dashboard-container`（全高滚动区 + 1440px 居中）、`.dashboard-grid`（3 列 Chart 卡片）、`.chart-card`（玻璃拟态数据卡片）、`.chart-container`（Chart.js canvas 容器 180px 裁剪）、`.stats-row`（内联指标行）、`.card-grid`（3 列操作卡片网格）、`.action-card`（hover 升起交互）、`.drawer`/`.drawer-overlay`（右侧抽屉 480px + 滑入动画）、`.modal-wide`（720px 宽业务模态框）、`.modal-scroll`（内部滚动）、响应式 1024px/768px 三档断点
+- feat(console-v2.1): `scripts/qa_console_test.py` 升级为 **185 测试用例** — 覆盖 60 个全局函数（52 原始 + 8 新：openBizModal/closeBizModal/toggleDevDrawer/closeDevDrawer/renderRevenueChart/renderTaskFlowChart/updateRevenueChart/updateTaskFlowChart）；Dashboard 元素存在性测试（charts/stats/pipeline/cards/health）；6 模态框打开→元素验证→关闭；Drawer 打开→15+ 元素验证→关闭；静默 catch + Console error 审计；185/185 PASS
 - feat(settings-tab): 侧边栏 Keys Tab → **Settings Tab**（`settings` 图标）— 集中管理用户设置：**Profile**（邮箱、显示名称、注册时间）、**Password**（修改密码表单）、**Wallet**（链接钱包地址显示 + 连接/切换按钮）、**API Keys**（原有的密钥管理 + 折叠式使用说明）
 - feat(settings-tab): `src/gateway/database.py` 新增 `change_password()`（旧密码验证 + bcrypt 新哈希）+ `update_profile()`（display_name / email 更新，含 email 唯一性校验）
 - feat(settings-tab): `src/gateway/server.py` 新增 `POST /api/auth/change-password`（旧+新密码 8 位校验）+ `PUT /api/auth/update-profile`（display_name / email 修改）端点；Discovery 文档同步更新

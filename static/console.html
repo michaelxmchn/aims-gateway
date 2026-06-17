@@ -3,15 +3,16 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AIMS Gateway Console v2</title>
+<title>AIMS Gateway 2.0 — Command Center</title>
 <link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Inter:wght@100..900&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,0..200&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.5/ethers.umd.min.js"></script>
 <link rel="stylesheet" href="/static/css/console-v2.css">
 </head>
 <body>
 
-<!-- Toast Container -->
+<!-- Toast -->
 <div class="toast-container" id="toastContainer"></div>
 
 <!-- Deposit Modal -->
@@ -44,533 +45,168 @@
   </div>
 </div>
 
-<!-- App Layout -->
+<!-- ════════════════════════════════════════════════════════════════
+     APP LAYOUT
+     ════════════════════════════════════════════════════════════════ -->
 <div class="app">
 
-  <!-- Sidebar -->
-  <aside class="sidebar">
-    <div class="sidebar-brand">
-      <h1>AIMS GATEWAY</h1>
-      <p>V1.0.4-ALPHA CONSOLE</p>
+  <!-- Top Bar -->
+  <header class="top-bar">
+    <div style="display:flex;align-items:center;gap:1.25rem">
+      <h1 style="font-family:'Geist','Inter',sans-serif;font-size:18px;font-weight:700;color:var(--primary-bright);letter-spacing:0.05em">AIMS GATEWAY</h1>
+      <span class="status-dot online pulse-green" style="margin:0"></span>
+      <span class="status-text" id="networkBadge">● Base L2</span>
+      <span class="divider"></span>
+      <span class="meta-text">Block: <span id="healthBlock">—</span></span>
+      <span class="meta-text">Latency: <span id="healthPending">—</span></span>
+      <span class="divider"></span>
+      <span class="plg-badge" id="trialBadge" style="display:none">&#9733; 1 Free Trial / Skill</span>
     </div>
-    <nav class="sidebar-nav">
-      <button class="sidebar-link active" data-tab="dashboard" onclick="switchSidebarTab('dashboard')">
-        <span class="material-symbols-outlined">dashboard</span> Dashboard
-      </button>
-      <button class="sidebar-link" data-tab="publish" onclick="switchSidebarTab('publish')">
-        <span class="material-symbols-outlined">currency_exchange</span> Publish
-      </button>
-      <button class="sidebar-link" data-tab="earn" onclick="switchSidebarTab('earn')">
-        <span class="material-symbols-outlined">payments</span> Earn
-      </button>
-      <button class="sidebar-link" data-tab="settings" onclick="switchSidebarTab('settings')">
-        <span class="material-symbols-outlined">settings</span> Settings
-      </button>
-      <button class="sidebar-link" data-tab="docs" onclick="switchSidebarTab('docs')">
-        <span class="material-symbols-outlined">menu_book</span> Docs
-      </button>
-    </nav>
-    <div class="sidebar-footer">
-      <button class="deploy-btn" onclick="switchSidebarTab('settings')">
-        <span class="material-symbols-outlined" style="font-size:16px">settings</span> Account Settings
-      </button>
-      <div class="footer-links">
-        <a onclick="switchSidebarTab('docs')"><span class="material-symbols-outlined" style="font-size:16px">contact_support</span> Docs</a>
+    <div class="wallet-group">
+      <div class="wallet-bal" id="balanceDisplay" style="display:none">Balance: <span class="num" id="walletBalance">0.00</span> <span style="font-size:0.65rem;color:var(--text-dim)">USDC</span></div>
+      <div style="display:flex;align-items:center;gap:0.5rem">
+        <span class="wallet-addr" id="walletAddress"></span>
+        <span id="jwtBadge" style="font-size:0.6rem;color:#34d399;background:rgba(52,211,153,0.08);padding:0.15rem 0.4rem;border-radius:4px;border:1px solid rgba(52,211,153,0.15);display:none">JWT ✓</span>
+        <button class="wallet-btn" id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
+        <button class="btn btn-sm btn-ghost" style="padding:0.3rem 0.5rem" onclick="showWalletHelp()" title="Wallet connection guide"><span class="material-symbols-outlined" style="font-size:16px">help_outline</span></button>
       </div>
     </div>
-  </aside>
+  </header>
 
-  <!-- Main Content -->
-  <main class="main-content">
+  <!-- ── DASHBOARD MAIN ──────────────────────────────────────── -->
+  <div class="dashboard-container">
 
-    <!-- Top Bar -->
-    <header class="top-bar">
-      <div class="status-group">
-        <span class="status-dot online pulse-green" style="margin:0"></span>
-        <span class="status-text" id="networkBadge">● Base L2</span>
-        <span class="divider"></span>
-        <span class="meta-text">Block: <span id="healthBlock">—</span></span>
-        <span class="meta-text">Latency: <span id="healthPending">—</span></span>
-        <span class="divider"></span>
-        <span class="plg-badge" id="trialBadge" style="display:none">&#9733; 1 Free Trial / Skill</span>
+    <!-- 3 Chart Cards -->
+    <div class="dashboard-grid" id="dashboardCharts">
+
+      <!-- Chart 1: Revenue -->
+      <div class="chart-card">
+        <div class="chart-header"><span class="material-symbols-outlined" style="font-size:18px">trending_up</span> Revenue</div>
+        <div class="chart-container"><canvas id="revenueChart"></canvas></div>
+        <div class="chart-footer">Cumulative developer earnings</div>
       </div>
-      <div class="wallet-group">
-        <div class="wallet-bal" id="balanceDisplay" style="display:none">Balance: <span class="num" id="walletBalance">0.00</span> <span style="font-size:0.65rem;color:var(--text-dim)">USDC</span></div>
-        <div style="display:flex;align-items:center;gap:0.5rem">
-          <span class="wallet-addr" id="walletAddress"></span>
-          <span id="jwtBadge" style="font-size:0.6rem;color:#34d399;background:rgba(52,211,153,0.08);padding:0.15rem 0.4rem;border-radius:4px;border:1px solid rgba(52,211,153,0.15);display:none">JWT ✓</span>
-          <button class="wallet-btn" id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
-          <button class="btn btn-sm btn-ghost" style="padding:0.3rem 0.5rem" onclick="showWalletHelp()" title="Wallet connection guide"><span class="material-symbols-outlined" style="font-size:16px">help_outline</span></button>
-        </div>
+
+      <!-- Chart 2: Task Flow -->
+      <div class="chart-card">
+        <div class="chart-header"><span class="material-symbols-outlined" style="font-size:18px">donut_small</span> Task Flow</div>
+        <div class="chart-container"><canvas id="taskFlowChart"></canvas></div>
+        <div class="chart-footer">Successful · Pending · Failed</div>
       </div>
-    </header>
 
-    <!-- Content Area -->
-    <div class="content-area">
-
-      <!-- ════════════════════════════════════════════════════════
-           TAB: DASHBOARD
-           Contains: Consumer + System content
-           ════════════════════════════════════════════════════════ -->
-      <section class="tab-panel active" id="tab-dashboard">
-
-        <!-- Pipeline -->
-        <div class="glass" style="padding:0.75rem 1.25rem;margin-bottom:1.25rem">
-          <div class="card-header" style="margin-bottom:0.5rem"><span class="card-title"><span class="icon">⛓️</span> AIMS Execution Pipeline</span><span id="pipelineStatus" style="font-size:0.7rem;color:var(--text-dim)">Idle</span></div>
-          <div class="pipeline" id="pipeline" style="padding:0.75rem;background:rgba(10,15,29,0.4)">
-            <div class="pipeline-step" data-step="0"><div class="circle">①</div><span class="label">Auth</span></div><span class="pipeline-arrow">▸</span>
-            <div class="pipeline-step" data-step="1"><div class="circle">②</div><span class="label">Free Trial Check</span></div><span class="pipeline-arrow">▸</span>
-            <div class="pipeline-step" data-step="2"><div class="circle">③</div><span class="label">Balance Check</span></div><span class="pipeline-arrow">▸</span>
-            <div class="pipeline-step" data-step="3"><div class="circle">④</div><span class="label">Execute Task</span></div><span class="pipeline-arrow">▸</span>
-            <div class="pipeline-step" data-step="4"><div class="circle">⑤</div><span class="label">Proof of Task</span></div><span class="pipeline-arrow">▸</span>
-            <div class="pipeline-step" data-step="5"><div class="circle">⑥</div><span class="label">Settle 70/25/5</span></div>
-          </div>
+      <!-- Chart 3: System Health -->
+      <div class="chart-card">
+        <div class="chart-header"><span class="material-symbols-outlined" style="font-size:18px">monitoring</span> System Health</div>
+        <div id="healthContent" class="health-grid">
+          <div class="health-item"><span class="health-dot green"></span><span class="health-label">Gateway</span><span class="health-val" id="healthStatus">—</span></div>
+          <div class="health-item"><span class="health-dot green"></span><span class="health-label">Tasks OK</span><span class="health-val" id="healthSucceeded">—</span></div>
+          <div class="health-item"><span class="health-dot green"></span><span class="health-label">Workers</span><span class="health-val" id="healthWorkers">—</span></div>
+          <div class="health-item"><span class="health-dot green"></span><span class="health-label">Treasury</span><span class="health-val" id="healthTreasury">—</span></div>
         </div>
+        <button class="btn btn-sm btn-ghost" onclick="fetchHealth()" style="margin-top:0.75rem">⟳ Refresh</button>
+      </div>
+    </div>
 
-        <!-- Role Tabs (legacy — hidden but preserved for switchRole compatibility) -->
-        <div class="role-tabs" style="display:none">
-          <button class="role-tab active" data-role="consumer" onclick="switchRole('consumer')">🛒 Consumer</button>
-          <button class="role-tab" data-role="developer" onclick="switchRole('developer')">🔧 Developer</button>
-          <button class="role-tab" data-role="worker" onclick="switchRole('worker')">⚡ Worker</button>
+    <!-- Mini Stats Row -->
+    <div class="stats-row">
+      <div class="mini-stat"><span class="mini-label">Balance</span><span class="mini-value neon" id="consumerBalance">—</span></div>
+      <div class="mini-stat"><span class="mini-label">Tasks</span><span class="mini-value" id="consumerTasks">0</span></div>
+      <div class="mini-stat"><span class="mini-label">Credit Score</span><span class="mini-value neon" id="creditScoreDisplay">—</span></div>
+      <div class="mini-stat"><span class="mini-label">Deposited</span><span class="mini-value" id="consumerDeposited">—</span></div>
+      <div class="mini-stat"><span class="mini-label">Free Trials</span><span class="mini-value green" id="trialsLeft">—</span></div>
+      <div class="mini-stat"><span class="mini-label">Credit Level</span><span class="mini-value" id="creditLevelBadge">—</span></div>
+    </div>
+
+    <!-- Pipeline (compact) -->
+    <div class="pipeline-compact">
+      <div class="pipeline" id="pipeline">
+        <div class="pipeline-step" data-step="0"><div class="circle">①</div><span class="label">Auth</span></div><span class="pipeline-arrow">▸</span>
+        <div class="pipeline-step" data-step="1"><div class="circle">②</div><span class="label">Free Trial</span></div><span class="pipeline-arrow">▸</span>
+        <div class="pipeline-step" data-step="2"><div class="circle">③</div><span class="label">Balance</span></div><span class="pipeline-arrow">▸</span>
+        <div class="pipeline-step" data-step="3"><div class="circle">④</div><span class="label">Execute</span></div><span class="pipeline-arrow">▸</span>
+        <div class="pipeline-step" data-step="4"><div class="circle">⑤</div><span class="label">Proof</span></div><span class="pipeline-arrow">▸</span>
+        <div class="pipeline-step" data-step="5"><div class="circle">⑥</div><span class="label">Settle</span></div>
+      </div>
+      <div style="display:flex;align-items:center;gap:0.75rem;flex-shrink:0">
+        <span id="pipelineStatus" style="font-size:0.7rem;color:var(--text-dim)">Idle</span>
+        <button class="btn btn-sm btn-ghost" onclick="refreshBalance();fetchDiscovery()">⟳ Sync</button>
+      </div>
+    </div>
+
+    <!-- 6 Action Cards -->
+    <div class="card-grid">
+
+      <!-- Card 1: Publish Task -->
+      <div class="action-card" onclick="openBizModal('publish')">
+        <span class="action-icon">🚀</span>
+        <div class="action-body">
+          <span class="action-title">Publish Task</span>
+          <span class="action-desc">Post new tasks, fund vaults, manage billing</span>
         </div>
-        <div class="tab-content active" id="tab-consumer" style="display:none"></div>
-        <div class="tab-content" id="tab-developer" style="display:none"></div>
-        <div class="tab-content" id="tab-worker" style="display:none"></div>
+        <span class="material-symbols-outlined action-arrow">arrow_forward</span>
+      </div>
 
-        <!-- Free Trial Status -->
-        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(52,211,153,0.15)">
-          <div class="card-header"><span class="card-title">🎁 Free Trial Status</span><span id="trialStatusBadge" class="plg-badge active">&#9733; PLG Enabled</span></div>
-          <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
-            <div class="stat"><span class="stat-label">Remaining Trials</span><span class="stat-value" style="color:#34d399" id="trialsLeftEnhanced">—</span></div>
-            <div style="flex:1;min-width:200px">
-              <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-dim);margin-bottom:0.25rem"><span>Trial Usage</span><span id="trialProgressText">0 / 0 Skills used</span></div>
-              <div class="gas-meter"><div class="fill" id="trialProgressBar" style="width:0%;background:linear-gradient(90deg,#34d399,#22c55e)"></div></div>
-            </div>
-            <div style="font-size:0.72rem;color:var(--text-dim);max-width:300px;line-height:1.5" id="trialBannerText"></div>
-          </div>
+      <!-- Card 2: Skills -->
+      <div class="action-card" onclick="openBizModal('skills')">
+        <span class="action-icon">💡</span>
+        <div class="action-body">
+          <span class="action-title">Skills</span>
+          <span class="action-desc">Browse skills, upload new, track earnings</span>
         </div>
+        <span class="material-symbols-outlined action-arrow">arrow_forward</span>
+      </div>
 
-        <!-- Account + Invoke Skill -->
-        <div class="grid-2" style="margin-bottom:1.25rem">
-          <div class="card">
-            <div class="card-header"><span class="card-title">💰 Account</span><button class="btn btn-sm btn-outline" onclick="refreshBalance()">⟳ Refresh</button></div>
-            <div style="display:flex;gap:1.5rem;flex-wrap:wrap">
-              <div class="stat"><span class="stat-label">Available Balance</span><span class="stat-value neon" id="consumerBalance">— <span class="unit">USDC</span></span></div>
-              <div class="stat"><span class="stat-label">Total Deposited</span><span class="stat-value" id="consumerDeposited">— <span class="unit">USDC</span></span></div>
-              <div class="stat"><span class="stat-label">Tasks Executed</span><span class="stat-value" id="consumerTasks">0</span></div>
-              <div class="stat"><span class="stat-label">Free Trials Left</span><span class="stat-value" style="color:#34d399" id="trialsLeft">— <span class="unit">/ Skills</span></span></div>
-            </div>
-          </div>
-          <div class="card">
-            <div class="card-header"><span class="card-title">🚀 Invoke Skill</span></div>
-            <form onsubmit="invokeSkill(event)" style="display:flex;flex-direction:column;gap:0.75rem">
-              <div style="display:flex;gap:0.75rem">
-                <select class="input" id="skillSelect" required style="flex:1"><option value="">— Select a skill —</option></select>
-                <select class="input" id="billingMode" style="width:160px;flex-shrink:0"><option value="pay_per_task">⚡ Metered</option><option value="trial" selected>🎁 Free Trial (1st)</option></select>
-              </div>
-              <input class="input" id="skillParams" placeholder='Params JSON' value='{"url":"https://example.com"}'>
-              <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
-                <input class="input" id="workerAddr" placeholder="Worker address" style="flex:1" value="0x70997970C51812dc3A010C7d01b50e0d17dc79C8">
-                <input class="input" id="devAddr" placeholder="Developer address" style="flex:1" value="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266">
-              </div>
-              <div style="display:flex;gap:0.75rem">
-                <button class="btn btn-neon" id="invokeBtn" type="submit" style="flex:1">▶ Execute &amp; Settle</button>
-                <button class="btn btn-sm btn-plg" id="trialBtn" type="button" onclick="document.getElementById('billingMode').value='trial'">🎁 Free</button>
-              </div>
-            </form>
-          </div>
+      <!-- Card 3: Task Market -->
+      <div class="action-card" onclick="openBizModal('market')">
+        <span class="action-icon">📥</span>
+        <div class="action-body">
+          <span class="action-title">Task Market</span>
+          <span class="action-desc">Browse pending tasks, claim &amp; execute</span>
         </div>
+        <span class="material-symbols-outlined action-arrow">arrow_forward</span>
+      </div>
 
-        <!-- Credit Score -->
-        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(251,191,36,0.1)">
-          <div class="card-header"><span class="card-title">🛡️ Credit Score</span><span id="creditLevelBadge" style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:4px;font-weight:600">—</span></div>
-          <div style="display:flex;gap:1.5rem;flex-wrap:wrap;align-items:center">
-            <div class="stat"><span class="stat-label">Score</span><span class="stat-value neon" id="creditScoreDisplay">—</span></div>
-            <div style="flex:1;min-width:150px"><div style="position:relative;height:8px;background:rgba(255,255,255,0.06);border-radius:4px;overflow:hidden"><div class="fill" id="creditScoreBar" style="height:100%;border-radius:4px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e)"></div></div></div>
-            <button class="btn btn-sm btn-ghost" onclick="fetchCreditScore()">⟳ Refresh</button>
-          </div>
+      <!-- Card 4: Auth -->
+      <div class="action-card" onclick="openBizModal('auth')">
+        <span class="action-icon">🔐</span>
+        <div class="action-body">
+          <span class="action-title">Auth &amp; Settings</span>
+          <span class="action-desc">Wallet, API keys, profile, password</span>
         </div>
+        <span class="material-symbols-outlined action-arrow">arrow_forward</span>
+      </div>
 
-        <!-- Activity Log -->
-        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem">
-          <div class="card-header"><span class="card-title">📋 Activity Log</span><button class="btn btn-sm btn-ghost" onclick="clearLog()">Clear</button></div>
-          <div class="log-feed" id="consumerLog"><div class="log-entry info"><span class="time">—</span><span class="msg">Connect wallet to begin. <strong style="color:#34d399">First task free!</strong></span></div></div>
+      <!-- Card 5: Activity -->
+      <div class="action-card" onclick="openBizModal('activity')">
+        <span class="action-icon">💬</span>
+        <div class="action-body">
+          <span class="action-title">Activity</span>
+          <span class="action-desc">Log, audit ledger, transaction history</span>
         </div>
+        <span class="material-symbols-outlined action-arrow">arrow_forward</span>
+      </div>
 
-        <!-- Audit Ledger -->
-        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(96,165,250,0.1)">
-          <div class="card-header"><span class="card-title">📜 Audit Ledger</span><div style="display:flex;gap:.35rem"><button class="btn btn-sm btn-ghost" onclick="fetchAudit('')">All</button><button class="btn btn-sm btn-ghost" onclick="fetchAudit('settle')">Settlements</button><button class="btn btn-sm btn-ghost" onclick="fetchAudit('refund')">Refunds</button></div></div>
-          <div class="audit-filter"><input class="input" id="auditTaskFilter" placeholder="Filter by task ID…" style="max-width:200px"><button class="btn btn-sm btn-outline" onclick="fetchAudit(document.getElementById('auditTaskFilter').value.trim())">Search</button><button class="btn btn-sm btn-ghost" onclick="fetchHealth();refreshBalance()">⟳ Refresh</button></div>
-          <div class="audit-table" id="auditLedgerBody"><div class="empty-state"><div class="big-icon">📜</div>Connect wallet to see audit trail</div></div>
+      <!-- Card 6: Worker Guide -->
+      <div class="action-card" onclick="openBizModal('worker')">
+        <span class="action-icon">📖</span>
+        <div class="action-body">
+          <span class="action-title">Worker Guide</span>
+          <span class="action-desc">Run a node, earn commission, canary status</span>
         </div>
+        <span class="material-symbols-outlined action-arrow">arrow_forward</span>
+      </div>
 
-        <!-- User History -->
-        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(222,255,154,0.1)">
-          <div class="card-header"><span class="card-title">📋 User History</span><div style="display:flex;gap:.35rem"><button class="btn btn-sm btn-ghost" onclick="fetchHistory('')">All</button><button class="btn btn-sm btn-ghost" onclick="fetchHistory('deposit')">Deposits</button><button class="btn btn-sm btn-ghost" onclick="fetchHistory('withdraw')">Withdrawals</button></div></div>
-          <div style="display:flex;gap:.5rem;margin-bottom:.5rem;flex-wrap:wrap"><button class="btn btn-sm btn-outline" onclick="fetchHistory('')">⟳ Refresh</button></div>
-          <div class="history-table" id="userHistoryBody"><div class="empty-state"><div class="big-icon">📋</div>Connect wallet to see history</div></div>
-        </div>
+    </div>
 
-        <!-- System Stats: Health + Skills + Config -->
-        <div class="grid-3" style="margin-bottom:1.25rem">
-          <div class="card"><div class="card-header"><span class="card-title">🏥 Network Health</span></div>
-            <div id="healthContent" style="font-size:0.78rem">
-              <div><span style="color:var(--text-dim)">Status:</span> <span id="healthStatus" style="color:#22c55e;font-weight:600">—</span></div>
-              <div><span style="color:var(--text-dim)">Block:</span> <span id="healthBlock">—</span></div>
-              <div><span style="color:var(--text-dim)">Pending:</span> <span id="healthPending">—</span></div>
-              <div><span style="color:var(--text-dim)">Succeeded:</span> <span id="healthSucceeded">—</span></div>
-              <div><span style="color:var(--text-dim)">Workers:</span> <span id="healthWorkers">—</span></div>
-              <div><span style="color:var(--text-dim)">Treasury:</span> <span id="healthTreasury">—</span></div>
-            </div>
-            <button class="btn btn-sm btn-ghost" onclick="fetchHealth()">⟳ Refresh</button>
-          </div>
-          <div class="card"><div class="card-header"><span class="card-title">🧩 Skills</span></div><div id="skillsContent" style="max-height:200px;overflow-y:auto"><div class="empty-state">Connect to load</div></div><button class="btn btn-sm btn-ghost" onclick="fetchDiscovery()">⟳ Refresh</button></div>
-          <div class="card"><div class="card-header"><span class="card-title">⚙️ Config</span></div>
-            <div style="font-size:0.78rem"><div><span style="color:var(--text-dim)">API:</span> <span id="cfgApiBase" style="color:var(--neon)"></span></div>
-            <div><span style="color:var(--text-dim)">Wallet:</span> <span id="cfgWallet">—</span></div>
-            <div><span style="color:var(--text-dim)">Network:</span> <span id="cfgNetwork">—</span></div>
-            <div><span style="color:var(--text-dim)">Free Trial:</span> <span id="cfgTrial" style="color:#34d399">1 per Skill</span></div></div>
-          </div>
-        </div>
-
-        <!-- Settlement Feed -->
-        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(34,197,94,0.1)">
-          <div class="card-header"><span class="card-title" style="color:#22c55e">⚡ Live Settlement Feed</span>
-            <div style="display:flex;gap:.75rem;font-size:.7rem;color:var(--text-dim)">
-              <span>Settled: <strong style="color:var(--neon)" id="consoleFeedCount">0</strong></span>
-              <span>Vol: <strong style="color:#a78bfa" id="consoleFeedVol">0.00</strong></span>
-              <span style="display:inline-flex;align-items:center;gap:.3rem;padding:.15rem .4rem;background:rgba(34,197,94,0.08);border-radius:3px;font-size:.6rem;color:#22c55e"><span style="display:inline-block;width:4px;height:4px;border-radius:50%;background:#22c55e;animation:pulse 1.5s infinite"></span>LIVE</span>
-            </div>
-          </div>
-          <div class="feed-console" id="consoleFeed"><div style="text-align:center;padding:2rem;color:var(--text-dim)">⏳ Connecting to stream…</div></div>
-        </div>
-
-      </section>
-
-      <!-- ════════════════════════════════════════════════════════
-           TAB: PUBLISH
-           Spend — publish tasks, fund vaults, manage billing
-           ════════════════════════════════════════════════════════ -->
-      <section class="tab-panel" id="tab-publish">
-
-        <!-- Publish Task -->
-        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(167,139,250,0.15)">
-          <div class="panel-header">
-            <span class="panel-title">🚀 Publish Task</span>
-          </div>
-          <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1rem">Post a new task to the market with a budget. Workers with matching skills can claim and execute it.</p>
-          <form onsubmit="publishTask(event)" style="display:flex;flex-direction:column;gap:0.75rem">
-            <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
-              <input class="input" id="pubTaskName" placeholder="Task name" required style="flex:2">
-              <input class="input" id="pubBudget" type="number" step="0.01" min="0.05" placeholder="Budget (USDC)" required style="flex:1" value="2.0">
-            </div>
-            <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center">
-              <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.78rem;color:var(--text-dim);cursor:pointer"><input type="checkbox" id="pubIsCustom" onchange="toggleCreditReq()"> 🔒 Custom Task</label>
-              <div id="creditReqGroup" style="display:none;align-items:center;gap:0.5rem"><span style="font-size:0.72rem;color:var(--text-dim)">Min credit:</span><input class="input" id="pubCreditReq" type="number" min="0" max="100" value="90" style="width:80px"></div>
-              <select class="input" id="pubSkillSelect" required style="flex:1;min-width:150px"><option value="">— Select skill —</option></select>
-            </div>
-            <textarea class="input" id="pubDescription" placeholder="Description" rows="2" style="resize:vertical;min-height:50px"></textarea>
-            <button class="btn btn-neon" id="publishBtn" type="submit" style="flex:1">📤 Publish to Task Market</button>
-          </form>
-          <div id="publishResult" style="margin-top:0.5rem;font-size:0.75rem;color:var(--text-dim)"></div>
-        </div>
-
-        <!-- Task Vault + Boost -->
-        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:var(--neon-dim)">
-          <div class="vault-panel" id="vaultPanel" style="display:none">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--neon);font-weight:700;font-size:.8rem">📱 Task Vault</span><span id="vaultStatusBadge" style="font-size:.65rem;padding:.15rem .5rem;border-radius:4px;background:rgba(148,163,184,0.1);color:var(--text-dim);border:1px solid var(--border)">UNFUNDED</span></div>
-            <div class="vp-row"><span class="vp-label">Vault Address</span><span class="vp-value neon" id="vaultAddressDisplay">—</span></div>
-            <div class="vp-row"><span class="vp-label">Task ID</span><span class="vp-value" id="vaultTaskIdDisplay">—</span></div>
-            <div class="vp-row"><span class="vp-label">Balance</span><span class="vp-value" id="vaultBalanceDisplay">0.00 USDC</span></div>
-            <div class="qr-mock" id="qrMockPanel"><div class="qr-box">SCAN TO PAY</div><div class="qr-info"><strong>Scan to Pay</strong><br>Stripe · Credit Card · QR</div></div>
-            <div style="display:flex;gap:.75rem;margin-top:.5rem;flex-wrap:wrap">
-              <button class="btn btn-sm fiat-deposit-btn" onclick="simulateVaultPayment()" id="vaultPayBtn">💳 Simulate Payment</button>
-              <button class="btn btn-sm btn-ghost" onclick="pollVaultStatus()" id="vaultPollBtn">⟳ Check Status</button>
-              <span style="font-size:.65rem;color:var(--text-dim);align-self:center" id="vaultPollResult"></span>
-            </div>
-            <div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)" id="boostSection">
-              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--amber);font-weight:600;font-size:.8rem">⚡ Boost Reward</span><span id="boostTotalDisplay" style="font-size:.65rem;color:var(--text-dim)">Total boosted: 0.00 USDC</span></div>
-              <div style="display:flex;gap:.5rem;align-items:center">
-                <input class="input" id="boostAmount" type="number" step="0.01" min="0.05" placeholder="Amount" style="width:150px" value="0.5">
-                <button class="btn btn-sm withdraw-btn" onclick="boostReward()" id="boostBtn" disabled>⚡ Boost</button><span id="boostResult" style="font-size:.65rem;color:var(--text-dim)"></span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Commerce Mode -->
-        <div class="card" id="commercePanel" style="margin-bottom:1.25rem">
-          <div class="card-header"><span class="card-title">💳 Commerce Mode</span><span id="currentBillingModeDisplay" style="font-size:0.7rem;padding:0.2rem 0.6rem;border-radius:4px;background:var(--neon-glow);color:var(--neon)">Metered</span></div>
-          <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
-            <div style="display:flex;gap:0.5rem"><button class="btn btn-sm btn-outline active" data-mode="pay_per_task" onclick="switchBillingMode('pay_per_task')">⚡ Metered</button><button class="btn btn-sm btn-outline" data-mode="trial" onclick="switchBillingMode('trial')">🎁 Free Trial</button></div>
-            <button class="btn btn-sm btn-plg" onclick="openBuyoutModal()">🔒 Buyout License</button>
-          </div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border);font-size:0.75rem"><span style="color:var(--text-dim)" id="commerceModeDesc">Pay per successful invocation.</span><span style="color:var(--neon-dim);font-size:0.7rem" id="commerceFreeTrialNote">✓ Free trial available</span></div>
-        </div>
-
-        <!-- Recharge -->
-        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(222,255,154,0.1)">
-          <div class="card-header"><span class="card-title">💰 Recharge</span></div>
-          <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1rem">Deposit USDC to fund your tasks. Card payments and on-chain deposits accepted.</p>
-          <div style="flex:1;min-width:200px">
-            <div class="recharge-grid">
-              <button class="recharge-amt" onclick="rechargeReserves(10)">10 <span class="currency">USDC</span></button>
-              <button class="recharge-amt" onclick="rechargeReserves(25)">25 <span class="currency">USDC</span></button>
-              <button class="recharge-amt" onclick="rechargeReserves(50)" style="border-color:var(--neon)">50 <span class="currency">USDC ★</span></button>
-              <button class="recharge-amt" onclick="rechargeReserves(100)">100 <span class="currency">USDC</span></button>
-              <button class="recharge-amt" onclick="rechargeReserves(250)">250 <span class="currency">USDC</span></button>
-              <button class="recharge-amt" onclick="rechargeReserves(500)">500 <span class="currency">USDC</span></button>
-            </div>
-            <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap">
-              <input class="input" id="customRechargeAmt" type="number" placeholder="Custom" min="1" style="width:100px">
-              <button class="btn btn-sm btn-neon" onclick="rechargeReserves(parseFloat(document.getElementById('customRechargeAmt').value))">Deposit</button>
-              <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(25)">💳 $25 Card</button>
-              <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(50)">💳 $50 Card</button>
-              <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(100)">💳 $100 Card</button>
-            </div>
-            <div class="withdraw-row">
-              <span style="font-size:.75rem;color:var(--text-dim)">Withdraw:</span>
-              <input class="input" id="withdrawAmt" type="number" placeholder="Amount" min="1" value="10" style="width:100px">
-              <button class="btn btn-sm withdraw-btn" onclick="withdrawFunds()">💸 Withdraw</button>
-            </div>
-          </div>
-          <div style="flex:1;min-width:200px;font-size:.78rem;color:var(--text-dim);line-height:1.6;margin-top:.75rem">
-            <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)"><span>Available</span><span class="stat-value neon" style="font-size:1rem" id="rechargeBalance">0.00 USDC</span></div>
-            <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)"><span>Total Deposited</span><span id="rechargeTotal" style="color:#fff;font-weight:600">0.00 USDC</span></div>
-            <div style="display:flex;justify-content:space-between;padding:.35rem 0"><span>Contract</span><span style="color:var(--text-dim);font-size:.65rem;word-break:break-all" id="rechargeContract">—</span></div>
-          </div>
-        </div>
-
-      </section>
-
-      <!-- ════════════════════════════════════════════════════════
-           TAB: EARN
-           Earn — claim tasks, run worker node, integrate skills
-           ════════════════════════════════════════════════════════ -->
-      <section class="tab-panel" id="tab-earn">
-
-        <!-- Developer Dashboard Stats -->
-        <div class="grid-3" style="margin-bottom:1.25rem">
-          <div class="card"><div class="card-header"><span class="card-title">📦 Skills</span></div><div class="stat"><span class="stat-label">Registered</span><span class="stat-value" id="devSkillCount">—</span></div><div style="margin-top:0.75rem" id="devSkillList"></div></div>
-          <div class="card"><div class="card-header"><span class="card-title">💎 Revenue (70%)</span></div><div class="stat"><span class="stat-label">Cumulative</span><span class="stat-value neon" id="devRevenue">— <span class="unit">USDC</span></span></div><div class="gas-meter"><div class="fill" id="devRevenueMeter" style="width:0%"></div></div></div>
-          <div class="card"><div class="card-header"><span class="card-title">🛡️ Credit</span></div><div class="stat"><span class="stat-label">Score</span><span class="stat-value neon" id="devCreditScore">—</span></div><div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;margin-top:.5rem"><div class="fill" id="devCreditScoreBar" style="height:100%;border-radius:3px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e)"></div></div><span style="font-size:0.6rem;color:var(--text-dim)" id="devCreditLevel">—</span></div>
-        </div>
-
-        <!-- One-Click Integration -->
-        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(167,139,250,0.15)">
-          <div class="card-header"><span class="card-title">🔗 One-Click Integration</span></div>
-          <form onsubmit="oneClickIntegrate(event)" style="display:flex;flex-direction:column;gap:.75rem">
-            <div class="integrate-row">
-              <input class="input" id="integrateInput" placeholder="Skill name or API URL" required>
-              <input class="input" id="integrateWallet" placeholder="Your wallet (0x...)" style="flex:0.6;min-width:280px" value="">
-            </div>
-            <div style="display:flex;gap:.75rem;align-items:center">
-              <button class="btn btn-neon" type="submit" id="integrateBtn">🔗 Integrate</button>
-              <span style="font-size:0.65rem;color:var(--text-dim)" id="integrateCount">Mapped: —</span>
-              <button class="btn btn-sm btn-ghost" type="button" onclick="fetchIntegrationStatus()">⟳ Refresh</button>
-            </div>
-          </form>
-          <div id="integrateResult"></div>
-          <!-- Co-Contributors -->
-          <div style="margin-top:1rem;padding-top:.75rem;border-top:1px solid var(--border)">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--neon);font-weight:600;font-size:.8rem">👥 Co-Contributors</span></div>
-            <div id="coContribList"></div>
-            <div style="display:flex;gap:.5rem;margin-top:.5rem;align-items:center;flex-wrap:wrap">
-              <button class="btn btn-sm btn-ghost" onclick="addContributorRow()">+ Add</button>
-              <button class="btn btn-sm btn-outline" onclick="saveContributors()">💾 Save Split</button>
-              <span id="contribTotalPct" style="font-size:.65rem;color:var(--text-dim)">Total: 0%</span>
-              <span id="contribSaveResult" style="font-size:.65rem;color:var(--text-dim)"></span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Task Market -->
-        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(251,191,36,0.15)">
-          <div class="card-header"><span class="card-title">🛒 Task Market</span><div style="display:flex;gap:.5rem"><span style="font-size:0.65rem;color:var(--text-dim)" id="mkPendingCount">Pending: —</span><button class="btn btn-sm btn-ghost" onclick="fetchPendingTasks()">⟳ Refresh</button></div></div>
-          <div class="market-table" id="taskMarketBody"><div class="empty-state"><div class="big-icon">🛒</div>No pending tasks</div></div>
-        </div>
-
-        <!-- Skill Upload (ZIP) -->
-        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(222,255,154,0.1)">
-          <div class="card-header"><span class="card-title">📦 Upload Skill (ZIP)</span></div>
-          <div class="drop-zone" id="skillDropZone">
-            <div class="dz-icon">📦</div>
-            <div class="dz-text"><strong>Click</strong> or drag ZIP here</div>
-            <div class="dz-hint">Requires manifest.json + main.py</div>
-            <div class="dz-file" id="dzFileInfo"></div>
-            <input type="file" id="skillFileInput" accept=".zip" style="display:none">
-          </div>
-          <div style="display:flex;gap:.75rem;margin-top:.75rem;align-items:center">
-            <button class="btn btn-neon btn-sm" id="uploadSkillBtn" disabled onclick="uploadSkill()">⬆ Upload</button>
-            <span id="uploadStatus" style="font-size:.72rem;color:var(--text-dim)">Select a ZIP file</span>
-          </div>
-        </div>
-
-        <!-- Worker Node Status -->
-        <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem">
-          <div class="card-header"><span class="card-title">🔌 Worker Node</span></div>
-          <div class="grid-3">
-            <div class="card">
-              <div class="card-header"><span class="card-title">🔌 Node Status</span></div>
-              <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem"><span class="status-dot idle" id="workerStatusDot"></span><span style="font-size:0.85rem;font-weight:600;color:#fff" id="workerStatusText">Disconnected</span></div>
-              <div style="font-size:0.78rem"><div style="margin-bottom:0.35rem"><span style="color:var(--text-dim)">Node ID:</span> <span id="workerNodeId" style="color:#fff">—</span></div><div><span style="color:var(--text-dim)">Uptime:</span> <span id="workerUptime" style="color:#fff">0s</span></div></div>
-              <div style="margin-top:1rem"><button class="btn btn-sm btn-neon" onclick="startWorkerSim()" id="workerStartBtn">▶ Start Node</button></div>
-            </div>
-            <div class="card"><div class="card-header"><span class="card-title">💰 Commission (25%)</span></div><div class="stat"><span class="stat-label">Earned</span><span class="stat-value neon" id="workerEarnings">— <span class="unit">USDC</span></span></div><div class="gas-meter"><div class="fill" id="workerEarningsMeter" style="width:0%"></div></div></div>
-            <div class="card"><div class="card-header"><span class="card-title">📋 Last Payouts</span></div><div id="workerPayouts"><div class="empty-state"><div class="big-icon">📭</div>No payouts yet</div></div></div>
-          </div>
-        </div>
-
-        <!-- Canary Watermark -->
-        <div class="glass" style="padding:1.25rem;border-color:rgba(52,211,153,0.15)">
-          <div class="card-header"><span class="card-title">🛡️ Canary Watermark</span><span id="canaryStatusBadge" style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:4px;background:rgba(34,197,94,0.1);color:#22c55e;font-weight:600">● ACTIVE</span></div>
-          <div style="display:flex;align-items:center;gap:1.5rem"><span id="canaryStatusDot" class="status-dot online"></span><span id="canaryStatusText" style="color:#fff;font-weight:600">Protection Active</span><span style="color:var(--text-dim);font-size:.78rem" id="canaryBlacklistStatus">Clean — no strikes</span></div>
-        </div>
-
-      </section>
-
-      <!-- ════════════════════════════════════════════════════════
-           TAB: SETTINGS
-           User settings — profile, password, wallet, API keys
-           ════════════════════════════════════════════════════════ -->
-      <section class="tab-panel" id="tab-settings">
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;max-width:1000px">
-
-          <!-- LEFT COLUMN: Profile + Password -->
-          <div style="display:flex;flex-direction:column;gap:1.25rem">
-
-            <!-- Profile -->
-            <div class="glass" style="padding:1.25rem">
-              <div class="panel-header">
-                <span class="panel-title">👤 Profile</span>
-              </div>
-              <div style="display:flex;flex-direction:column;gap:.75rem">
-                <div><span style="font-size:0.72rem;color:var(--text-dim)">Email</span><div style="font-size:0.85rem;color:#fff;font-weight:500" id="settingsEmail">—</div></div>
-                <div>
-                  <span style="font-size:0.72rem;color:var(--text-dim)">Display Name</span>
-                  <div style="display:flex;gap:.5rem;align-items:center;margin-top:.25rem">
-                    <input class="input" id="settingsDisplayName" placeholder="Your display name" style="max-width:260px;font-size:.78rem">
-                    <button class="btn btn-sm btn-outline" onclick="saveProfile()">💾 Save</button>
-                  </div>
-                </div>
-                <div><span style="font-size:0.72rem;color:var(--text-dim)">Member Since</span><div style="font-size:0.82rem;color:var(--text-dim)" id="settingsMemberSince">—</div></div>
-              </div>
-            </div>
-
-            <!-- Password -->
-            <div class="glass" style="padding:1.25rem;border-color:rgba(251,191,36,0.1)">
-              <div class="panel-header">
-                <span class="panel-title">🔒 Password</span>
-              </div>
-              <form onsubmit="changePassword(event)" style="display:flex;flex-direction:column;gap:.75rem">
-                <input class="input" id="settingsOldPw" type="password" placeholder="Current password" required minlength="8" style="max-width:260px;font-size:.78rem">
-                <input class="input" id="settingsNewPw" type="password" placeholder="New password (min 8 chars)" required minlength="8" style="max-width:260px;font-size:.78rem">
-                <input class="input" id="settingsConfirmPw" type="password" placeholder="Confirm new password" required minlength="8" style="max-width:260px;font-size:.78rem">
-                <div style="display:flex;gap:.5rem;align-items:center">
-                  <button class="btn btn-neon btn-sm" type="submit">🔄 Update Password</button>
-                  <span id="settingsPwResult" style="font-size:.72rem;color:var(--text-dim)"></span>
-                </div>
-              </form>
-            </div>
-
-          </div>
-
-          <!-- RIGHT COLUMN: Wallet + API Keys -->
-          <div style="display:flex;flex-direction:column;gap:1.25rem">
-
-            <!-- Wallet -->
-            <div class="glass" style="padding:1.25rem;border-color:rgba(167,139,250,0.15)">
-              <div class="panel-header">
-                <span class="panel-title">💳 Linked Wallet</span>
-              </div>
-              <div style="display:flex;flex-direction:column;gap:.75rem">
-                <div><span style="font-size:0.72rem;color:var(--text-dim)">Wallet Address</span><div style="font-size:0.82rem;color:var(--neon);font-family:monospace;word-break:break-all" id="settingsWalletAddr">—</div></div>
-                <div style="display:flex;gap:.5rem;flex-wrap:wrap">
-                  <button class="btn btn-sm btn-outline" onclick="connectWallet()">🔗 Connect / Switch Wallet</button>
-                  <button class="btn btn-sm btn-ghost" onclick="refreshBalance()">⟳ Refresh</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- API Keys -->
-            <div class="glass" style="padding:1.25rem">
-              <div class="panel-header">
-                <span class="panel-title">🔑 API Keys</span>
-              </div>
-              <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:0.5rem">Generate keys for your AI agents. <strong style="color:var(--neon)">Max 5 keys per account.</strong></p>
-              <div style="display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap">
-                <input class="input" id="apiKeyLabel" placeholder="Label (e.g. Cursor)" style="max-width:260px;font-size:.78rem">
-                <button class="btn btn-neon" onclick="createApiKey()">+ Generate Key</button>
-                <button class="btn btn-sm btn-ghost" onclick="fetchApiKeys()">⟳ Refresh</button>
-                <span id="apiKeyCount" style="font-size:0.7rem;color:var(--text-dim);align-self:center;margin-left:auto">— / 5 keys</span>
-              </div>
-              <div id="apiKeyResult" style="margin-bottom:.5rem"></div>
-              <div id="apiKeyList" style="font-size:.75rem"><div style="color:var(--text-dim);padding:.5rem">No API keys yet.</div></div>
-
-              <!-- Usage Instructions -->
-              <details style="margin-top:1rem;border-top:1px solid var(--border);padding-top:1rem">
-                <summary style="font-size:0.8rem;font-weight:600;color:#fff;cursor:pointer;user-select:none">📖 How to use your API Key</summary>
-                <div style="font-size:0.75rem;color:var(--text-dim);margin:0.75rem 0">Copy one of the examples below and replace <code style="color:var(--neon);background:rgba(0,219,231,0.06);padding:0.1rem 0.3rem;border-radius:3px">sk-aims-...</code> with your key.</div>
-                <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem;margin-bottom:0.75rem">
-                  <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">curl</div>
-                  <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">curl -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  https://aims-gateway.fly.dev/api/discovery</pre>
-                </div>
-                <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem;margin-bottom:0.75rem">
-                  <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">Python (AI Agent SDK)</div>
-                  <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">import requests
-headers = {"Authorization": "Bearer YOUR_API_KEY"}
-resp = requests.get("https://aims-gateway.fly.dev/api/discovery", headers=headers)
-print(resp.json())</pre>
-                </div>
-                <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem">
-                  <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">Claude Code / MCP Config</div>
-                  <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">{
-  "aims-gateway": {
-    "url": "https://aims-gateway.fly.dev",
-    "headers": { "Authorization": "Bearer YOUR_API_KEY" }
-  }
-}</pre>
-                </div>
-              </details>
-            </div>
-
-          </div>
-        </div>
-
-      </section>
-
-      <!-- ════════════════════════════════════════════════════════
-           TAB: DOCS
-           Documentation & reference
-           ════════════════════════════════════════════════════════ -->
-      <section class="tab-panel" id="tab-docs">
-
-        <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1.25rem" id="consumerDashboardHint">Invoke AI skills with your wallet</p>
-
-        <!-- CORS Doc -->
-        <div class="glass" style="padding:1.25rem;border-color:var(--neon-dim)">
-          <div class="card-header"><span class="card-title" style="color:var(--neon)">🔌 CORS Setup</span></div>
-          <div style="font-size:0.78rem;line-height:1.7;color:var(--text-dim)" id="corsDocContent"></div>
-        </div>
-
-        <!-- Legacy hint elements (preserved for docs-content.js) -->
-        <div id="developerDashboardHint" style="display:none">Your skills, 70% revenue</div>
-        <div id="workerDashboardHint" style="display:none">Run a node — earn 25% commission</div>
-        <div id="commerceFreeTrialNote" style="display:none"></div>
-        <div id="trialBannerText" style="display:none"></div>
-
-      </section>
-
-    </div><!-- /content-area -->
+    <!-- Advanced Dev Mode Trigger -->
+    <div class="dev-mode-trigger" onclick="toggleDevDrawer()">
+      <span class="material-symbols-outlined" style="font-size:16px">construction</span> ⚙️ Advanced Dev Mode
+    </div>
 
     <!-- Footer -->
     <footer class="app-footer">
       <div class="footer-inner">
         <div>
-          <div class="footer-brand">AIMS Gateway</div>
+          <div class="footer-brand">AIMS Gateway 2.0</div>
           <div class="footer-text">The definitive decentralized protocol for autonomous agent data acquisition and secure credential management.</div>
           <div class="footer-text" style="font-size:12px;margin-top:8px">© 2024 AIMS Decentralized Protocol. All rights reserved.</div>
         </div>
@@ -584,32 +220,544 @@ print(resp.json())</pre>
       </div>
     </footer>
 
-  </main>
+  </div><!-- /dashboard-container -->
 </div><!-- /app -->
 
+<!-- ════════════════════════════════════════════════════════════════
+     MODAL: PUBLISH TASK
+     ════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay modal-wide" id="bizModal-publish">
+  <div class="modal modal-scroll">
+    <button class="modal-close material-symbols-outlined" onclick="closeBizModal('publish')">close</button>
+    <h3>🚀 Publish Task</h3>
+    <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1.25rem">Post a new task to the market with a budget. Workers with matching skills can claim and execute it.</p>
+
+    <form onsubmit="publishTask(event)" style="display:flex;flex-direction:column;gap:0.75rem;margin-bottom:1.25rem">
+      <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+        <input class="input" id="pubTaskName" placeholder="Task name" required style="flex:2">
+        <input class="input" id="pubBudget" type="number" step="0.01" min="0.05" placeholder="Budget (USDC)" required style="flex:1" value="2.0">
+      </div>
+      <div style="display:flex;gap:0.75rem;flex-wrap:wrap;align-items:center">
+        <label style="display:flex;align-items:center;gap:0.35rem;font-size:0.78rem;color:var(--text-dim);cursor:pointer"><input type="checkbox" id="pubIsCustom" onchange="toggleCreditReq()"> 🔒 Custom Task</label>
+        <div id="creditReqGroup" style="display:none;align-items:center;gap:0.5rem"><span style="font-size:0.72rem;color:var(--text-dim)">Min credit:</span><input class="input" id="pubCreditReq" type="number" min="0" max="100" value="90" style="width:80px"></div>
+        <select class="input" id="pubSkillSelect" required style="flex:1;min-width:150px"><option value="">— Select skill —</option></select>
+      </div>
+      <textarea class="input" id="pubDescription" placeholder="Description" rows="2" style="resize:vertical;min-height:50px"></textarea>
+      <button class="btn btn-neon" id="publishBtn" type="submit" style="flex:1">📤 Publish to Task Market</button>
+    </form>
+    <div id="publishResult" style="font-size:0.75rem;color:var(--text-dim);margin-bottom:1rem"></div>
+
+    <!-- Task Vault -->
+    <div class="vault-panel" id="vaultPanel" style="display:none;margin-bottom:1rem">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--neon);font-weight:700;font-size:.8rem">📱 Task Vault</span><span id="vaultStatusBadge" style="font-size:.65rem;padding:.15rem .5rem;border-radius:4px;background:rgba(148,163,184,0.1);color:var(--text-dim);border:1px solid var(--border)">UNFUNDED</span></div>
+      <div class="vp-row"><span class="vp-label">Vault Address</span><span class="vp-value neon" id="vaultAddressDisplay">—</span></div>
+      <div class="vp-row"><span class="vp-label">Task ID</span><span class="vp-value" id="vaultTaskIdDisplay">—</span></div>
+      <div class="vp-row"><span class="vp-label">Balance</span><span class="vp-value" id="vaultBalanceDisplay">0.00 USDC</span></div>
+      <div class="qr-mock" id="qrMockPanel"><div class="qr-box">SCAN TO PAY</div><div class="qr-info"><strong>Scan to Pay</strong><br>Stripe · Credit Card · QR</div></div>
+      <div style="display:flex;gap:.75rem;margin-top:.5rem;flex-wrap:wrap">
+        <button class="btn btn-sm fiat-deposit-btn" onclick="simulateVaultPayment()" id="vaultPayBtn">💳 Simulate Payment</button>
+        <button class="btn btn-sm btn-ghost" onclick="pollVaultStatus()" id="vaultPollBtn">⟳ Check Status</button>
+        <span style="font-size:.65rem;color:var(--text-dim);align-self:center" id="vaultPollResult"></span>
+      </div>
+      <div style="margin-top:.75rem;padding-top:.75rem;border-top:1px solid var(--border)" id="boostSection">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:.5rem"><span style="color:var(--amber);font-weight:600;font-size:.8rem">⚡ Boost Reward</span><span id="boostTotalDisplay" style="font-size:.65rem;color:var(--text-dim)">Total boosted: 0.00 USDC</span></div>
+        <div style="display:flex;gap:.5rem;align-items:center">
+          <input class="input" id="boostAmount" type="number" step="0.01" min="0.05" placeholder="Amount" style="width:150px" value="0.5">
+          <button class="btn btn-sm withdraw-btn" onclick="boostReward()" id="boostBtn" disabled>⚡ Boost</button><span id="boostResult" style="font-size:.65rem;color:var(--text-dim)"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Commerce Mode -->
+    <div class="card" id="commercePanel" style="margin-bottom:1.25rem">
+      <div class="card-header"><span class="card-title">💳 Commerce Mode</span><span id="currentBillingModeDisplay" style="font-size:0.7rem;padding:0.2rem 0.6rem;border-radius:4px;background:var(--neon-glow);color:var(--neon)">Metered</span></div>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
+        <div style="display:flex;gap:0.5rem"><button class="btn btn-sm btn-outline active" data-mode="pay_per_task" onclick="switchBillingMode('pay_per_task')">⚡ Metered</button><button class="btn btn-sm btn-outline" data-mode="trial" onclick="switchBillingMode('trial')">🎁 Free Trial</button></div>
+        <button class="btn btn-sm btn-plg" onclick="openBuyoutModal()">🔒 Buyout License</button>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:0.75rem;padding-top:0.75rem;border-top:1px solid var(--border);font-size:0.75rem"><span style="color:var(--text-dim)" id="commerceModeDesc">Pay per successful invocation.</span><span style="color:var(--neon-dim);font-size:0.7rem" id="commerceFreeTrialNote">✓ Free trial available</span></div>
+    </div>
+
+    <!-- Recharge -->
+    <div class="glass" style="padding:1.25rem;border-color:rgba(222,255,154,0.1)">
+      <div class="card-header"><span class="card-title">💰 Recharge</span></div>
+      <div style="flex:1;min-width:200px">
+        <div class="recharge-grid">
+          <button class="recharge-amt" onclick="rechargeReserves(10)">10 <span class="currency">USDC</span></button>
+          <button class="recharge-amt" onclick="rechargeReserves(25)">25 <span class="currency">USDC</span></button>
+          <button class="recharge-amt" onclick="rechargeReserves(50)" style="border-color:var(--neon)">50 <span class="currency">USDC ★</span></button>
+          <button class="recharge-amt" onclick="rechargeReserves(100)">100 <span class="currency">USDC</span></button>
+          <button class="recharge-amt" onclick="rechargeReserves(250)">250 <span class="currency">USDC</span></button>
+          <button class="recharge-amt" onclick="rechargeReserves(500)">500 <span class="currency">USDC</span></button>
+        </div>
+        <div style="display:flex;gap:.5rem;margin-top:.5rem;flex-wrap:wrap">
+          <input class="input" id="customRechargeAmt" type="number" placeholder="Custom" min="1" style="width:100px">
+          <button class="btn btn-sm btn-neon" onclick="rechargeReserves(parseFloat(document.getElementById('customRechargeAmt').value))">Deposit</button>
+          <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(25)">💳 $25 Card</button>
+          <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(50)">💳 $50 Card</button>
+          <button class="btn btn-sm fiat-deposit-btn" onclick="fiatDeposit(100)">💳 $100 Card</button>
+        </div>
+        <div class="withdraw-row">
+          <span style="font-size:.75rem;color:var(--text-dim)">Withdraw:</span>
+          <input class="input" id="withdrawAmt" type="number" placeholder="Amount" min="1" value="10" style="width:100px">
+          <button class="btn btn-sm withdraw-btn" onclick="withdrawFunds()">💸 Withdraw</button>
+        </div>
+      </div>
+      <div style="font-size:.78rem;color:var(--text-dim);line-height:1.6;margin-top:.75rem">
+        <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)"><span>Available</span><span class="stat-value neon" style="font-size:1rem" id="rechargeBalance">0.00 USDC</span></div>
+        <div style="display:flex;justify-content:space-between;padding:.35rem 0;border-bottom:1px solid var(--border)"><span>Total Deposited</span><span id="rechargeTotal" style="color:#fff;font-weight:600">0.00 USDC</span></div>
+        <div style="display:flex;justify-content:space-between;padding:.35rem 0"><span>Contract</span><span style="color:var(--text-dim);font-size:.65rem;word-break:break-all" id="rechargeContract">—</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     MODAL: SKILLS
+     ════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay modal-wide" id="bizModal-skills">
+  <div class="modal modal-scroll">
+    <button class="modal-close material-symbols-outlined" onclick="closeBizModal('skills')">close</button>
+    <h3>💡 Skills</h3>
+
+    <div class="grid-3" style="margin-bottom:1.25rem">
+      <div class="card"><div class="card-header"><span class="card-title">📦 Registered</span></div><div class="stat"><span class="stat-label">Skills</span><span class="stat-value" id="devSkillCount">—</span></div><div style="margin-top:0.75rem;max-height:200px;overflow-y:auto" id="devSkillList"></div></div>
+      <div class="card"><div class="card-header"><span class="card-title">💎 Revenue (70%)</span></div><div class="stat"><span class="stat-label">Cumulative</span><span class="stat-value neon" id="devRevenue">— <span class="unit">USDC</span></span></div><div class="gas-meter"><div class="fill" id="devRevenueMeter" style="width:0%"></div></div></div>
+      <div class="card"><div class="card-header"><span class="card-title">🛡️ Credit</span></div><div class="stat"><span class="stat-label">Score</span><span class="stat-value neon" id="devCreditScore">—</span></div><div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;margin-top:.5rem"><div class="fill" id="devCreditScoreBar" style="height:100%;border-radius:3px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e)"></div></div><span style="font-size:0.6rem;color:var(--text-dim)" id="devCreditLevel">—</span></div>
+    </div>
+
+    <!-- Skill Upload -->
+    <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(222,255,154,0.1)">
+      <div class="card-header"><span class="card-title">📦 Upload Skill (ZIP)</span></div>
+      <div class="drop-zone" id="skillDropZone">
+        <div class="dz-icon">📦</div>
+        <div class="dz-text"><strong>Click</strong> or drag ZIP here</div>
+        <div class="dz-hint">Requires manifest.json + main.py</div>
+        <div class="dz-file" id="dzFileInfo"></div>
+        <input type="file" id="skillFileInput" accept=".zip" style="display:none">
+      </div>
+      <div style="display:flex;gap:.75rem;margin-top:.75rem;align-items:center">
+        <button class="btn btn-neon btn-sm" id="uploadSkillBtn" disabled onclick="uploadSkill()">⬆ Upload</button>
+        <span id="uploadStatus" style="font-size:.72rem;color:var(--text-dim)">Select a ZIP file</span>
+      </div>
+    </div>
+
+    <!-- Integration -->
+    <div class="glass" style="padding:1.25rem;border-color:rgba(167,139,250,0.15)">
+      <div class="card-header"><span class="card-title">🔗 One-Click Integration</span></div>
+      <form onsubmit="oneClickIntegrate(event)" style="display:flex;flex-direction:column;gap:.75rem">
+        <div class="integrate-row">
+          <input class="input" id="integrateInput" placeholder="Skill name or API URL" required>
+          <input class="input" id="integrateWallet" placeholder="Your wallet (0x...)" style="flex:0.6;min-width:280px" value="">
+        </div>
+        <div style="display:flex;gap:.75rem;align-items:center">
+          <button class="btn btn-neon" type="submit" id="integrateBtn">🔗 Integrate</button>
+          <span style="font-size:0.65rem;color:var(--text-dim)" id="integrateCount">Mapped: —</span>
+          <button class="btn btn-sm btn-ghost" type="button" onclick="fetchIntegrationStatus()">⟳ Refresh</button>
+        </div>
+      </form>
+      <div id="integrateResult"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     MODAL: TASK MARKET
+     ════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay modal-wide" id="bizModal-market">
+  <div class="modal modal-scroll">
+    <button class="modal-close material-symbols-outlined" onclick="closeBizModal('market')">close</button>
+    <h3>📥 Task Market</h3>
+    <div style="display:flex;align-items:center;gap:1rem;margin-bottom:1rem">
+      <span style="font-size:0.65rem;color:var(--text-dim)" id="mkPendingCount">Pending: —</span>
+      <button class="btn btn-sm btn-ghost" onclick="fetchPendingTasks()">⟳ Refresh</button>
+    </div>
+    <div class="market-table" id="taskMarketBody"><div class="empty-state"><div class="big-icon">🛒</div>No pending tasks</div></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     MODAL: AUTH & SETTINGS
+     ════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay modal-wide" id="bizModal-auth">
+  <div class="modal modal-scroll">
+    <button class="modal-close material-symbols-outlined" onclick="closeBizModal('auth')">close</button>
+    <h3>🔐 Auth &amp; Settings</h3>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem">
+      <!-- Profile -->
+      <div class="glass" style="padding:1.25rem">
+        <div class="panel-header"><span class="panel-title">👤 Profile</span></div>
+        <div><span style="font-size:0.72rem;color:var(--text-dim)">Email</span><div style="font-size:0.85rem;color:#fff;font-weight:500" id="settingsEmail">—</div></div>
+        <div style="margin-top:.75rem">
+          <span style="font-size:0.72rem;color:var(--text-dim)">Display Name</span>
+          <div style="display:flex;gap:.5rem;align-items:center;margin-top:.25rem">
+            <input class="input" id="settingsDisplayName" placeholder="Your display name" style="max-width:260px;font-size:.78rem">
+            <button class="btn btn-sm btn-outline" onclick="saveProfile()">💾 Save</button>
+          </div>
+        </div>
+        <div style="margin-top:.75rem"><span style="font-size:0.72rem;color:var(--text-dim)">Member Since</span><div style="font-size:0.82rem;color:var(--text-dim)" id="settingsMemberSince">—</div></div>
+      </div>
+
+      <!-- Password -->
+      <div class="glass" style="padding:1.25rem;border-color:rgba(251,191,36,0.1)">
+        <div class="panel-header"><span class="panel-title">🔒 Password</span></div>
+        <form onsubmit="changePassword(event)" style="display:flex;flex-direction:column;gap:.75rem">
+          <input class="input" id="settingsOldPw" type="password" placeholder="Current password" required minlength="8">
+          <input class="input" id="settingsNewPw" type="password" placeholder="New password (min 8 chars)" required minlength="8">
+          <input class="input" id="settingsConfirmPw" type="password" placeholder="Confirm new password" required minlength="8">
+          <div style="display:flex;gap:.5rem;align-items:center">
+            <button class="btn btn-neon btn-sm" type="submit">🔄 Update Password</button>
+            <span id="settingsPwResult" style="font-size:.72rem;color:var(--text-dim)"></span>
+          </div>
+        </form>
+      </div>
+
+      <!-- Wallet -->
+      <div class="glass" style="padding:1.25rem;border-color:rgba(167,139,250,0.15)">
+        <div class="panel-header"><span class="panel-title">💳 Linked Wallet</span></div>
+        <div><span style="font-size:0.72rem;color:var(--text-dim)">Wallet Address</span><div style="font-size:0.82rem;color:var(--neon);font-family:monospace;word-break:break-all" id="settingsWalletAddr">—</div></div>
+        <div style="display:flex;gap:.5rem;margin-top:.75rem;flex-wrap:wrap">
+          <button class="btn btn-sm btn-outline" onclick="connectWallet()">🔗 Connect / Switch</button>
+          <button class="btn btn-sm btn-ghost" onclick="refreshBalance()">⟳ Refresh</button>
+        </div>
+      </div>
+
+      <!-- API Keys -->
+      <div class="glass" style="padding:1.25rem">
+        <div class="panel-header"><span class="panel-title">🔑 API Keys</span></div>
+        <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:0.5rem">Generate keys for your AI agents. <strong style="color:var(--neon)">Max 5 keys per account.</strong></p>
+        <div style="display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap">
+          <input class="input" id="apiKeyLabel" placeholder="Label (e.g. Cursor)" style="max-width:260px;font-size:.78rem">
+          <button class="btn btn-neon" onclick="createApiKey()">+ Generate Key</button>
+          <button class="btn btn-sm btn-ghost" onclick="fetchApiKeys()">⟳ Refresh</button>
+          <span id="apiKeyCount" style="font-size:0.7rem;color:var(--text-dim);align-self:center;margin-left:auto">— / 5 keys</span>
+        </div>
+        <div id="apiKeyResult" style="margin-bottom:.5rem"></div>
+        <div id="apiKeyList" style="font-size:.75rem"><div style="color:var(--text-dim);padding:.5rem">No API keys yet.</div></div>
+        <details style="margin-top:1rem;border-top:1px solid var(--border);padding-top:1rem">
+          <summary style="font-size:0.8rem;font-weight:600;color:#fff;cursor:pointer;user-select:none">📖 How to use your API Key</summary>
+          <div style="font-size:0.75rem;color:var(--text-dim);margin:0.75rem 0">Copy one of the examples below and replace <code style="color:var(--neon);background:rgba(0,219,231,0.06);padding:0.1rem 0.3rem;border-radius:3px">sk-aims-...</code> with your key.</div>
+          <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem;margin-bottom:0.75rem">
+            <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">curl</div>
+            <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">curl -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  https://aims-gateway.fly.dev/api/discovery</pre>
+          </div>
+          <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem;margin-bottom:0.75rem">
+            <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">Python (AI Agent SDK)</div>
+            <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">import requests
+headers = {"Authorization": "Bearer YOUR_API_KEY"}
+resp = requests.get("https://aims-gateway.fly.dev/api/discovery", headers=headers)
+print(resp.json())</pre>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     MODAL: ACTIVITY
+     ════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay modal-wide" id="bizModal-activity">
+  <div class="modal modal-scroll">
+    <button class="modal-close material-symbols-outlined" onclick="closeBizModal('activity')">close</button>
+    <h3>💬 Activity</h3>
+
+    <!-- Activity Log -->
+    <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem">
+      <div class="card-header"><span class="card-title">📋 Activity Log</span><button class="btn btn-sm btn-ghost" onclick="clearLog()">Clear</button></div>
+      <div class="log-feed" id="consumerLog"><div class="log-entry info"><span class="time">—</span><span class="msg">Connect wallet to begin. <strong style="color:#34d399">First task free!</strong></span></div></div>
+    </div>
+
+    <!-- Audit Ledger -->
+    <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem">
+      <div class="card-header"><span class="card-title">📜 Audit Ledger</span><div style="display:flex;gap:.35rem"><button class="btn btn-sm btn-ghost" onclick="fetchAudit('')">All</button><button class="btn btn-sm btn-ghost" onclick="fetchAudit('settle')">Settlements</button><button class="btn btn-sm btn-ghost" onclick="fetchAudit('refund')">Refunds</button></div></div>
+      <div class="audit-filter"><input class="input" id="auditTaskFilter" placeholder="Filter by task ID…" style="max-width:200px"><button class="btn btn-sm btn-outline" onclick="fetchAudit(document.getElementById('auditTaskFilter').value.trim())">Search</button><button class="btn btn-sm btn-ghost" onclick="fetchHealth();refreshBalance()">⟳ Refresh</button></div>
+      <div class="audit-table" id="auditLedgerBody"><div class="empty-state"><div class="big-icon">📜</div>Connect wallet to see audit trail</div></div>
+    </div>
+
+    <!-- User History -->
+    <div class="glass" style="padding:1.25rem;border-color:rgba(222,255,154,0.1)">
+      <div class="card-header"><span class="card-title">📋 User History</span><div style="display:flex;gap:.35rem"><button class="btn btn-sm btn-ghost" onclick="fetchHistory('')">All</button><button class="btn btn-sm btn-ghost" onclick="fetchHistory('deposit')">Deposits</button><button class="btn btn-sm btn-ghost" onclick="fetchHistory('withdraw')">Withdrawals</button></div></div>
+      <div class="history-table" id="userHistoryBody"><div class="empty-state"><div class="big-icon">📋</div>Connect wallet to see history</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     MODAL: WORKER GUIDE
+     ════════════════════════════════════════════════════════════════ -->
+<div class="modal-overlay modal-wide" id="bizModal-worker">
+  <div class="modal modal-scroll">
+    <button class="modal-close material-symbols-outlined" onclick="closeBizModal('worker')">close</button>
+    <h3>📖 Worker Guide</h3>
+
+    <!-- Worker Node -->
+    <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem">
+      <div class="card-header"><span class="card-title">🔌 Worker Node</span></div>
+      <div class="grid-3">
+        <div class="card">
+          <div class="card-header"><span class="card-title">🔌 Node Status</span></div>
+          <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem"><span class="status-dot idle" id="workerStatusDot"></span><span style="font-size:0.85rem;font-weight:600;color:#fff" id="workerStatusText">Disconnected</span></div>
+          <div style="font-size:0.78rem"><div><span style="color:var(--text-dim)">Node ID:</span> <span id="workerNodeId" style="color:#fff">—</span></div><div><span style="color:var(--text-dim)">Uptime:</span> <span id="workerUptime" style="color:#fff">0s</span></div></div>
+          <div style="margin-top:1rem"><button class="btn btn-sm btn-neon" onclick="startWorkerSim()" id="workerStartBtn">▶ Start Node</button></div>
+        </div>
+        <div class="card"><div class="card-header"><span class="card-title">💰 Commission (25%)</span></div><div class="stat"><span class="stat-label">Earned</span><span class="stat-value neon" id="workerEarnings">— <span class="unit">USDC</span></span></div><div class="gas-meter"><div class="fill" id="workerEarningsMeter" style="width:0%"></div></div></div>
+        <div class="card"><div class="card-header"><span class="card-title">📋 Last Payouts</span></div><div id="workerPayouts"><div class="empty-state"><div class="big-icon">📭</div>No payouts yet</div></div></div>
+      </div>
+    </div>
+
+    <!-- Co-Contributors -->
+    <div class="glass" style="padding:1.25rem;margin-bottom:1.25rem;border-color:rgba(167,139,250,0.15)">
+      <div class="card-header"><span class="card-title">👥 Co-Contributors</span></div>
+      <div id="coContribList"></div>
+      <div style="display:flex;gap:.5rem;margin-top:.5rem;align-items:center;flex-wrap:wrap">
+        <button class="btn btn-sm btn-ghost" onclick="addContributorRow()">+ Add</button>
+        <button class="btn btn-sm btn-outline" onclick="saveContributors()">💾 Save Split</button>
+        <span id="contribTotalPct" style="font-size:.65rem;color:var(--text-dim)">Total: 0%</span>
+        <span id="contribSaveResult" style="font-size:.65rem;color:var(--text-dim)"></span>
+      </div>
+    </div>
+
+    <!-- Canary -->
+    <div class="glass" style="padding:1.25rem;border-color:rgba(52,211,153,0.15)">
+      <div class="card-header"><span class="card-title">🛡️ Canary Watermark</span><span id="canaryStatusBadge" style="font-size:0.65rem;padding:0.15rem 0.5rem;border-radius:4px;background:rgba(34,197,94,0.1);color:#22c55e;font-weight:600">● ACTIVE</span></div>
+      <div style="display:flex;align-items:center;gap:1.5rem"><span id="canaryStatusDot" class="status-dot online"></span><span id="canaryStatusText" style="color:#fff;font-weight:600">Protection Active</span><span style="color:var(--text-dim);font-size:.78rem" id="canaryBlacklistStatus">Clean — no strikes</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     ADVANCED DEV MODE DRAWER
+     ════════════════════════════════════════════════════════════════ -->
+<div class="drawer-overlay" id="devDrawerOverlay" onclick="closeDevDrawer()"></div>
+<div class="drawer" id="devDrawer">
+  <div class="drawer-header">
+    <span class="drawer-title"><span class="material-symbols-outlined" style="font-size:18px">construction</span> Advanced Dev Mode</span>
+    <button class="btn btn-sm btn-ghost" onclick="closeDevDrawer()" style="padding:0.3rem 0.5rem"><span class="material-symbols-outlined" style="font-size:18px">close</span></button>
+  </div>
+
+  <div class="drawer-body">
+
+    <!-- Free Trial Status -->
+    <div class="drawer-section">
+      <div class="drawer-section-title">🎁 Free Trial Status</div>
+      <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:center">
+        <div class="stat"><span class="stat-label">Remaining</span><span class="stat-value" style="color:#34d399;font-size:1.25rem" id="trialsLeftEnhanced">—</span></div>
+        <div style="flex:1;min-width:150px">
+          <div style="display:flex;justify-content:space-between;font-size:0.7rem;color:var(--text-dim);margin-bottom:0.25rem"><span>Trial Usage</span><span id="trialProgressText">0 / 0 Skills used</span></div>
+          <div class="gas-meter"><div class="fill" id="trialProgressBar" style="width:0%;background:linear-gradient(90deg,#34d399,#22c55e)"></div></div>
+        </div>
+        <span class="plg-badge active" id="trialStatusBadge">&#9733; PLG Enabled</span>
+      </div>
+    </div>
+
+    <!-- Settlement Feed -->
+    <div class="drawer-section">
+      <div class="drawer-section-title">⚡ Live Settlement Feed</div>
+      <div style="display:flex;gap:.75rem;font-size:.7rem;color:var(--text-dim);margin-bottom:.5rem">
+        <span>Settled: <strong style="color:var(--neon)" id="consoleFeedCount">0</strong></span>
+        <span>Vol: <strong style="color:#a78bfa" id="consoleFeedVol">0.00</strong></span>
+        <span style="display:inline-flex;align-items:center;gap:.3rem;padding:.15rem .4rem;background:rgba(34,197,94,0.08);border-radius:3px;font-size:.6rem;color:#22c55e"><span style="display:inline-block;width:4px;height:4px;border-radius:50%;background:#22c55e;animation:pulse 1.5s infinite"></span>LIVE</span>
+      </div>
+      <div class="feed-console" id="consoleFeed"><div style="text-align:center;padding:2rem;color:var(--text-dim)">⏳ Connecting to stream…</div></div>
+    </div>
+
+    <!-- Network Config -->
+    <div class="drawer-section">
+      <div class="drawer-section-title">⚙️ Network Config</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;font-size:0.78rem">
+        <div><span style="color:var(--text-dim)">API:</span> <span id="cfgApiBase" style="color:var(--neon)"></span></div>
+        <div><span style="color:var(--text-dim)">Wallet:</span> <span id="cfgWallet">—</span></div>
+        <div><span style="color:var(--text-dim)">Network:</span> <span id="cfgNetwork">—</span></div>
+        <div><span style="color:var(--text-dim)">Free Trial:</span> <span id="cfgTrial" style="color:#34d399">1 per Skill</span></div>
+      </div>
+    </div>
+
+    <!-- Invoke Skill Form (dev) -->
+    <div class="drawer-section">
+      <div class="drawer-section-title">🚀 Invoke Skill (Developer)</div>
+      <form onsubmit="invokeSkill(event)" style="display:flex;flex-direction:column;gap:0.75rem">
+        <div style="display:flex;gap:0.75rem">
+          <select class="input" id="skillSelect" required style="flex:1"><option value="">— Select a skill —</option></select>
+          <select class="input" id="billingMode" style="width:160px;flex-shrink:0"><option value="pay_per_task">⚡ Metered</option><option value="trial" selected>🎁 Free Trial (1st)</option></select>
+        </div>
+        <input class="input" id="skillParams" placeholder='Params JSON' value='{"url":"https://example.com"}'>
+        <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+          <input class="input" id="workerAddr" placeholder="Worker address" style="flex:1" value="0x70997970C51812dc3A010C7d01b50e0d17dc79C8">
+          <input class="input" id="devAddr" placeholder="Developer address" style="flex:1" value="0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266">
+        </div>
+        <div style="display:flex;gap:0.75rem">
+          <button class="btn btn-neon" id="invokeBtn" type="submit" style="flex:1">▶ Execute &amp; Settle</button>
+          <button class="btn btn-sm btn-plg" id="trialBtn" type="button" onclick="document.getElementById('billingMode').value='trial'">🎁 Free</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Skills Content (dev panel) -->
+    <div class="drawer-section">
+      <div class="drawer-section-title">🧩 All Skills</div>
+      <div id="skillsContent" style="max-height:200px;overflow-y:auto"><div class="empty-state">Connect to load</div></div>
+      <button class="btn btn-sm btn-ghost" onclick="fetchDiscovery()" style="margin-top:.5rem">⟳ Refresh</button>
+    </div>
+
+    <!-- Credit Score Bar -->
+    <div class="drawer-section">
+      <div class="drawer-section-title">🛡️ Credit Score</div>
+      <div style="height:6px;background:rgba(255,255,255,0.06);border-radius:3px;margin-top:.5rem"><div class="fill" id="creditScoreBar" style="height:100%;border-radius:3px;width:0%;background:linear-gradient(90deg,var(--amber),var(--neon),#22c55e)"></div></div>
+      <button class="btn btn-sm btn-ghost" onclick="fetchCreditScore()" style="margin-top:.5rem">⟳ Refresh</button>
+    </div>
+
+    <!-- CORS Doc -->
+    <div class="drawer-section">
+      <div class="drawer-section-title">🔌 CORS Setup</div>
+      <div style="font-size:0.78rem;line-height:1.6;color:var(--text-dim)" id="corsDocContent"></div>
+    </div>
+
+    <!-- Hint elements (preserved) -->
+    <div id="consumerDashboardHint" style="display:none"></div>
+    <div id="developerDashboardHint" style="display:none">Your skills, 70% revenue</div>
+    <div id="workerDashboardHint" style="display:none">Run a node — earn 25% commission</div>
+    <div id="trialBannerText" style="display:none"></div>
+
+  </div><!-- /drawer-body -->
+</div>
+
+<!-- ════════════════════════════════════════════════════════════════
+     SCRIPTS
+     ════════════════════════════════════════════════════════════════ -->
 <script src="/static/js/docs-content.js"></script>
 <script src="/static/js/console-core.js"></script>
 <script>
-// ── Sidebar Tab Switching ─────────────────────────────────
-function switchSidebarTab(tabName) {
-  // Update sidebar links
-  document.querySelectorAll('.sidebar-link').forEach(b => b.classList.remove('active'));
-  const activeLink = document.querySelector(`[data-tab="${tabName}"]`);
-  if (activeLink) activeLink.classList.add('active');
-
-  // Toggle tab panels
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  const targetPanel = document.getElementById('tab-' + tabName);
-  if (targetPanel) targetPanel.classList.add('active');
-
-  // Map sidebar tab to API role for data loading
-  const roleMap = { dashboard: 'consumer', publish: 'consumer', earn: 'developer', settings: 'consumer', docs: 'consumer' };
-  switchRole(roleMap[tabName] || 'consumer');
+// ── Modal System ──────────────────────────────────────────────
+function openBizModal(name) {
+  const el = document.getElementById('bizModal-' + name);
+  if (el) el.classList.add('open');
 }
 
-// ── Page Init ─────────────────────────────────────────────
+function closeBizModal(name) {
+  const el = document.getElementById('bizModal-' + name);
+  if (el) el.classList.remove('open');
+}
+
+// Close biz modal on overlay click
+document.querySelectorAll('.modal-wide').forEach(m => {
+  m.addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('open');
+  });
+});
+
+// ── Dev Drawer ────────────────────────────────────────────────
+function toggleDevDrawer() {
+  const drawer = document.getElementById('devDrawer');
+  const overlay = document.getElementById('devDrawerOverlay');
+  const isOpen = drawer.classList.contains('open');
+  drawer.classList.toggle('open');
+  overlay.classList.toggle('open');
+  if (!isOpen) {
+    // Refresh dev data when opening
+    fetchHealth();
+    fetchDiscovery();
+    fetchCreditScore();
+  }
+}
+
+function closeDevDrawer() {
+  document.getElementById('devDrawer').classList.remove('open');
+  document.getElementById('devDrawerOverlay').classList.remove('open');
+}
+
+// ── Chart Rendering ───────────────────────────────────────────
+let revenueChartInstance = null;
+let taskFlowChartInstance = null;
+
+function renderRevenueChart() {
+  const ctx = document.getElementById('revenueChart');
+  if (!ctx) return;
+  try {
+    if (revenueChartInstance) revenueChartInstance.destroy();
+    revenueChartInstance = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: ['M1','M2','M3','M4','M5','M6'],
+        datasets: [{
+          label: 'Revenue (USDC)',
+          data: [0, 0, 0, 0, 0, 0],
+          borderColor: '#00dbe7',
+          backgroundColor: 'rgba(0,219,231,0.08)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 3,
+          pointBackgroundColor: '#00dbe7',
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#849495', font: { size: 10 } } },
+          y: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#849495', font: { size: 10 }, callback: v => v.toFixed(2) } },
+        },
+      }
+    });
+  } catch(e) { console.warn('renderRevenueChart:', e.message); }
+}
+
+function renderTaskFlowChart() {
+  const ctx = document.getElementById('taskFlowChart');
+  if (!ctx) return;
+  try {
+    if (taskFlowChartInstance) taskFlowChartInstance.destroy();
+    taskFlowChartInstance = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Successful', 'Pending', 'Failed'],
+        datasets: [{
+          data: [0, 0, 0],
+          backgroundColor: ['#22c55e', '#fbbf24', '#ff6b6b'],
+          borderWidth: 0,
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '65%',
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: { color: '#b9cacb', font: { size: 10 }, padding: 12, usePointStyle: true },
+          }
+        },
+      }
+    });
+  } catch(e) { console.warn('renderTaskFlowChart:', e.message); }
+}
+
+function updateRevenueChart(value) {
+  if (!revenueChartInstance) return;
+  try {
+    const data = revenueChartInstance.data.datasets[0].data;
+    // Shift data left, push new value at end
+    data.shift();
+    data.push(value || 0);
+    revenueChartInstance.update('none');
+  } catch(e) { console.warn('updateRevenueChart:', e.message); }
+}
+
+function updateTaskFlowChart(success, pending, failed) {
+  if (!taskFlowChartInstance) return;
+  try {
+    taskFlowChartInstance.data.datasets[0].data = [success || 0, pending || 0, failed || 0];
+    taskFlowChartInstance.update('none');
+  } catch(e) { console.warn('updateTaskFlowChart:', e.message); }
+}
+
+// ── Page Init ─────────────────────────────────────────────────
 document.addEventListener("DOMContentLoaded", function(){
-  // Fill CORS doc and static text from docs-content.js
+  // Fill static content from docs-content.js
   const corsEl = document.getElementById("corsDocContent");
   if (corsEl && typeof DOCS_CONTENT !== "undefined") corsEl.innerHTML = DOCS_CONTENT.corsSetup;
   const tbt = document.getElementById("trialBannerText");
@@ -620,8 +768,10 @@ document.addEventListener("DOMContentLoaded", function(){
   if (ddh && typeof DOCS_CONTENT !== "undefined") ddh.innerHTML = DOCS_CONTENT.developerDashboardHint;
   const wdh = document.getElementById("workerDashboardHint");
   if (wdh && typeof DOCS_CONTENT !== "undefined") wdh.innerHTML = DOCS_CONTENT.workerDashboardHint;
-  const cft = document.getElementById("commerceFreeTrialNote");
-  if (cft && typeof DOCS_CONTENT !== "undefined") cft.innerHTML = DOCS_CONTENT.freeTrialNote;
+
+  // Initialize charts
+  renderRevenueChart();
+  renderTaskFlowChart();
 });
 </script>
 </body>
