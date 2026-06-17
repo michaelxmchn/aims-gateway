@@ -3671,6 +3671,7 @@ class CreateAPIKeyResponse(BaseModel):
     api_key: str
     key_prefix: str
     label: str = ""
+    remaining_slots: int = 0
 
 
 class APIKeyItem(BaseModel):
@@ -3696,10 +3697,13 @@ async def _require_user(request: Request) -> int:
 
 @app.post("/api/auth/api-keys", response_model=CreateAPIKeyResponse)
 async def create_api_key(req: CreateAPIKeyRequest, request: Request):
-    """Generate a new API key for the authenticated user."""
+    """Generate a new API key for the authenticated user. Max 5 keys per account."""
     user_id = await _require_user(request)
-    result = await generate_api_key(user_id, label=req.label)
-    return CreateAPIKeyResponse(**result)
+    try:
+        result = await generate_api_key(user_id, label=req.label)
+        return CreateAPIKeyResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/auth/api-keys", response_model=APIKeyListResponse)

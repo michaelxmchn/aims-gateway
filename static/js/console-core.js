@@ -1500,12 +1500,15 @@ const boostFromMarket = async function(taskId) {
 const fetchApiKeys = async function() {
   const panel = document.querySelector('.tab-panel.active') || document;
   const container = panel.querySelector('#apiKeyList');
+  const countEl = panel.querySelector('#apiKeyCount');
   const jwt = localStorage.getItem("aims_jwt");
   if (!jwt) { if (container) container.innerHTML = '<div style="color:var(--text-dim);padding:.5rem">Not authenticated.</div>'; return; }
   try {
     const resp = await fetch(API_BASE + "/api/auth/api-keys", { headers: jwtHeaders() });
     if (!resp.ok) { if (container) container.innerHTML = '<div style="color:var(--red);padding:.5rem">Failed to load keys.</div>'; return; }
     const data = await resp.json();
+    const count = data.keys ? data.keys.length : 0;
+    if (countEl) countEl.textContent = count + ' / 5 keys';
     if (!data.keys || data.keys.length === 0) { if (container) container.innerHTML = '<div style="color:var(--text-dim);padding:.5rem">No API keys generated yet.</div>'; return; }
     if (container) {
       container.innerHTML = '<table style="width:100%;border-collapse:collapse;font-size:.75rem"><thead><tr>' +
@@ -1533,11 +1536,16 @@ const createApiKey = async function() {
   if (!jwt) { toast("Not authenticated", "error"); return; }
   try {
     const resp = await fetch(API_BASE + "/api/auth/api-keys", { method: "POST", headers: jwtHeaders(), body: JSON.stringify({ label }) });
-    if (!resp.ok) { toast("Failed to create API key", "error"); return; }
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      if (resultDiv) resultDiv.innerHTML = '<div style="color:var(--red);font-size:.75rem;padding:.5rem">⚠️ ' + (err.detail || "Failed to create API key") + '</div>';
+      toast(err.detail || "Failed to create API key", "error");
+      return;
+    }
     const data = await resp.json();
     if (resultDiv) {
       resultDiv.innerHTML = '<div style="background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.15);border-radius:6px;padding:.75rem;margin-bottom:.5rem">' +
-        '<div style="color:#34d399;font-weight:600;font-size:.75rem;margin-bottom:.35rem">✅ API Key Generated</div>' +
+        '<div style="color:#34d399;font-weight:600;font-size:.75rem;margin-bottom:.35rem">✅ API Key Generated <span style="color:var(--text-dim);font-weight:400;font-size:.7rem">(' + data.remaining_slots + '/' + 5 + ' slots remaining)</span></div>' +
         '<div style="font-size:.72rem;color:var(--text-dim);margin-bottom:.25rem">Copy this key now — it will not be shown again:</div>' +
         '<div style="background:var(--bg);padding:.5rem;border-radius:4px;word-break:break-all;font-family:monospace;color:var(--neon);font-size:.72rem;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast(\'Copied!\',\'success\')">' + data.api_key + '</div>' +
         '<div style="font-size:.65rem;color:var(--text-dim);margin-top:.35rem">Click to copy | Prefix: <code style="color:var(--neon)">' + data.key_prefix + '</code></div></div>';

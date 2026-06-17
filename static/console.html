@@ -438,14 +438,55 @@
           <div class="panel-header">
             <span class="panel-title">🔑 Protocol Gateway Keys</span>
           </div>
-          <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:1.5rem">Generate encrypted keys for your AI agents to access AIMS resources.</p>
-          <div style="display:flex;gap:.5rem;margin-bottom:1.25rem;flex-wrap:wrap">
+          <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:0.5rem">Generate encrypted keys for your AI agents to access AIMS resources. <strong style="color:var(--neon)">Max 5 keys per account.</strong></p>
+          <div style="display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap">
             <input class="input" id="apiKeyLabel" placeholder="Label (e.g. Cursor)" style="max-width:260px;font-size:.78rem">
             <button class="btn btn-neon" onclick="createApiKey()">+ Generate Key</button>
             <button class="btn btn-sm btn-ghost" onclick="fetchApiKeys()">⟳ Refresh</button>
+            <span id="apiKeyCount" style="font-size:0.7rem;color:var(--text-dim);align-self:center;margin-left:auto">— / 5 keys</span>
           </div>
           <div id="apiKeyResult" style="margin-bottom:.5rem"></div>
           <div id="apiKeyList" style="font-size:.75rem"><div style="color:var(--text-dim);padding:.5rem">No API keys yet.</div></div>
+
+          <!-- Usage Instructions -->
+          <div style="border-top:1px solid var(--border);margin-top:1.5rem;padding-top:1.25rem">
+            <div style="font-size:0.8rem;font-weight:600;color:#fff;margin-bottom:0.75rem">📖 How to use your API Key</div>
+            <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:1rem">Copy one of the examples below and replace <code style="color:var(--neon);background:rgba(0,219,231,0.06);padding:0.1rem 0.3rem;border-radius:3px">sk-aims-...</code> with your key.</div>
+
+            <!-- curl -->
+            <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem;margin-bottom:0.75rem">
+              <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">curl</div>
+              <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">curl -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  https://aims-gateway.fly.dev/api/discovery</pre>
+            </div>
+
+            <!-- Python -->
+            <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem;margin-bottom:0.75rem">
+              <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">Python (AI Agent SDK)</div>
+              <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">import requests
+
+headers = {"Authorization": "Bearer YOUR_API_KEY"}
+resp = requests.get(
+    "https://aims-gateway.fly.dev/api/discovery",
+    headers=headers
+)
+print(resp.json())</pre>
+            </div>
+
+            <!-- Claude Code MCP -->
+            <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem">
+              <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">Claude Code / MCP Config</div>
+              <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">{
+  "aims-gateway": {
+    "url": "https://aims-gateway.fly.dev",
+    "headers": {
+      "Authorization": "Bearer YOUR_API_KEY"
+    }
+  }
+}</pre>
+            </div>
+          </div>
         </div>
 
       </section>

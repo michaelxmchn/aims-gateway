@@ -308,22 +308,30 @@ async def verify_jwt(token: str) -> dict[str, Any] | None:
 # ── API Key operations ───────────────────────────────────────────────
 
 
+MAX_API_KEYS_PER_USER = 5
+
 async def generate_api_key(user_id: int, label: str = "") -> dict[str, str]:
     """Generate a new API key for the user. Returns plaintext key (only time it's visible)."""
     loop = asyncio.get_event_loop()
 
     def _do() -> dict[str, str]:
+        conn = _get_conn()
+        count = conn.execute(
+            "SELECT COUNT(*) AS cnt FROM api_keys WHERE user_id = ? AND is_revoked = 0",
+            (user_id,),
+        ).fetchone()["cnt"]
+        if count >= MAX_API_KEYS_PER_USER:
+            raise ValueError(f"Maximum {MAX_API_KEYS_PER_USER} API keys per account. Revoke an existing key first.")
         raw = API_KEY_PREFIX + secrets.token_hex(API_KEY_LENGTH - len(API_KEY_PREFIX))
         key_hash = bcrypt.hashpw(raw.encode(), bcrypt.gensalt()).decode()
         key_prefix = raw[:12] + "..."  # e.g. sk-aims-a1b2...
         now = time.time()
-        conn = _get_conn()
         conn.execute(
             "INSERT INTO api_keys (user_id, key_hash, key_prefix, label, created_at) VALUES (?, ?, ?, ?, ?)",
             (user_id, key_hash, key_prefix, label, now),
         )
         conn.commit()
-        return {"api_key": raw, "key_prefix": key_prefix, "label": label}
+        return {"api_key": raw, "key_prefix": key_prefix, "label": label, "remaining_slots": MAX_API_KEYS_PER_USER - count - 1}
 
     return await loop.run_in_executor(None, _do)
 
