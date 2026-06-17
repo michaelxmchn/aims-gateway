@@ -489,7 +489,7 @@
         <!-- CORS Doc / Integration Docs -->
         <div class="glass" style="padding:1.25rem;border-color:var(--neon-dim)">
           <div class="card-header"><span class="card-title" style="color:var(--neon)">🔌 CORS Setup</span></div>
-          <div style="font-size:0.78rem;line-height:1.7;color:var(--text-dim)" id="corsDocContent"></div>
+          <div style="font-size:0.78rem;line-height:1.7;color:var(--text-dim)" id="corsDocContentDocs"></div>
         </div>
 
         <!-- Legacy hint elements (preserved for docs-content.js) -->
@@ -548,6 +548,8 @@ document.addEventListener("DOMContentLoaded", function(){
   // Fill CORS doc and static text from docs-content.js
   const corsEl = document.getElementById("corsDocContent");
   if (corsEl && typeof DOCS_CONTENT !== "undefined") corsEl.innerHTML = DOCS_CONTENT.corsSetup;
+  const corsElDocs = document.getElementById("corsDocContentDocs");
+  if (corsElDocs && typeof DOCS_CONTENT !== "undefined") corsElDocs.innerHTML = DOCS_CONTENT.corsSetup;
   const tbt = document.getElementById("trialBannerText");
   if (tbt && typeof DOCS_CONTENT !== "undefined") tbt.innerHTML = DOCS_CONTENT.trialBannerText;
   const cdh = document.getElementById("consumerDashboardHint");

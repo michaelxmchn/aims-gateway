@@ -1498,7 +1498,8 @@ const boostFromMarket = async function(taskId) {
 
 // ── API Key Management ─────────────────────────────────────────
 const fetchApiKeys = async function() {
-  const container = document.getElementById("apiKeyList");
+  const panel = document.querySelector('.tab-panel.active') || document;
+  const container = panel.querySelector('#apiKeyList');
   const jwt = localStorage.getItem("aims_jwt");
   if (!jwt) { if (container) container.innerHTML = '<div style="color:var(--text-dim);padding:.5rem">Not authenticated.</div>'; return; }
   try {
@@ -1525,8 +1526,9 @@ const fetchApiKeys = async function() {
 };
 
 const createApiKey = async function() {
-  const label = document.getElementById("apiKeyLabel")?.value.trim();
-  const resultDiv = document.getElementById("apiKeyResult");
+  const panel = document.querySelector('.tab-panel.active') || document;
+  const label = panel.querySelector('#apiKeyLabel')?.value.trim();
+  const resultDiv = panel.querySelector('#apiKeyResult');
   const jwt = localStorage.getItem("aims_jwt");
   if (!jwt) { toast("Not authenticated", "error"); return; }
   try {
@@ -1540,8 +1542,8 @@ const createApiKey = async function() {
         '<div style="background:var(--bg);padding:.5rem;border-radius:4px;word-break:break-all;font-family:monospace;color:var(--neon);font-size:.72rem;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast(\'Copied!\',\'success\')">' + data.api_key + '</div>' +
         '<div style="font-size:.65rem;color:var(--text-dim);margin-top:.35rem">Click to copy | Prefix: <code style="color:var(--neon)">' + data.key_prefix + '</code></div></div>';
     }
-    const akl = document.getElementById("apiKeyLabel");
-    if (akl) akl.value = "";
+    const akl2 = panel.querySelector('#apiKeyLabel');
+    if (akl2) akl2.value = "";
     fetchApiKeys();
   } catch(e) { if (resultDiv) resultDiv.innerHTML = '<div style="color:var(--red);font-size:.75rem">Error: ' + e.message + '</div>'; }
 };
