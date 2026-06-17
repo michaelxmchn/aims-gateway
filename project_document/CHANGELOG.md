@@ -9,6 +9,8 @@
 ### 修复
 - fix(auth): `/` 路由释放 Auth Guard，改为公开页面 — 用户首次访问可直接看到着陆页，仅 `/console` 保留 JWT 鉴权重定向
 - fix(ui): `static/index.html` "Launch App" 按钮 href 修正 `#cta` → `/console`，确保商业动线正确引导至登录拦截流
+- fix(db): `create_user()` 返回字典缺少 `jwt_secret` — 注册后 `create_jwt()` 访问 `user["jwt_secret"]` 触发 `KeyError` 导致 500
+- fix(server): 添加全局 `@app.exception_handler(Exception)` — 捕获所有未处理异常，统一返回 `{"detail": "..."}` JSON 格式而非纯文本 500
 
 ## [2026-06-16]
 ### 新增

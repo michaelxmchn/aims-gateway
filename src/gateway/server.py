@@ -19,7 +19,7 @@ from typing import Any, AsyncIterator
 
 from eth_account import Account
 from fastapi import FastAPI, File, HTTPException, Request, Response, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -228,6 +228,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ── Global exception handler: never bare 500 text ─────────────────────
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    """Catch all unhandled exceptions and return JSON, never plain text."""
+    logger.exception("Unhandled exception: %s", exc)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal Server Error: {exc}"},
+    )
 
 # ── SSE settlement broadcast ────────────────────────────────────────────────
 

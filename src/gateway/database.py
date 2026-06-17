@@ -149,6 +149,7 @@ async def create_user(
                 "email": email,
                 "wallet_address": wallet_address,
                 "display_name": display_name,
+                "jwt_secret": jwt_secret,
                 "created_at": now,
             }
         except sqlite3.IntegrityError:
