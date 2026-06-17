@@ -222,9 +222,11 @@ class BountycasterPoller:
 
     def _mock_bounties(self) -> list[BountycasterBounty]:
         """Return simulated bounties for dry-run testing.
-        Uses real historical Bountycaster data sourced from the live API.
+        Includes both Bountycaster (historical) and GitHub-funded issues,
+        to validate multi-source aggregation in the pipeline.
         """
         return [
+            # ── Source A: Bountycaster ──
             BountycasterBounty({
                 "id": "bc-mock-001",
                 "title": "Create v2 frame using NextJS, Tailwind, react-icons, supabase for $NATIVE",
@@ -272,6 +274,44 @@ class BountycasterPoller:
                 "repo_url": "",
                 "status": "OPEN",
                 "value_in_usdt": 1.0,
+            }),
+            # ── Source B: GitHub Bounties ──
+            BountycasterBounty({
+                "id": "gh-mock-001",
+                "title": "Implement ERC-4626 vault with fee-on-transfer support",
+                "description": (
+                    "$500 USDC bounty for implementing a ERC-4626 compliant vault contract "
+                    "that handles fee-on-transfer tokens correctly. Must include Foundry tests "
+                    "demonstrating the edge cases."
+                ),
+                "github_url": "https://github.com/defi-project/yield-vault/issues/42",
+                "repo_url": "https://github.com/defi-project/yield-vault",
+                "status": "OPEN",
+                "value_in_usdt": 500.0,
+            }),
+            BountycasterBounty({
+                "id": "gh-mock-002",
+                "title": "Add Rate limiting middleware for Express API gateway",
+                "description": (
+                    "$75 reward: implement a configurable rate-limiting middleware for our "
+                    "Express-based API gateway. Use redis for distributed state. Must include tests."
+                ),
+                "github_url": "https://github.com/web-infra/api-gateway/issues/128",
+                "repo_url": "https://github.com/web-infra/api-gateway",
+                "status": "OPEN",
+                "value_in_usdt": 75.0,
+            }),
+            BountycasterBounty({
+                "id": "gh-mock-003",
+                "title": "Build CLI tool for database migration across MySQL and PostgreSQL",
+                "description": (
+                    "$200 USDC reward for a Python CLI that can migrate schema and data "
+                    "between MySQL and PostgreSQL with type mapping and dry-run mode."
+                ),
+                "github_url": "https://github.com/data-tools/db-sync/issues/7",
+                "repo_url": "https://github.com/data-tools/db-sync",
+                "status": "OPEN",
+                "value_in_usdt": 200.0,
             }),
         ]
 

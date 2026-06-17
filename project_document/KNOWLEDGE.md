@@ -35,14 +35,15 @@
 - **标准模式**：`const el = document.getElementById("xxx"); if (el) el.innerHTML = ...;` — 避免 `Cannot set properties of null (setting 'innerHTML')`
 - **`fetchDiscovery()` 示例**：`devSettlements` div 仅在 Developer Tab 激活时存在于 DOM，`fetchDiscovery()` 在页面加载时被 `DOMContentLoaded` 调用，需 null guard 保护
 
-### Bountycaster 适配器架构
-- **`scripts/bounty_adapter.py`** — 将 Bountycaster（Farcaster 生态）的 API 格式转换为 Gitcoin 兼容格式的本地 HTTP 代理
-- **API 发现**：Bountycaster 是 Next.js 应用，通过 RSC payload 反推 API 路由。核心端点：`GET /api/v1/bounties/open`（返回 `{"bounties": [...]}` 开放赏金列表）和 `GET /api/v1/bounty/{hash}`（返回单个 bounty 详情，包含 title/summary_text/reward_summary/tag_slugs/feed 等字段）。`POST /api/v1/bounty` 需要认证（403），`GET /api/v1/bounties` 返回 500
-- **Bounty 数据结构**：`reward_summary.token.symbol`（USDC/degen/ETH）、`reward_summary.unit_amount`、`reward_summary.usd_value`；GitHub URL 从 `summary_text` 或 `feed[].text` 中通过正则 `https?://github\.com/[^\s]+` 提取；`tag_slugs` 标记分类（dev/social/design/等）
-- **适配模式**：`GitcoinPoller.fetch()` 在非 DRY_RUN 模式下调用 `self.api_url`（可通过 `GITCOIN_API` 环境变量覆盖指向 `http://localhost:9812`）；`bounty_adapter.py` 作为本地 HTTP 代理运行在 `ADAPTER_PORT`（默认 9812），将 Bountycaster 数据以 `[{id, title, description, github_url, repo_url, status, value_in_usdt}]` 格式返回，与 `GitcoinBounty.__init__` 的字段期望完全对齐
-- **mock 数据**：3 个真实历史 Bountycaster bounty 硬编码在 `HISTORICAL_BOUNTIES` 中 — `bc-mock-001`（250 USDC, NextJS/Frame 开发）、`bc-mock-002`（8,000 degen/≈$84, TypeScript 脚本）、`bc-mock-003`（1 USDC, 社交签到，用于拒绝测试）
-- **Mock 评估器**：`_mock_evaluate()` 关键词匹配已扩展以覆盖 Bountycaster 构建类型 bounty（新增 `typescript/script/nextjs/react/tailwind/supabase/frame/migration` 等关键词），同时保留 `research/social/engagement` 的拒绝逻辑
-- **启动命令**：`python3 scripts/bounty_adapter.py &` + `GITCOIN_API=http://localhost:9812 POLL_SECONDS=300 python3 scripts/gitcoin_sniper.py`
+### Bounty Adapter 多源聚合网关
+- **`scripts/bounty_adapter.py`** — 从单一 Bountycaster 代理演进为 **MultiSourceAggregator**（`MultiSourceAggregator` 类），统一 `9812` 端口对外输出
+- **Source A (Bountycaster)**：保留原有 `BountycasterClient` 轮询逻辑，`GET /api/v1/bounties/open` + `GET /api/v1/bounty/{hash}` 详情渲染
+- **Source B (GitHub Bounties)**：新增 `GitHubBountyClient`，使用 GitHub Issues Search API 搜索 `(bounty OR reward OR "$" OR USDC) is:issue is:open`；`_extract_amount()` 多模式正则匹配从标题/正文提取赏金金额；支持 `GITHUB_TOKEN` 环境变量提升至 5000 req/hr（未设置时 60 req/hr）；3 页 90 条上限
+- **`DedupEngine`**：按 `github_url` 去重，防止多平台挂单重复派单
+- **`MIN_BOUNTY_USD = 10`**：硬编码开枪门槛，$10 以下任务直接过滤丢弃
+- **绝对冷酷模式**：任务一旦进入 Docker 修复流程，连续重试 5 次依然报错 → 熔断放弃 → 自动切换下一单，严禁卡死或报警
+- **统一输出格式**：`{id, title, description, github_url, url, repo_url, status, value_in_usdt, source}` 向 sniper 输出的标准 JSON 数组
+- **Mock 数据**：6 条跨源 mock（3 Bountycaster + 3 GitHub Bounties），dry-run 46 条 Traces 41 ✅ 0 ⚠️ 0 🚨
 
 ### PyJWT 约束
 - **`sub` 字段必须为 string**：PyJWT `decode()` 验签时要求 `sub` 是字符串，否则抛出 `Subject must be a string`。`create_jwt()` 中需 `str(user["id"])` 而非直接传 int。消费端用 `int(payload.get("sub"))` 转换回整数
