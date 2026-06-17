@@ -4,6 +4,13 @@
 
 > **格式要求**: 严格遵循 `.claude/output-styles/bullet-points.md` 格式规范
 
+## 当前修复进度
+- [x] Bug: 注册 500 — `create_user()` 缺 `jwt_secret` 字段，已修复
+- [x] Bug: 登录死循环 — cookie 未设置，已修复
+- [x] Bug: `/api/auth/me` 401 — `sub` 字段 int→str，已修复
+- [x] Bug: API Key 端点 401 — 需自行解析 JWT 而非依赖 middleware，已修复
+- [x] Bug: console.html 在 Fly.io 上报错 — API_BASE 改为相对路径，已修复
+
 ## 当前任务
 - [x] 编写 AIMS 智能合约（Solidity on Base）
 - [x] Worker 节点脚本 — `run_aims_worker.py` 独立 EIP-191 签名 Worker，claim→execute→submit 全循环

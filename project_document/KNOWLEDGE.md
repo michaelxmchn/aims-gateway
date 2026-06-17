@@ -11,6 +11,10 @@
 - **JWT 保护路由**：`/console`（Web3 面板）— 缺失 JWT 时 302 重定向至 `/login`
 - **API 三层鉴权**：所有 `/api/*` 端点按优先级依次尝试 JWT Bearer → API Key（`sk-aims-` 前缀）→ EIP-191 personal_sign 头部
 - **商业动线设计**：用户通过 `/` 了解产品 → 点击 "Launch App" → 进入 `/console` 触发 JWT 检查 → 无令牌则重定向至 `/login` → 注册/登录后自动跳回 `/console`
+- **EXEMPT_PATHS 端点 JWT 自解析**：`/api/auth/me`、`/api/auth/api-keys` 等端点在 EXEMPT_PATHS 中，middleware 跳过后 `request.state.user_id` 不会设置。使用 `_get_jwt_user_id()` helper 自行从 Cookie 或 Authorization header 解析 JWT 获取 user_id
+
+### PyJWT 约束
+- **`sub` 字段必须为 string**：PyJWT `decode()` 验签时要求 `sub` 是字符串，否则抛出 `Subject must be a string`。`create_jwt()` 中需 `str(user["id"])` 而非直接传 int。消费端用 `int(payload.get("sub"))` 转换回整数
 
 
 
