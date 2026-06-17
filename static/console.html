@@ -1394,7 +1394,7 @@ async function fetchDiscovery() {
 
     // Dev settlements: show available skills
     const settlementsEl = document.getElementById("devSettlements");
-    if (skillsCache.length > 0) {
+    if (settlementsEl && skillsCache.length > 0) {
       settlementsEl.innerHTML = `<div style="font-size:0.75rem;color:var(--text-dim)">${skillsCache.length} skills registered on network.<br/>Revenue will appear here after tasks are executed and settled.</div>`;
     }
 

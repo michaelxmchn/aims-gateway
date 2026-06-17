@@ -7,6 +7,10 @@
 
 ## [2026-06-17]
 ### 修复
+- fix(console-syntax): `const net` 重复声明 + `invokeSkill()` 多余 `}` — 两个 SyntaxError 导致整个 `<script>` 块不执行，所有按钮点击无反应；第二个声明重命名为 `const currentNet`，删除多余闭合括号
+- fix(console-fallback): 5 个关键函数（`handleDeposit`/`rechargeReserves`/`withdrawFunds`/`fiatDeposit`/`sendHeartbeat`）追加 `smartHeaders(body)` JWT fallback — 无 MetaMask 时不再静默失败
+- fix(console-silent): `fetchCreditScore()`/`fetchIntegrationStatus()` 静默 `catch{}` → `console.warn()` — 错误不再隐藏
+- fix(console-null): `fetchDiscovery()` `devSettlements` null 检查 — 防止 Developer Tab 未渲染时报 `Cannot set properties of null`
 - fix(auth): `/` 路由释放 Auth Guard，改为公开页面 — 用户首次访问可直接看到着陆页，仅 `/console` 保留 JWT 鉴权重定向
 - fix(ui): `static/index.html` "Launch App" 按钮 href 修正 `#cta` → `/console`，确保商业动线正确引导至登录拦截流
 - fix(db): `create_user()` 返回字典缺少 `jwt_secret` — 注册后 `create_jwt()` 访问 `user["jwt_secret"]` 触发 `KeyError` 导致 500

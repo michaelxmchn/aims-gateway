@@ -76,7 +76,15 @@
   - [x] **Module 3: Multi-Contributor Splitter + Credit Penalty** — `ContributorSplit(BaseModel)` / `SetContributorsRequest(BaseModel)` / `IntegrateRequest.co_contributors` 扩展；`_settle_vault()` 按比例分拆 70% 开发者份额；`_penalize_contributors()` Judge 失败时连带扣分（开发者 + 所有 co-contributor -10 credit）；`static/console.html` 一键接入表单新增 co-contributor 动态行（添加/删除/保存）；`POST /api/developer/set-contributors` 推送到已集成 skill
 - [x] **品牌名称统一修正** — 全局 `AIMS Network` → `AIMS Gateway`，覆盖 3 个 HTML 文件、2 个 Markdown 文件、4 个 Python 源码文件，共 15 处引用
 - [x] **fix(auth): 首页路由释放 Auth Guard** — `src/gateway/server.py` `/` 路由移除 JWT 拦截，改为公开页面；`static/index.html` "Launch App" 按钮 href `#cta` → `/console`，确保用户首次访问可见着陆页，仅 `/console` 路由保留 JWT 鉴权重定向
-- [x] **fix(register): 注册 500 Internal Server Error 修复**：
+- [x] **fix(console-buttons): Console 全按钮大检修** — 两个 SyntaxError 导致整个 `<script>` 块不执行，所有按钮点击无反应：
+  - **根因1：** `connectWallet()` 内 `const net` 重复声明（第 1138/1163 行）— JavaScript 禁止同一作用域 `const` 重声明
+  - **修复1：** 第二个声明改为 `const currentNet`
+  - **根因2：** `invokeSkill()` 函数末尾多余 `}` 闭合括号（第 1590 行）
+  - **修复2：** 删除多余 `}`
+  - **5 个函数追加 JWT fallback**：`handleDeposit`/`rechargeReserves`/`withdrawFunds`/`fiatDeposit`/`sendHeartbeat` 改用 `smartHeaders(body)` 支持无 MetaMask 场景
+  - **Silent catch 修复**：`fetchCreditScore()`/`fetchIntegrationStatus()` 静默 `catch{}` → `console.warn()`
+  - **`fetchDiscovery()` null guard**：`document.getElementById("devSettlements")` 添加 null 检查，防止 Developer Tab 未渲染时报 Cannot set properties of null
+  - [x] **fix(register): 注册 500 Internal Server Error 修复**：
   - **根因：** `database.py` `create_user()` 将 `jwt_secret` 写入 DB 但未在 return dict 中返回，`create_jwt()` 访问 `user["jwt_secret"]` 导致 `KeyError`
   - **修复：** `create_user()` return dict 补回 `jwt_secret` 字段
   - **加固：** 新增 `@app.exception_handler(Exception)` 全局异常处理器，所有未处理异常统一返回 JSON `{"detail": "..."}`，杜绝裸吐 500 纯文本
