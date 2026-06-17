@@ -128,8 +128,28 @@ class GitcoinPoller:
                         return [GitcoinBounty(b) for b in data]
                 except requests.RequestException:
                     continue
-            log(f"All Gitcoin APIs unreachable — will retry in {POLL_SECONDS}s", "WARN")
+            # Last resort: scrape Gitcoin explorer HTML
+            try:
+                return self._scrape_explorer()
+            except Exception as scrape_err:
+                log(f"Scrape also failed: {scrape_err}", "WARN")
+            log(f"All Gitcoin sources unreachable — will retry in {POLL_SECONDS}s", "WARN")
             return []
+
+    def _scrape_explorer(self) -> list[GitcoinBounty]:
+        """Fallback: parse bounty cards from Gitcoin explorer HTML."""
+        import html.parser as hp
+
+        resp = requests.get("https://gitcoin.co/explorer", timeout=20)
+        resp.raise_for_status()
+        # Simple extraction of bounty-like JSON blobs embedded in the page
+        bounties = []
+        for m in re.finditer(r'data-bounty=\'({.*?})\'|data-bounty="({.*?})"', resp.text, re.DOTALL):
+            raw = json.loads(m.group(1) or m.group(2))
+            bounties.append(GitcoinBounty(raw))
+        if bounties:
+            log(f"Scraped {len(bounties)} bounties from explorer HTML", "INFO")
+        return bounties
 
     def _mock_bounties(self) -> list[GitcoinBounty]:
         """Return simulated bounties for dry-run testing."""
