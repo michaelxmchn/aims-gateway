@@ -30,6 +30,10 @@ import requests
 
 WORKDIR     = Path(os.getenv("AIMS_SNIPER_WORKDIR", "/tmp/aims-sniper"))
 GITCOIN_API = os.getenv("GITCOIN_API", "https://gitcoin.co/api/v1/bounty")
+GITCOIN_API_FALLBACKS = [
+    "https://gitcoin.co/api/v1/bounties",
+    "https://gitcoin.co/api/v0.1/bounties",
+]
 AIMS_API    = os.getenv("AIMS_API", "http://127.0.0.1:8001")
 AIMS_API_KEY = os.getenv("AIMS_API_KEY", "")
 AIMS_WALLET  = os.getenv("AIMS_WALLET", "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
@@ -110,8 +114,21 @@ class GitcoinPoller:
                 data = data.get("results", data.get("bounties", []))
             raw_list = data if isinstance(data, list) else []
             return [GitcoinBounty(b) for b in raw_list]
-        except requests.RequestException as e:
-            log(f"Gitcoin API error: {e}", "WARN")
+        except requests.RequestException:
+            # Try fallback endpoints
+            for fallback in GITCOIN_API_FALLBACKS:
+                try:
+                    resp = requests.get(fallback, timeout=15)
+                    resp.raise_for_status()
+                    data = resp.json()
+                    if isinstance(data, dict):
+                        data = data.get("results", data.get("bounties", data.get("data", [])))
+                    if isinstance(data, list) and len(data) > 0:
+                        log(f"Fallback API working: {fallback}")
+                        return [GitcoinBounty(b) for b in data]
+                except requests.RequestException:
+                    continue
+            log(f"All Gitcoin APIs unreachable — will retry in {POLL_SECONDS}s", "WARN")
             return []
 
     def _mock_bounties(self) -> list[GitcoinBounty]:
