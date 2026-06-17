@@ -320,13 +320,13 @@ A: 待补充
 - **统一钱包连接**：所有页面通过 `ethers.BrowserProvider` + `eth_requestAccounts` 连接 MetaMask，签名使用 `signer.signMessage()`（EIP-191 personal_sign）
 - **SSE 实时数据流**：通过 `EventSource` 连接 `/api/v2/feed/stream`，驱动首页结算大屏和控制台 Feed
 
-### Gitcoin Sniper 自动狙击流水线
-- **`scripts/gitcoin_sniper.py`**：四阶段全自动 Gitcoin 赏金猎杀管道，零人工介入完成 "发现→评估→修复→交付" 闭环
-- **GitcoinPoller**：60s 间隔轮询 Gitcoin API（`/api/v1/bounty?status=open`），追踪已见 bounty ID 避免重复处理；`--dry-run` 模式提供 3 个 mock bounty（CSS 修复/$150、单元测试/$300、研究型/$75）用于本地验证
+### Bountycaster Sniper 自动狙击流水线
+- **`scripts/gitcoin_sniper.py`**：四阶段全自动 Bountycaster（Farcaster 生态）赏金猎杀管道，零人工介入完成 "发现→评估→修复→交付" 闭环。已从废弃的 Gitcoin API 全面迁移至 Bountycaster 生态
+- **BountycasterPoller**（替代 GitcoinPoller）：60s 间隔直接轮询 Bountycaster Next.js API — `GET /api/v1/bounties/open`（公开列表）+ `GET /api/v1/bounty/{hash}`（独立详情）；解析 `reward_summary`（token/unit_amount/usd_value）、`summary_text`（描述）、GitHub URL 正则提取；无任何 Gitcoin 死代码/API 回退/HTML 爬虫残留；`--dry-run` 模式提供 3 个真实历史 Bountycaster bounty（`bc-mock-001` 250 USDC Frame、`bc-mock-002` 8,000 degen TypeScript、`bc-mock-003` 1 USDC 社交拒绝）
 - **AIMSEvaluator**：通过 `POST /api/run` 将 bounty 描述发送至 AIMS 网关大模型，**System Prompt 严格四条件门控**：①必须是可测的代码缺陷/修复/数据迁移 ②成功标准 = 测试套件通过 ③可完全由 LLM 代码智能体闭环 ④拒绝研究/文档/UX 设计类。响应格式：`MATCH:<confidence 0-100>:<rationale>`
-- **CodeExecutor**：`git clone` → `claude -p "<prompt>"` 无头修复 → 自动检测 7 种语言测试框架 → 运行至 0 报错
+- **CodeExecutor**：`git clone` → `claude -p "<prompt>"` 无头修复 → 自动检测项目语言 → **Docker 沙箱隔离执行测试**（`docker run --rm --network none -v <host_path>:/workspace <image> sh -c "<cmd>"`）；支持 `node:20-slim`/`python:3.12-slim`/`golang:1.23-alpine`/`rust:1.75-slim`/`ruby:3.2-slim`/`eclipse-temurin:21-jdk-alpine` 六种镜像 + `alpine:3.19` 兜底；Docker 不可用时优雅回退 `subprocess.run(shell=True)` + 日志警告；`SNIPER_DOCKER=0` 环境变量强制禁用
 - **AutoDeliverer**：`git checkout -b aims-sniper/{id}` + commit + push + `gh pr create`；通过 `POST /api/skill/task-action` 推送 Action Traces 至仪表盘 SSE，触发 📈 收益图表更新或 🚨 异常告警
-- **干运行验证**：`python3 scripts/gitcoin_sniper.py --dry-run --once` → 19 条 Action Traces，0 失败，2/3 匹配交付，$450 USDC
+- **干运行验证**：`python3 scripts/gitcoin_sniper.py --dry-run --once` → 19 条 Action Traces，0 失败，2/3 匹配交付，$334 USDC
 
 ## 技术决策记录
 

@@ -6,6 +6,11 @@
 > **提交规范**: 遵循 commitlint 规范（type(scope): subject）
 
 ## [2026-06-18]
+### 重构
+- refactor(sniper-deep): `scripts/gitcoin_sniper.py` 底层雷达重构 — **GitcoinPoller → BountycasterPoller**：完全移除废弃的 Gitcoin API（全部 404）、API fallback 链、HTML 爬虫死代码；替换为直接轮询 Bountycaster Next.js API（`GET /api/v1/bounties/open` + `GET /api/v1/bounty/{hash}`）；`BountycasterBounty` 类从 `reward_summary` 解析 token/amount/usd_value；GitHub URL 通过正则从 `summary_text` 提取；`BOUNTYCASTER_API` 环境变量替换 `GITCOIN_API`
+- refactor(sniper-docker): `scripts/gitcoin_sniper.py` **CodeExecutor Docker 沙箱隔离** — `_run_in_docker()` 方法使用 `docker run --rm --network none -v <host>:/workspace <image> sh -c "<cmd>"` 安全执行测试；`PROJECT_MAP` 自动检测语言（node/python/go/rust/ruby/java + alpine 兜底）；Docker 不可用时优雅回退 `subprocess.run(shell=True)`；`SNIPER_DOCKER=0` 可禁用；`DOCKER_IMAGES` 映射 7 种镜像
+- refactor(sniper-names): `GitcoinBounty` → `BountycasterBounty`，`GitcoinPoller` → `BountycasterPoller`，所有下游引用更新（AIMSEvaluator/AutoDeliverer/SniperPipeline/DashboardStatus/main()）
+- feat(sniper-dryrun): `python3 scripts/gitcoin_sniper.py --dry-run --once` — 3 个真实 Bountycaster mock 数据，19 条 Action Traces 17 ✅ 0 ⚠️ 0 🚨，2/3 匹配交付 $334 USDC，1/3 社交正确拒绝
 ### 新增
 - feat(console-v2.1): `static/console.html` 全量重写为 **Apple-style 单页仪表盘** — 移除侧边栏和 5 Tab 面板；新增 3 图表卡片（Revenue Line Chart、Task Flow Donut、System Health Traffic Lights）使用 Chart.js CDN 渲染；6 个商业操作卡片（Publish Task/Skills/Task Market/Auth & Settings/Activity/Worker Guide）点击打开全功能模态框；底部 ⚙️ Advanced Dev Mode 触发右侧抽屉面板（调试数据/信用分/Invoke Skill/CORS/docs）
 - feat(console-v2.1): **6 业务模态框** — `bizModal-publish`（发布任务表单 + Vault + Boost + Commerce Mode + 充值/提现）、`bizModal-skills`（Dev Stats + Skill Upload + One-Click Integration）、`bizModal-market`（Task Market 抢单池）、`bizModal-auth`（Profile + Password + Wallet + API Keys）、`bizModal-activity`（Activity Log + Audit Ledger + User History）、`bizModal-worker`（Worker Node + Co-Contributors + Canary Watermark）

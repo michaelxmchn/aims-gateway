@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-AIMS Gitcoin Sniper — Autonomous Bounty Hunting Pipeline
-=========================================================
+AIMS Bountycaster Sniper — Autonomous Bounty Hunting Pipeline
+=============================================================
 Poll → Match → Execute → Deliver → Report
 
 Architecture:
-  1. GitcoinPoller     — 60s interval poll for OPEN bounties
-  2. AIMSEvaluator     — System-prompted LLM judge via AIMS /api/run
-  3. CodeExecutor      — git clone + claude-code headless repair + test
-  4. AutoDeliverer     — git commit + gh pr create + SSE dashboard report
+  1. BountycasterPoller — 60s interval poll for OPEN bounties via Bountycaster API
+  2. AIMSEvaluator      — System-prompted LLM judge via AIMS /api/run
+  3. CodeExecutor       — git clone + claude-code headless repair + Docker-sandboxed tests
+  4. AutoDeliverer      — git commit + gh pr create + SSE dashboard report
 
 Usage:
   python3 scripts/gitcoin_sniper.py                   # daemon mode
@@ -29,16 +29,24 @@ import requests
 # ═══════════════════════════════════════════════════════════════
 
 WORKDIR     = Path(os.getenv("AIMS_SNIPER_WORKDIR", "/tmp/aims-sniper"))
-GITCOIN_API = os.getenv("GITCOIN_API", "https://gitcoin.co/api/v1/bounty")
-GITCOIN_API_FALLBACKS = [
-    "https://gitcoin.co/api/v1/bounties",
-    "https://gitcoin.co/api/v0.1/bounties",
-]
+BOUNTYCASTER_API = os.getenv("BOUNTYCASTER_API", "https://www.bountycaster.xyz")
 AIMS_API    = os.getenv("AIMS_API", "http://127.0.0.1:8001")
 AIMS_API_KEY = os.getenv("AIMS_API_KEY", "")
 AIMS_WALLET  = os.getenv("AIMS_WALLET", "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
 POLL_SECONDS = int(os.getenv("POLL_SECONDS", "60"))
 MAX_CLONE_AGE_SECONDS = 3600 * 6  # don't touch clones older than 6h
+DOCKER_ENABLED = os.getenv("SNIPER_DOCKER", "1") == "1"
+
+# Language → Docker image mapping for sandboxed test execution
+DOCKER_IMAGES: dict[str, str] = {
+    "node":   "node:20-slim",
+    "python": "python:3.12-slim",
+    "go":     "golang:1.23-alpine",
+    "rust":   "rust:1.75-slim",
+    "ruby":   "ruby:3.2-slim",
+    "java":   "eclipse-temurin:21-jdk-alpine",
+}
+DOCKER_DEFAULT_IMAGE = "alpine:3.19"  # fallback for unknown projects
 
 DRY_RUN = False
 LOG     = []  # action traces for dashboard report
@@ -64,11 +72,11 @@ def trace(action: str, detail: str, status: str = "info") -> dict:
     return rec
 
 # ═══════════════════════════════════════════════════════════════
-# 1. GITCOIN POLLER
+# 1. BOUNTYCASTER POLLER
 # ═══════════════════════════════════════════════════════════════
 
-class GitcoinBounty:
-    """Normalised bounty from the Gitcoin API (or mock)."""
+class BountycasterBounty:
+    """Normalised bounty from the Bountycaster API (or mock)."""
     def __init__(self, raw: dict):
         self.id = raw.get("id") or raw.get("pk") or str(hash(json.dumps(raw, sort_keys=True)))
         self.title = raw.get("title", "Untitled")
@@ -90,73 +98,134 @@ class GitcoinBounty:
         return hash(self.id)
 
 
-class GitcoinPoller:
-    """Every 60 s fetch OPEN bounties, yield those not yet seen."""
+class BountycasterPoller:
+    """Poll Bountycaster API for open bounties, yield those not yet seen."""
 
-    def __init__(self, api_url: str = GITCOIN_API):
-        self.api_url = api_url
+    def __init__(self, api_url: str = BOUNTYCASTER_API):
+        self.api_url = api_url.rstrip("/")
+        self._session = requests.Session()
         self._seen: set[str] = set()
 
-    def fetch(self) -> list[GitcoinBounty]:
-        """Hit the Gitcoin API and return a list of open bounties."""
+    # ── Public API ────────────────────────────────────────────
+
+    def fetch(self) -> list[BountycasterBounty]:
+        """Hit the Bountycaster API and return a list of open bounties."""
         if DRY_RUN:
             return self._mock_bounties()
 
         try:
-            resp = requests.get(
-                self.api_url,
-                params={"network": "mainnet", "status": "open", "order_by": "-created_on"},
-                timeout=15,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            if isinstance(data, dict):
-                data = data.get("results", data.get("bounties", []))
-            raw_list = data if isinstance(data, list) else []
-            return [GitcoinBounty(b) for b in raw_list]
-        except requests.RequestException:
-            # Try fallback endpoints
-            for fallback in GITCOIN_API_FALLBACKS:
-                try:
-                    resp = requests.get(fallback, timeout=15)
-                    resp.raise_for_status()
-                    data = resp.json()
-                    if isinstance(data, dict):
-                        data = data.get("results", data.get("bounties", data.get("data", [])))
-                    if isinstance(data, list) and len(data) > 0:
-                        log(f"Fallback API working: {fallback}")
-                        return [GitcoinBounty(b) for b in data]
-                except requests.RequestException:
-                    continue
-            # Last resort: scrape Gitcoin explorer HTML
-            try:
-                return self._scrape_explorer()
-            except Exception as scrape_err:
-                log(f"Scrape also failed: {scrape_err}", "WARN")
-            log(f"All Gitcoin sources unreachable — will retry in {POLL_SECONDS}s", "WARN")
+            return self._fetch_live()
+        except Exception as e:
+            log(f"Bountycaster API failed: {e}", "WARN")
+            log(f"Will retry in {POLL_SECONDS}s", "INFO")
             return []
 
-    def _scrape_explorer(self) -> list[GitcoinBounty]:
-        """Fallback: parse bounty cards from Gitcoin explorer HTML."""
-        import html.parser as hp
+    def new_bounties(self) -> list[BountycasterBounty]:
+        """Return bounties not seen in previous polls."""
+        batch = self.fetch()
+        fresh = [b for b in batch if b.id not in self._seen]
+        for b in fresh:
+            self._seen.add(b.id)
+        return fresh
 
-        resp = requests.get("https://gitcoin.co/explorer", timeout=20)
+    # ── Live fetching ─────────────────────────────────────────
+
+    def _fetch_live(self) -> list[BountycasterBounty]:
+        """Fetch open bounty hashes from listing endpoint, enrich with details."""
+        hashes = self._list_open_hashes()
+        if not hashes:
+            log("No open bounties found via Bountycaster listing API", "INFO")
+            return []
+
+        results: list[BountycasterBounty] = []
+        for h in hashes:
+            detail = self._get_bounty_detail(h)
+            if detail:
+                converted = self._convert(detail)
+                if converted:
+                    results.append(converted)
+        return results
+
+    def _list_open_hashes(self) -> list[str]:
+        """GET /api/v1/bounties/open and extract bounty hashes."""
+        resp = self._session.get(
+            f"{self.api_url}/api/v1/bounties/open",
+            timeout=15,
+            headers={"Accept": "application/json"},
+        )
         resp.raise_for_status()
-        # Simple extraction of bounty-like JSON blobs embedded in the page
-        bounties = []
-        for m in re.finditer(r'data-bounty=\'({.*?})\'|data-bounty="({.*?})"', resp.text, re.DOTALL):
-            raw = json.loads(m.group(1) or m.group(2))
-            bounties.append(GitcoinBounty(raw))
-        if bounties:
-            log(f"Scraped {len(bounties)} bounties from explorer HTML", "INFO")
-        return bounties
+        data = resp.json()
+        raw_list = data.get("bounties", [])
+        hashes: list[str] = []
+        for item in raw_list:
+            if isinstance(item, dict):
+                platform = item.get("platform") or {}
+                h = (platform.get("farcaster") or {}).get("hash", "")
+                if h:
+                    hashes.append(h)
+        return hashes
 
-    def _mock_bounties(self) -> list[GitcoinBounty]:
+    def _get_bounty_detail(self, hash_id: str) -> Optional[dict]:
+        """GET /api/v1/bounty/{hash} for full detail."""
+        try:
+            resp = self._session.get(
+                f"{self.api_url}/api/v1/bounty/{hash_id}",
+                timeout=15,
+                headers={"Accept": "application/json"},
+            )
+            resp.raise_for_status()
+            return resp.json()
+        except requests.RequestException as e:
+            log(f"Failed to fetch bounty {hash_id}: {e}", "WARN")
+            return None
+
+    @staticmethod
+    def _extract_github(summary: str, feed: list) -> str:
+        """Find first GitHub URL in summary text or feed entries."""
+        pattern = r"https?://github\.com/[^\s\r\n,;)\'\"\]>]+"
+        for text in [summary] + [f.get("text", "") for f in (feed or [])]:
+            m = re.search(pattern, text)
+            if m:
+                return m.group(0).rstrip("/")
+        return ""
+
+    def _convert(self, raw: dict) -> Optional[BountycasterBounty]:
+        """Convert a Bountycaster API response to BountycasterBounty format."""
+        hash_id = (raw.get("platform") or {}).get("farcaster", {}).get("hash", "")
+        if not hash_id or not raw.get("title"):
+            return None
+
+        summary = raw.get("summary_text", "")
+        reward = raw.get("reward_summary") or {}
+        usd_value = reward.get("usd_value", "0")
+        unit_amount = str(reward.get("unit_amount", "0")).replace(",", "")
+        value = usd_value if usd_value and float(usd_value) > 0 else unit_amount
+
+        github_url = self._extract_github(summary, raw.get("feed", []))
+
+        return BountycasterBounty({
+            "id": f"bc:{hash_id[:12]}",
+            "title": raw.get("title", "Untitled"),
+            "description": summary or raw.get("title", ""),
+            "github_url": github_url,
+            "url": github_url or f"{self.api_url}/bounty/{hash_id}",
+            "repo_url": github_url,
+            "status": "OPEN",
+            "value_in_usdt": float(value) if value else 0.0,
+            "source": "bountycaster",
+            "bounty_hash": hash_id,
+            "raw_reward": reward,
+            "tags": raw.get("tag_slugs", []),
+        })
+
+    # ── Mock data (real historical Bountycaster bounties) ─────
+
+    def _mock_bounties(self) -> list[BountycasterBounty]:
         """Return simulated bounties for dry-run testing.
         Uses real historical Bountycaster data sourced from the live API.
         """
         return [
-            GitcoinBounty({
+            BountycasterBounty({
                 "id": "bc-mock-001",
                 "title": "Create v2 frame using NextJS, Tailwind, react-icons, supabase for $NATIVE",
                 "description": (
@@ -174,7 +243,7 @@ class GitcoinPoller:
                 "status": "OPEN",
                 "value_in_usdt": 250.0,
             }),
-            GitcoinBounty({
+            BountycasterBounty({
                 "id": "bc-mock-002",
                 "title": "Create a TypeScript script for Legacy Payment Flows Migration",
                 "description": (
@@ -191,7 +260,7 @@ class GitcoinPoller:
                 "status": "OPEN",
                 "value_in_usdt": 84.0,
             }),
-            GitcoinBounty({
+            BountycasterBounty({
                 "id": "bc-mock-003",
                 "title": "Moon energy degen mode social bounty",
                 "description": (
@@ -206,14 +275,6 @@ class GitcoinPoller:
             }),
         ]
 
-    def new_bounties(self) -> list[GitcoinBounty]:
-        """Return bounties not seen in previous polls."""
-        batch = self.fetch()
-        fresh = [b for b in batch if b.id not in self._seen]
-        for b in fresh:
-            self._seen.add(b.id)
-        return fresh
-
 
 # ═══════════════════════════════════════════════════════════════
 # 2. AIMS SKILL MATCHER
@@ -225,7 +286,7 @@ class AIMSEvaluator:
     # System prompt: gate the model to only accept tasks solvable by code gen / auto-fix
     SYSTEM_PROMPT = (
         "You are an expert bounty analyst for AIMS Gateway. "
-        "Your ONLY job is to decide whether a Gitcoin bounty task can be COMPLETELY SOLVED "
+        "Your ONLY job is to decide whether a bounty task on Bountycaster can be COMPLETELY SOLVED "
         "by automated code generation, code repair, or data-cleanup — with NO human judgment, "
         "NO creative design, and NO research-only output.\n\n"
         "Criteria for MATCH:\n"
@@ -247,7 +308,7 @@ class AIMSEvaluator:
         self.api_base = api_base.rstrip("/")
         self.api_key = api_key
 
-    def evaluate(self, bounty: GitcoinBounty) -> tuple[bool, int, str]:
+    def evaluate(self, bounty: BountycasterBounty) -> tuple[bool, int, str]:
         """
         Returns (is_match, confidence, rationale).
         In dry-run mode, simulates the AI call with a keyword heuristic.
@@ -260,14 +321,14 @@ class AIMSEvaluator:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         payload = {
-            "skill_id": "code_security_audit",  # reuse an existing general skill
+            "skill_id": "code_security_audit",
             "params": {
                 "prompt": self.SYSTEM_PROMPT,
                 "bounty_title": bounty.title,
                 "bounty_description": bounty.description,
                 "bounty_url": bounty.url,
             },
-            "user_id": "gitcoin-sniper-bot",
+            "user_id": "bountycaster-sniper-bot",
             "max_budget": 0.05,
         }
 
@@ -290,7 +351,7 @@ class AIMSEvaluator:
             log(f"AIMS gateway error: {e}", "ERROR")
             return False, 0, f"Gateway error: {e}"
 
-    def _mock_evaluate(self, bounty: GitcoinBounty) -> tuple[bool, int, str]:
+    def _mock_evaluate(self, bounty: BountycasterBounty) -> tuple[bool, int, str]:
         """Keyword-based simulation for dry-run."""
         desc = (bounty.title + " " + bounty.description).lower()
         # Auto-reject research / social / docs-only tasks
@@ -327,33 +388,36 @@ class AIMSEvaluator:
 
 
 # ═══════════════════════════════════════════════════════════════
-# 3. CODE EXECUTOR
+# 3. CODE EXECUTOR (Docker-sandboxed)
 # ═══════════════════════════════════════════════════════════════
 
 class CodeExecutor:
-    """Clone repo → invoke claude-code → run tests → PASS/FAIL verdict."""
+    """Clone repo → invoke claude-code → run tests in Docker sandbox."""
 
-    TEST_COMMANDS = {
-        ".js":  ["npm install", "npm test"],
-        ".ts":  ["npm install", "npm test"],
-        ".tsx": ["npm install", "npm test"],
-        ".py":  ["pip install -e .", "python -m pytest"],
-        ".go":  ["go mod tidy", "go test ./..."],
-        ".rs":  ["cargo build", "cargo test"],
-        ".rb":  ["bundle install", "bundle exec rspec"],
-        ".java": ["./gradlew test"],
-    }
+    # Project file → (docker_image, test_commands)
+    PROJECT_MAP: list[tuple[str, str, list[str]]] = [
+        ("package.json",      "node",   ["npm install", "npm test"]),
+        ("pyproject.toml",    "python", ["pip install -e .", "python -m pytest"]),
+        ("setup.py",          "python", ["pip install -e .", "python -m pytest"]),
+        ("setup.cfg",         "python", ["pip install -e .", "python -m pytest"]),
+        ("requirements.txt",  "python", ["pip install -r requirements.txt", "python -m pytest"]),
+        ("go.mod",            "go",     ["go mod tidy", "go test ./..."]),
+        ("Cargo.toml",        "rust",   ["cargo build", "cargo test"]),
+        ("Gemfile",           "ruby",   ["bundle install", "bundle exec rspec"]),
+        ("build.gradle",      "java",   ["./gradlew test"]),
+        ("pom.xml",           "java",   ["mvn test"]),
+    ]
 
     def __init__(self, workdir: Path = WORKDIR):
         self.workdir = workdir
         self.workdir.mkdir(parents=True, exist_ok=True)
 
-    def execute(self, bounty: GitcoinBounty) -> Optional[dict]:
+    def execute(self, bounty: BountycasterBounty) -> Optional[dict]:
         """
         Full execution pipeline:
           1. git clone
           2. claude-code headless repair
-          3. run tests
+          3. run tests in Docker sandbox
           4. return result dict
         """
         repo_name = bounty.repo_url.rstrip("/").split("/")[-1]
@@ -371,10 +435,9 @@ class CodeExecutor:
         else:
             if DRY_RUN:
                 log(f"[DRY-RUN] Would git clone {bounty.repo_url} → {clone_path}")
-                # Create a mock repo for dry-run test
                 clone_path.mkdir(parents=True, exist_ok=True)
                 (clone_path / "package.json").write_text('{"name":"mock","scripts":{"test":"echo ok"}}')
-                (clone_path / "READY_MOCK.md").write_text("# Mock Repo\nDry-run only.\n")
+                (clone_path / "README_MOCK.md").write_text("# Mock Repo\nDry-run only.\n")
                 subprocess.run(["git", "init"], cwd=str(clone_path), check=False, capture_output=True)
                 subprocess.run(["git", "config", "user.email", "sniper@aimsgateway.com"],
                                cwd=str(clone_path), check=False, capture_output=True)
@@ -395,7 +458,6 @@ class CodeExecutor:
         prompt = self._build_prompt(bounty)
         if DRY_RUN:
             log(f"[DRY-RUN] Would invoke claude-code with:\n{prompt[:500]}...")
-            # Simulate a fix
             fix_file = clone_path / "DRY_RUN_FIX.md"
             fix_file.write_text(f"# Automated Fix for Bounty {bounty.id}\n\nApplied at {datetime.now()}")
             claude_exit = 0
@@ -413,33 +475,83 @@ class CodeExecutor:
 
         trace("claude_done", "claude-code completed successfully")
 
-        # ── 3c. Run tests ────────────────────────────────────────────
-        test_cmds = self._detect_test_commands(clone_path)
-
-        if not test_cmds:
+        # ── 3c. Run tests in Docker sandbox ──────────────────────────
+        project_type = self._detect_project_type(clone_path)
+        if project_type is None:
             log("No known test framework detected — skipping test phase", "WARN")
             trace("test_skip", "No test framework found")
         else:
-            trace("test_start", f"Running: {'; '.join(test_cmds)}")
-            for cmd in test_cmds:
-                if DRY_RUN:
-                    log(f"[DRY-RUN] Would run: {cmd}")
-                    continue
-                r = subprocess.run(cmd, shell=True, cwd=str(clone_path),
-                                   capture_output=True, text=True, timeout=300)
-                if r.returncode != 0:
-                    detail = r.stderr[-300:] if r.stderr else r.stdout[-300:]
-                    trace("test_failed", f"'{cmd}' exited {r.returncode}: {detail}", "error")
+            docker_image, test_cmds = project_type
+            trace("test_start", f"Running in Docker ({docker_image}): {'; '.join(test_cmds)}")
+
+            if DRY_RUN:
+                log(f"[DRY-RUN] Would run in Docker ({docker_image}): {'; '.join(test_cmds)}")
+            else:
+                result = self._run_in_docker(clone_path, docker_image, test_cmds)
+                if result is None:
+                    # Docker unavailable — fallback to direct execution with warning
+                    log("Docker unavailable — falling back to direct execution", "WARN")
+                    for cmd in test_cmds:
+                        r = subprocess.run(cmd, shell=True, cwd=str(clone_path),
+                                           capture_output=True, text=True, timeout=300)
+                        if r.returncode != 0:
+                            detail = r.stderr[-300:] if r.stderr else r.stdout[-300:]
+                            trace("test_failed", f"'{cmd}' exited {r.returncode}: {detail}", "error")
+                            return {"status": "FAILED", "step": "test", "detail": detail}
+                elif result["returncode"] != 0:
+                    detail = result["stderr"][-300:] if result["stderr"] else result["stdout"][-300:]
+                    trace("test_failed", f"Docker test exited {result['returncode']}: {detail}", "error")
                     return {"status": "FAILED", "step": "test", "detail": detail}
-                log(f"Test passed: {cmd}")
+                else:
+                    log(f"All Docker tests passed ({docker_image})")
 
         trace("test_passed", "All tests passed (0 failures)")
         return {"status": "PASS", "step": "done", "clone_path": str(clone_path)}
 
-    def _build_prompt(self, bounty: GitcoinBounty) -> str:
+    def _run_in_docker(self, clone_path: Path, image_key: str, commands: list[str]) -> Optional[dict]:
+        """
+        Run test commands inside a Docker container with security hardening.
+        Returns {'returncode': int, 'stdout': str, 'stderr': str} or None if Docker unavailable.
+        """
+        image = DOCKER_IMAGES.get(image_key, DOCKER_DEFAULT_IMAGE)
+
+        # Build shell command: chain commands with &&
+        shell_cmd = " && ".join(commands)
+
+        docker_cmd = [
+            "docker", "run",
+            "--rm",
+            "--network", "none",
+            "-v", f"{clone_path.resolve()}:/workspace",
+            "-w", "/workspace",
+            image,
+            "sh", "-c", shell_cmd,
+        ]
+
+        log(f"Docker: {' '.join(docker_cmd[:6])} ... {image} sh -c '{shell_cmd}'")
+
+        try:
+            r = subprocess.run(
+                docker_cmd,
+                capture_output=True, text=True, timeout=300,
+            )
+            if r.returncode != 0:
+                log(f"Docker test failed (exit {r.returncode}): {r.stderr[:200]}", "WARN")
+            return {"returncode": r.returncode, "stdout": r.stdout, "stderr": r.stderr}
+        except FileNotFoundError:
+            log("Docker binary not found — is Docker installed?", "ERROR")
+            return None
+        except subprocess.TimeoutExpired:
+            log("Docker test timed out after 300s", "ERROR")
+            return {"returncode": -1, "stdout": "", "stderr": "Timeout"}
+        except Exception as e:
+            log(f"Docker execution error: {e}", "ERROR")
+            return None
+
+    def _build_prompt(self, bounty: BountycasterBounty) -> str:
         return (
             f"You are an expert software engineer. "
-            f"A Gitcoin bounty requires the following task:\n\n"
+            f"A Bountycaster bounty requires the following task:\n\n"
             f"## Title\n{bounty.title}\n\n"
             f"## Description\n{bounty.description}\n\n"
             f"## Your job\n"
@@ -452,24 +564,20 @@ class CodeExecutor:
         )
 
     @staticmethod
-    def _detect_test_commands(path: Path) -> list[str]:
-        for f in path.iterdir():
-            if f.name == "package.json":
-                try:
-                    pkg = json.loads(f.read_text())
-                    if "test" in pkg.get("scripts", {}):
-                        return ["npm install", "npm test"]
-                except (json.JSONDecodeError, OSError):
-                    pass
-            elif f.name == "pyproject.toml" or f.name == "setup.py" or f.name == "setup.cfg":
-                return ["pip install -e .", "python -m pytest"]
-            elif f.name == "go.mod":
-                return ["go mod tidy", "go test ./..." if not DRY_RUN else "echo go test"]
-            elif f.name == "Cargo.toml":
-                return ["cargo build", "cargo test"]
-            elif f.suffix in (".js", ".ts", ".tsx"):
-                pass  # fallback below
-        return []
+    def _detect_project_type(path: Path) -> Optional[tuple[str, list[str]]]:
+        """Detect project type and return (image_key, test_commands)."""
+        for filename, image_key, cmds in CodeExecutor.PROJECT_MAP:
+            if (path / filename).exists():
+                # For package.json, verify a test script actually exists
+                if filename == "package.json":
+                    try:
+                        pkg = json.loads((path / "package.json").read_text())
+                        if "test" not in pkg.get("scripts", {}):
+                            continue
+                    except (json.JSONDecodeError, OSError):
+                        continue
+                return image_key, cmds
+        return None
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -483,7 +591,7 @@ class AutoDeliverer:
         self.api_base = api_base.rstrip("/")
         self.api_key = api_key
 
-    def deliver(self, bounty: GitcoinBounty, exec_result: dict) -> dict:
+    def deliver(self, bounty: BountycasterBounty, exec_result: dict) -> dict:
         """Commit changes, create PR, report to dashboard."""
         clone_path = exec_result.get("clone_path", "")
         if not clone_path or not Path(clone_path).exists():
@@ -502,7 +610,6 @@ class AutoDeliverer:
             trace("pr_created", f"PR created: {pr_url}")
         else:
             try:
-                # Create and push branch
                 subprocess.run(["git", "checkout", "-b", branch],
                                cwd=clone_path, check=True, timeout=30, capture_output=True)
                 subprocess.run(["git", "add", "-A"],
@@ -516,7 +623,6 @@ class AutoDeliverer:
                     cwd=clone_path, check=False, timeout=60, capture_output=True, text=True,
                 )
                 if push_result.returncode == 0:
-                    # Create PR
                     pr_result = subprocess.run(
                         ["gh", "pr", "create",
                          "--title", f"fix: {bounty.title[:70]}",
@@ -533,12 +639,10 @@ class AutoDeliverer:
             except subprocess.TimeoutExpired as e:
                 trace("git_timeout", str(e)[:100], "error")
 
-        # ── Dashboard report via SSE ─────────────────────────────────
         self.report_to_dashboard(bounty, exec_result, pr_url)
-
         return {"status": "DELIVERED", "pr_url": pr_url or "N/A", "branch": branch}
 
-    def report_to_dashboard(self, bounty: GitcoinBounty, exec_result: dict, pr_url: str) -> None:
+    def report_to_dashboard(self, bounty: BountycasterBounty, exec_result: dict, pr_url: str) -> None:
         """Push action trace to AIMS SSE endpoint so the live dashboard updates."""
         if DRY_RUN:
             log(f"[DRY-RUN] Would POST settlement event to dashboard SSE")
@@ -576,13 +680,13 @@ class AutoDeliverer:
             log(f"Dashboard report failed: {e}", "WARN")
 
     @staticmethod
-    def _pr_body(bounty: GitcoinBounty) -> str:
+    def _pr_body(bounty: BountycasterBounty) -> str:
         return (
             f"## Automated Fix — Bounty #{bounty.id}\n\n"
             f"**Title:** {bounty.title}\n\n"
             f"**Value:** {bounty.value} USDC\n\n"
             f"---\n"
-            f"*Generated by [AIMS Gitcoin Sniper](https://aims-gateway.fly.dev)*\n"
+            f"*Generated by [AIMS Bountycaster Sniper](https://aims-gateway.fly.dev)*\n"
             f"*Action Trace: `{uuid.uuid4().hex[:12]}`*"
         )
 
@@ -602,7 +706,7 @@ class DashboardStatus:
         """Print a Bloomberg-terminal-style report of all action traces."""
         print()
         print("╔══════════════════════════════════════════════════════════════╗")
-        print("║        AIMS GITCOIN SNIPER — ACTION TRACES REPORT          ║")
+        print("║     AIMS BOUNTYCASTER SNIPER — ACTION TRACES REPORT        ║")
         print("╚══════════════════════════════════════════════════════════════╝")
         print()
 
@@ -641,14 +745,14 @@ class SniperPipeline:
     """Orchestrates one full poll→match→execute→deliver cycle."""
 
     def __init__(self):
-        self.poller = GitcoinPoller()
+        self.poller = BountycasterPoller()
         self.evaluator = AIMSEvaluator()
         self.executor = CodeExecutor()
         self.deliverer = AutoDeliverer()
 
     def run_once(self) -> list[dict]:
         """Single cycle: return action traces generated."""
-        log("Polling Gitcoin for new bounties…")
+        log("Polling Bountycaster for new bounties…")
         bounties = self.poller.new_bounties()
         log(f"Found {len(bounties)} new bounties")
 
@@ -697,7 +801,7 @@ class SniperPipeline:
 
 def main():
     parser = argparse.ArgumentParser(
-        description="AIMS Gitcoin Sniper — autonomous bounty hunting pipeline",
+        description="AIMS Bountycaster Sniper — autonomous bounty hunting pipeline",
     )
     parser.add_argument("--dry-run", action="store_true", help="Simulated mode without real API calls")
     parser.add_argument("--once", action="store_true", help="Single cycle then exit")
@@ -712,9 +816,10 @@ def main():
         return
 
     mode = "DRY-RUN" if DRY_RUN else "LIVE"
-    log(f"AIMS Gitcoin Sniper starting in {mode} mode")
-    log(f"  Poll: {GITCOIN_API}")
+    log(f"AIMS Bountycaster Sniper starting in {mode} mode")
+    log(f"  Poll: {BOUNTYCASTER_API}")
     log(f"  AIMS: {AIMS_API}")
+    log(f"  Docker: {'ENABLED' if DOCKER_ENABLED else 'DISABLED'}")
     log(f"  Interval: {POLL_SECONDS}s")
 
     pipeline = SniperPipeline()
