@@ -13,8 +13,12 @@
 - **商业动线设计**：用户通过 `/` 了解产品 → 点击 "Launch App" → 进入 `/console` 触发 JWT 检查 → 无令牌则重定向至 `/login` → 注册/登录后自动跳回 `/console`
 - **EXEMPT_PATHS 端点 JWT 自解析**：`/api/auth/me`、`/api/auth/api-keys` 等端点在 EXEMPT_PATHS 中，middleware 跳过后 `request.state.user_id` 不会设置。使用 `_get_jwt_user_id()` helper 自行从 Cookie 或 Authorization header 解析 JWT 获取 user_id
 
-### Console v2 Stitch 三文件架构
-- **`static/console.html`**（~564 行）— 纯 HTML 骨架，无内联样式或脚本；引用 ethers.js CDN + 3 个外部文件；所有 `id` 属性与 JS 函数 DOM 查询匹配；**Stitch 固定侧边栏布局**（w-256 侧边栏 + 粘性顶部栏 + 4 Tab 面板 + 模态框/Footer）；`switchSidebarTab()` 内联函数触发面板切换并调用 `switchRole()` 加载数据；Tab-Role 映射：dashboard→consumer, mission→developer, security→developer, docs→consumer
+### Console v2 Income/Expense 三文件架构
+- **`static/console.html`**（~580 行）— 纯 HTML 骨架，无内联样式或脚本；引用 ethers.js CDN + 3 个外部文件；所有 `id` 属性与 JS 函数 DOM 查询匹配；**Stitch 5 Tab 收支分离侧边栏布局**（w-256 侧边栏 + 粘性顶部栏 + 5 Tab 面板 + 模态框/Footer）；`switchSidebarTab()` 内联函数触发面板切换并调用 `switchRole()` 加载数据；Tab-Role 映射：dashboard→consumer, **publish→consumer**, **earn→developer**, **keys→developer**, docs→consumer
+- **Publish（支出）Tab**：`currency_exchange` 图标，包含发布任务表单、Task Vault、Boost 加价、Commerce/Billing 模式、充值/提现 — 所有涉及"花钱"的功能
+- **Earn（收入）Tab**：`payments` 图标，包含 Dev Stats（信用分/收入）、Task Market（抢单池）、Worker Node、One-Click Integration、Co-Contributors、Skill Upload、Canary — 所有涉及"赚钱"的功能
+- **Keys Tab**：`vpn_key` 图标，API Key 生成/列表/撤销（唯一存在位置，不再重复出现在其他 Tab）
+- **Docs Tab**：`menu_book` 图标，CORS 配置说明 + 隐藏提示（唯一存在位置，不再重复包含 Integration/Contributors）
 - **`static/css/console-v2.css`**（~495 行）— Deep Space 设计系统（`#0a0f1d` 背景，`#00dbe7` Electric Cyan 主色，`#ddb7ff` Neon Purple 次要）；CSS 变量体系（`--primary`/`--primary-bright`/`--primary-glow`/`--surface-card`/`--border` 等）；玻璃拟态 `.glass-card`（`backdrop-filter: blur(12px)` + 1px 半透明边框）；`--neon` → `--primary` 别名确保向后兼容；`.sidebar`/`.sidebar-link`/`.top-bar`/`.panel-header`/`.tab-panel`/`.app-footer` 布局类；768px/600px 响应式断点；Material Symbols + Geist（headings）+ Inter（body）字体
 - **`static/js/console-core.js`**（~1624 行）— 全部 50+ 个业务 JS 函数；`smartHeaders()` 统一鉴权（EIP-191 → JWT 降级）；vault 跨 Tab 保护（`_savedVaultTaskId`）；自动 `window.*` 暴露使内联 `onclick` 可用
 - **`static/js/docs-content.js`**（~44 行）— 平台文档文本（CORS 配置、dashboard 提示等）在 `DOCS_CONTENT` 全局对象中

@@ -7,6 +7,11 @@
 
 ## [2026-06-17]
 ### 重构
+- refactor(console-income-expense): `static/console.html` 从 4 Tab 侧边栏重构为 **5 Tab 收支分离布局**（Dashboard → Publish → Earn → Keys → Docs）— Publish（`currency_exchange` 图标）专用于支出（发布任务/充值/vault/加价），Earn（`payments` 图标）专用于收入（任务市场/Worker/接入/技能上传）；侧边栏通过图标+文案清晰区分收入与支出功能
+- refactor(console-income-expense): 消除所有重复 DOM ID — `integrateInput/Wallet/Btn/Count/Result` 仅存于 Earn Tab，`coContribList/contribTotalPct/contribSaveResult` 仅存于 Earn Tab，`apiKeyLabel/Result/List/Count` 仅存于 Keys Tab，`corsDocContent` 仅存于 Docs Tab；Dashboard 移除 CORS 区域，Docs 移除 Integration 和 Contributors 区域，Mission Tab 移除 API Keys 区域
+- refactor(console-income-expense): Tab-Role 映射更新 — `{dashboard:'consumer', publish:'consumer', earn:'developer', keys:'developer', docs:'consumer'}`，Earn Tab 加载 Developer 数据（任务市场/信用分/接入/Worker），Publish Tab 加载 Consumer 数据（vault/充值/历史）
+- refactor(console-income-expense): `scripts/qa_console_test.py` 124/124 PASS 验证 — 所有重构后 DOM ID 完整性 + 52 个全局函数可用性 + 静默 catch 审计 + Console error 审计全部通过
+### 重构
 - refactor(console-v1-split): `static/console.html` 从 2993 行压缩至 385 行（87% 缩减） — 提取全部 CSS 至 `static/css/console-v2.css`（297 行），提取全部 50 个 JS 函数至 `static/js/console-core.js`（1624 行），提取平台文档文本至 `static/js/docs-content.js`（44 行）
 - refactor(console-v1-split): 移除 Tailwind Play CDN — 所有样式已由 console-v2.css 覆盖，CDN 的 `document.write` 导致 "Unexpected token '}'" 页面错误，移除后 0 红色报错
 - refactor(console-v2-stitch): `static/console.html` 从角色标签切换（Consumer/Developer/Worker/System）重构为 **Stitch 固定侧边栏布局**（全局大盘/任务中心/密钥中心/接入指南 4 Tab）— 新增 `switchSidebarTab()` 面板切换函数；顶部粘性状态栏（区块信息/延迟/钱包）；玻璃拟态卡片容器；Material Symbols 图标；Google Fonts（Geist + Inter）；侧边栏 256px 固定宽度 + 768px/600px 两档响应式断点；保持全部 97+ DOM IDs 不变
