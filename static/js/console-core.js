@@ -1267,7 +1267,7 @@ function switchRole(role) {
   function connectSSE() {
     if (eventSource) eventSource.close();
     eventSource = new EventSource(`${API_BASE}/api/v2/feed/stream`);
-    eventSource.onmessage = (ev) => { try { addEntry(JSON.parse(ev.data)); } catch(e) { /* ignore parse errors */ } };
+    eventSource.onmessage = (ev) => { try { addEntry(JSON.parse(ev.data)); } catch(e) { console.warn("SSE parse:", ev.data); } };
     eventSource.onerror = () => setTimeout(connectSSE, 5000);
   }
   setTimeout(connectSSE, 2000);

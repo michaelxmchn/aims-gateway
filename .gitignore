@@ -19,6 +19,9 @@ desktop.ini
 # --- Secrets / local env ---
 .env
 .env.*
+
+# --- Build artifacts ---
+.aims/
 !.env.example
 *.pem
 *.key

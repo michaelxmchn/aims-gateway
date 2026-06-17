@@ -18,7 +18,10 @@
 - [x] InMemoryContract 单例修复 — `wallet_deposit`/`wallet_balance` 共享 `_contract` 实例
 - [x] Phase 2: Python web3.py 后端重构 — Hardhat 本地链 + AIMSAgentGateway 70/25/5 合约 + Web3SettlementContract
 - [ ] Phase 3: 生产安全 — Gas 重试、Nonce+UUID 复合防重放
-- [x] **Console v2 大减重重构** — `static/console.html` 2993 行 → 385 行（87% 缩减）；提取 CSS → `static/css/console-v2.css`（297 行）、提取 JS → `static/js/console-core.js`（1624 行）、提取文档文本 → `static/js/docs-content.js`（44 行）；Stitch-inspired 玻璃拟态主题 + Tailwind CDN；所有 null guard + vault 跨 Tab 保护保留；所有 `catch(e){}` 替换为 `console.warn()`
+- [x] **Console v2 大减重重构** — `static/console.html` 2993 行 → 385 行（87% 缩减）；提取 CSS → `static/css/console-v2.css`（297 行）、提取 JS → `static/js/console-core.js`（1624 行）、提取文档文本 → `static/js/docs-content.js`（44 行）；Stitch-inspired 玻璃拟态主题；所有 null guard + vault 跨 Tab 保护保留；所有 `catch(e){}` 替换为 `console.warn()`
+- [x] **移除 Tailwind CDN** — Tailwind Play CDN `document.write` 导致 "Unexpected token '}'" 页面错误，所有样式已由 console-v2.css 覆盖，移除后消除该错误
+- [x] **QA 全量联调测试脚本** — `scripts/qa_console_test.py` 124 个测试用例覆盖 4 个 Tab、52 个全局函数、DOM 元素存在性、静默 catch 审计、Console error 审计，通过率 100%
+- [x] **静默 catch 审计优化** — 上下文窗口从 8 行扩至 15 行，支持 DOM 错误显示模式（⚠️/offline/error），SSE 空 catch 添加 `console.warn`
 - [x] Phase 4: E2E 测试 — Hardhat 本地链完成 run_skill→claim→submit→on-chain settlement 全流程验证
 - [x] **Full Settlement Lifecycle 验证** — `scripts/full_settlement_test.py` 完整开发者注册 + 70/25/5 链上分账 + Worker/Developer PoT 领取全流程通过
 - [x] **可逆审计追踪** — `BillingEngine._audit_ledger` 内存账本，记录每笔 settlement/refund 的 [ts, action, roles, amounts]；`GET /api/admin/audit` 端点支持按 task_id 回溯和全局聚合

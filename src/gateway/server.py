@@ -332,7 +332,7 @@ async def verify_wallet_middleware(request: Request, call_next):
 
     Exempt paths: ``/api/health``, ``/api/discovery``, ``/api/auth/*``.
     """
-    path = request.url.path
+    path = request.url.path.rstrip("/")
 
     if path in EXEMPT_PATHS or path.startswith("/api/admin/"):
         return await call_next(request)

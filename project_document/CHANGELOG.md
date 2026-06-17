@@ -7,7 +7,8 @@
 
 ## [2026-06-17]
 ### 重构
-- refactor(console): `static/console.html` 从 2993 行压缩至 385 行（87% 缩减） — 提取全部 CSS 至 `static/css/console-v2.css`（297 行），提取全部 50 个 JS 函数至 `static/js/console-core.js`（1624 行），提取平台文档文本至 `static/js/docs-content.js`（44 行）；Stitch 玻璃拟态设计系统 + Tailwind CDN；vault 跨 Tab 保护保留；消除所有空 `catch` 块
+- refactor(console): `static/console.html` 从 2993 行压缩至 385 行（87% 缩减） — 提取全部 CSS 至 `static/css/console-v2.css`（297 行），提取全部 50 个 JS 函数至 `static/js/console-core.js`（1624 行），提取平台文档文本至 `static/js/docs-content.js`（44 行）；Stitch 玻璃拟态设计系统；vault 跨 Tab 保护保留；消除所有空 `catch` 块
+- refactor(console): 移除 Tailwind Play CDN — 所有样式已由 console-v2.css 覆盖，CDN 的 `document.write` 导致 "Unexpected token '}'" 页面错误，移除后 0 红色报错
 ### 修复
 - fix(console-syntax): `const net` 重复声明 + `invokeSkill()` 多余 `}` — 两个 SyntaxError 导致整个 `<script>` 块不执行，所有按钮点击无反应；第二个声明重命名为 `const currentNet`，删除多余闭合括号
 - fix(console-fallback): 5 个关键函数（`handleDeposit`/`rechargeReserves`/`withdrawFunds`/`fiatDeposit`/`sendHeartbeat`）追加 `smartHeaders(body)` JWT fallback — 无 MetaMask 时不再静默失败
@@ -26,6 +27,9 @@
 - fix(console): `API_BASE` 默认值 `http://127.0.0.1:8000` → `""`（空字符串，使用相对路径）— 解决 Fly.io 生产环境所有 API 调用因 CORS/网络错误失败的问题
 - fix(jwt): `create_jwt()` `sub` 字段 int → str — PyJWT 验签要求 `sub` 必须是 string，否则抛出 `Subject must be a string` 导致 `/api/auth/me` 一直返回 401
 - fix(console-buttons): 前端全按钮 JWT fallback 大检修 — 新增 `smartHeaders()` 函数（EIP-191 MetaMask 签名失败时自动降级为 JWT-only）+ 修复 publishTask/oneClickIntegrate/boostReward/claimTask/simulateVaultPayment/saveContributors/confirmBuyout 共 7 个关键函数的鉴权头生成，消除按钮无反应问题 + toast 函数异常安全包装 + 添加 DOMContentLoaded 页面初始化（自动加载 skills 列表 + 自动重连 MetaMask）
+- fix(console-sse): `console-core.js:1270` SSE onmessage 空 `catch(e){}` → `console.warn()` — 静默错误不再隐藏
+- fix(console-tailwind): 移除 Tailwind Play CDN — `document.write` 导致 "Unexpected token '}'" 页面错误，所有样式已由 console-v2.css 覆盖，移除后 0 红色报错
+- fix(qa-audit): 静默 catch 审计上下文窗口从 8→15 行，新增 DOM 错误显示模式（⚠️/offline/error）检测 — 消除 5 个误报，审计 100% 精确
 
 ## [2026-06-16]
 ### 新增

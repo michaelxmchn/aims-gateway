@@ -14,10 +14,16 @@
 - **EXEMPT_PATHS 端点 JWT 自解析**：`/api/auth/me`、`/api/auth/api-keys` 等端点在 EXEMPT_PATHS 中，middleware 跳过后 `request.state.user_id` 不会设置。使用 `_get_jwt_user_id()` helper 自行从 Cookie 或 Authorization header 解析 JWT 获取 user_id
 
 ### Console v2 三文件架构
-- **`static/console.html`**（~385 行）— 纯 HTML 骨架，无内联样式或脚本；引用 Tailwind CDN + 3 个外部文件；所有 `id` 属性与 JS 函数 DOM 查询匹配
+- **`static/console.html`**（~383 行）— 纯 HTML 骨架，无内联样式或脚本；引用 ethers.js CDN + 3 个外部文件；所有 `id` 属性与 JS 函数 DOM 查询匹配
 - **`static/css/console-v2.css`**（~297 行）— 全部样式提取；Stitch-inspired 黑暗青色主题（`#0f172a` 背景，`#deff9a` 荧光绿 accent）；玻璃拟态（`backdrop-filter`）；几何体字体栈
 - **`static/js/console-core.js`**（~1624 行）— 全部 50+ 个业务 JS 函数；`smartHeaders()` 统一鉴权（EIP-191 → JWT 降级）；vault 跨 Tab 保护（`_savedVaultTaskId`）；自动 `window.*` 暴露使内联 `onclick` 可用
 - **`static/js/docs-content.js`**（~44 行）— 平台文档文本（CORS 配置、dashboard 提示等）在 `DOCS_CONTENT` 全局对象中
+
+### Tailwind CDN 已移除
+- Tailwind Play CDN（`cdn.tailwindcss.com`）使用 `document.write` 动态注入脚本，在非初始页面加载场景下会导致 `"Unexpected token '}'"` 的页面错误
+- 所有样式已完全由 `console-v2.css` 覆盖，无需 CDN
+- 移除后消除该页面错误，实现 F12 Console 0 红色报错
+- 保留 ethers.js CDN（必需，用于链上交互）
 - **迁移原则**：`console.html` 保持纯骨架，所有逻辑在外部文件中，`DOMContentLoaded` 时填充文档文本
 
 ### Console DOM 元素空值防护
