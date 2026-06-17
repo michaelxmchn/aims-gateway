@@ -1585,6 +1585,65 @@ const revokeApiKey = async function(keyId) {
   } catch(e) { toast("Error: " + e.message, "error"); }
 };
 
+// ── Settings: Profile & Password ─────────────────────────────────
+
+
+const loadUserProfile = async function() {
+  const jwt = localStorage.getItem("aims_jwt");
+  if (!jwt) return;
+  try {
+    const resp = await fetch(API_BASE + "/api/auth/me", { headers: jwtHeaders() });
+    if (!resp.ok) return;
+    const user = await resp.json();
+    const emailEl = document.getElementById("settingsEmail");
+    if (emailEl) emailEl.textContent = user.email || "—";
+    const nameEl = document.getElementById("settingsDisplayName");
+    if (nameEl && user.display_name) nameEl.value = user.display_name;
+    const walletEl = document.getElementById("settingsWalletAddr");
+    if (walletEl) walletEl.textContent = user.wallet_address || "Not linked";
+    const sinceEl = document.getElementById("settingsMemberSince");
+    if (sinceEl && user.created_at) sinceEl.textContent = new Date(user.created_at * 1000).toLocaleDateString();
+  } catch(e) { console.warn("loadUserProfile:", e); }
+};
+
+const saveProfile = async function() {
+  const name = document.getElementById("settingsDisplayName")?.value.trim();
+  const resultEl = document.getElementById("settingsPwResult");
+  if (!name) { toast("Enter a display name", "warn"); return; }
+  try {
+    const resp = await fetch(API_BASE + "/api/auth/update-profile", {
+      method: "PUT",
+      headers: jwtHeaders(),
+      body: JSON.stringify({ display_name: name }),
+    });
+    if (!resp.ok) { const err = await resp.json(); toast(err.detail || "Failed", "error"); return; }
+    toast("Profile updated", "success");
+    loadUserProfile();
+  } catch(e) { toast("Error: " + e.message, "error"); }
+};
+
+const changePassword = async function(evt) {
+  evt.preventDefault();
+  const oldPw = document.getElementById("settingsOldPw")?.value;
+  const newPw = document.getElementById("settingsNewPw")?.value;
+  const confirmPw = document.getElementById("settingsConfirmPw")?.value;
+  const resultEl = document.getElementById("settingsPwResult");
+  if (newPw !== confirmPw) { toast("Passwords do not match", "error"); if (resultEl) resultEl.textContent = "Passwords do not match"; return; }
+  try {
+    const resp = await fetch(API_BASE + "/api/auth/change-password", {
+      method: "POST",
+      headers: jwtHeaders(),
+      body: JSON.stringify({ old_password: oldPw, new_password: newPw }),
+    });
+    if (!resp.ok) { const err = await resp.json(); toast(err.detail || "Failed", "error"); if (resultEl) resultEl.textContent = "❌ " + (err.detail || "Error"); return; }
+    toast("Password updated", "success");
+    if (resultEl) resultEl.textContent = "✅ Password changed";
+    document.getElementById("settingsOldPw").value = "";
+    document.getElementById("settingsNewPw").value = "";
+    document.getElementById("settingsConfirmPw").value = "";
+  } catch(e) { toast("Error: " + e.message, "error"); }
+};
+
 // ── Auto-connect & Event Listeners ──────────────────────────────
 if (typeof window.ethereum !== "undefined") {
   window.ethereum.request({ method: "eth_accounts" }).then(accounts => {
@@ -1612,6 +1671,7 @@ if (typeof window.ethereum !== "undefined") {
 document.addEventListener("DOMContentLoaded", async function() {
   fetchHealth();
   fetchDiscovery();
+  loadUserProfile();
   const rc = document.getElementById("rechargeContract");
   if (rc) rc.textContent = CONTRACT_ADDRESS;
   switchBillingMode('pay_per_task');

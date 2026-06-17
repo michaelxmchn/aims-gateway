@@ -240,6 +240,68 @@ async def link_wallet_to_user(user_id: int, wallet: str) -> None:
     await loop.run_in_executor(None, _do)
 
 
+async def change_password(user_id: int, old_password: str, new_password: str) -> bool:
+    """Change user password. Returns True on success, raises ValueError on mismatch."""
+    loop = asyncio.get_event_loop()
+
+    def _do() -> bool:
+        conn = _get_conn()
+        row = conn.execute(
+            "SELECT password_hash FROM users WHERE id = ?", (user_id,)
+        ).fetchone()
+        if row is None:
+            raise ValueError("User not found")
+        if not bcrypt.checkpw(old_password.encode(), row["password_hash"].encode()):
+            raise ValueError("Current password is incorrect")
+        new_hash = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+        conn.execute(
+            "UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?",
+            (new_hash, time.time(), user_id),
+        )
+        conn.commit()
+        return True
+
+    return await loop.run_in_executor(None, _do)
+
+
+async def update_profile(user_id: int, display_name: str | None = None, email: str | None = None) -> dict:
+    """Update user profile fields. Returns updated user dict."""
+    loop = asyncio.get_event_loop()
+
+    def _do() -> dict:
+        conn = _get_conn()
+        if email:
+            existing = conn.execute(
+                "SELECT id FROM users WHERE email = ? AND id != ?", (email, user_id)
+            ).fetchone()
+            if existing:
+                raise ValueError(f"Email '{email}' is already in use")
+        updates = []
+        params = []
+        if display_name is not None:
+            updates.append("display_name = ?")
+            params.append(display_name)
+        if email is not None:
+            updates.append("email = ?")
+            params.append(email)
+        if not updates:
+            raise ValueError("No fields to update")
+        params.append(time.time())
+        params.append(user_id)
+        conn.execute(
+            f"UPDATE users SET {', '.join(updates)}, updated_at = ? WHERE id = ?",
+            params,
+        )
+        conn.commit()
+        row = conn.execute(
+            "SELECT id, email, display_name, wallet_address, created_at FROM users WHERE id = ?",
+            (user_id,),
+        ).fetchone()
+        return dict(row)
+
+    return await loop.run_in_executor(None, _do)
+
+
 # ── JWT tokens ───────────────────────────────────────────────────────
 
 

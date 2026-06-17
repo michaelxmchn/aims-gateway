@@ -22,6 +22,7 @@
 - [x] **移除 Tailwind CDN** — Tailwind Play CDN `document.write` 导致 "Unexpected token '}'" 页面错误，所有样式已由 console-v2.css 覆盖，移除后消除该错误
 - [x] **Console v2 Stitch 侧边栏布局** — 从角色标签切换（Consumer/Developer/Worker/System）重构为固定侧边栏导航（全局大盘/任务中心/密钥中心/接入指南 4 Tab）；顶部粘性状态栏；玻璃拟态卡片容器；`console-v2.css` 扩展至 495 行 Deep Space 设计系统变量+布局类；`switchSidebarTab()` 面板切换 + `switchRole()` 数据加载联动；768px/600px 响应式断点
 - [x] **Console v2 Income/Expense 收支分离重构** — 4 Tab → 5 Tab（Dashboard/Publish/Earn/Keys/Docs）；新增 Publish（支出：发布任务、充值、vault、加价）和 Earn（收入：任务市场、Worker节点、一键接入、技能上传）专用 Tab；消除所有重复 DOM ID（API Keys 仅存 Keys Tab、Integration 仅存 Earn Tab、CORS 仅存 Docs Tab）；Tab-Role 映射更新为 `{dashboard:'consumer', publish:'consumer', earn:'developer', keys:'developer', docs:'consumer'}`；QA 124/124 PASS 验证
+- [x] **Settings Tab 用户设置中心** — 侧边栏 Keys → Settings（`settings` 图标），集中管理 Profile（邮箱/显示名/注册时间）、Password（修改密码表单）、Wallet（链接钱包显示+连接/切换）、API Keys（密钥管理+折叠使用说明）；后端新增 `change_password()` / `update_profile()` + `POST /api/auth/change-password` / `PUT /api/auth/update-profile` 端点；前端新增 `loadUserProfile()` / `saveProfile()` / `changePassword()` 函数；QA 124/124 PASS 回归
 - [x] **QA 全量联调测试脚本** — `scripts/qa_console_test.py` 124 个测试用例覆盖 4 个 Tab、52 个全局函数、DOM 元素存在性、静默 catch 审计、Console error 审计，通过率 100%
 - [x] **静默 catch 审计优化** — 上下文窗口从 8 行扩至 15 行，支持 DOM 错误显示模式（⚠️/offline/error），SSE 空 catch 添加 `console.warn`
 - [x] Phase 4: E2E 测试 — Hardhat 本地链完成 run_skill→claim→submit→on-chain settlement 全流程验证

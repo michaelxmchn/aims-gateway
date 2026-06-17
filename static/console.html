@@ -63,20 +63,19 @@
       <button class="sidebar-link" data-tab="earn" onclick="switchSidebarTab('earn')">
         <span class="material-symbols-outlined">payments</span> Earn
       </button>
-      <button class="sidebar-link" data-tab="keys" onclick="switchSidebarTab('keys')">
-        <span class="material-symbols-outlined">vpn_key</span> Keys
+      <button class="sidebar-link" data-tab="settings" onclick="switchSidebarTab('settings')">
+        <span class="material-symbols-outlined">settings</span> Settings
       </button>
       <button class="sidebar-link" data-tab="docs" onclick="switchSidebarTab('docs')">
         <span class="material-symbols-outlined">menu_book</span> Docs
       </button>
     </nav>
     <div class="sidebar-footer">
-      <button class="deploy-btn">
-        <span class="material-symbols-outlined" style="font-size:16px">add_circle</span> Deploy New Agent
+      <button class="deploy-btn" onclick="switchSidebarTab('settings')">
+        <span class="material-symbols-outlined" style="font-size:16px">settings</span> Account Settings
       </button>
       <div class="footer-links">
-        <a><span class="material-symbols-outlined" style="font-size:16px">settings</span> Settings</a>
-        <a><span class="material-symbols-outlined" style="font-size:16px">contact_support</span> Support</a>
+        <a onclick="switchSidebarTab('docs')"><span class="material-symbols-outlined" style="font-size:16px">contact_support</span> Docs</a>
       </div>
     </div>
   </aside>
@@ -431,63 +430,113 @@
       </section>
 
       <!-- ════════════════════════════════════════════════════════
-           TAB: KEYS
-           API Key management
+           TAB: SETTINGS
+           User settings — profile, password, wallet, API keys
            ════════════════════════════════════════════════════════ -->
-      <section class="tab-panel" id="tab-keys">
+      <section class="tab-panel" id="tab-settings">
 
-        <div class="glass" style="padding:1.25rem;max-width:800px">
-          <div class="panel-header">
-            <span class="panel-title">🔑 Protocol Gateway Keys</span>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;max-width:1000px">
+
+          <!-- LEFT COLUMN: Profile + Password -->
+          <div style="display:flex;flex-direction:column;gap:1.25rem">
+
+            <!-- Profile -->
+            <div class="glass" style="padding:1.25rem">
+              <div class="panel-header">
+                <span class="panel-title">👤 Profile</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:.75rem">
+                <div><span style="font-size:0.72rem;color:var(--text-dim)">Email</span><div style="font-size:0.85rem;color:#fff;font-weight:500" id="settingsEmail">—</div></div>
+                <div>
+                  <span style="font-size:0.72rem;color:var(--text-dim)">Display Name</span>
+                  <div style="display:flex;gap:.5rem;align-items:center;margin-top:.25rem">
+                    <input class="input" id="settingsDisplayName" placeholder="Your display name" style="max-width:260px;font-size:.78rem">
+                    <button class="btn btn-sm btn-outline" onclick="saveProfile()">💾 Save</button>
+                  </div>
+                </div>
+                <div><span style="font-size:0.72rem;color:var(--text-dim)">Member Since</span><div style="font-size:0.82rem;color:var(--text-dim)" id="settingsMemberSince">—</div></div>
+              </div>
+            </div>
+
+            <!-- Password -->
+            <div class="glass" style="padding:1.25rem;border-color:rgba(251,191,36,0.1)">
+              <div class="panel-header">
+                <span class="panel-title">🔒 Password</span>
+              </div>
+              <form onsubmit="changePassword(event)" style="display:flex;flex-direction:column;gap:.75rem">
+                <input class="input" id="settingsOldPw" type="password" placeholder="Current password" required minlength="8" style="max-width:260px;font-size:.78rem">
+                <input class="input" id="settingsNewPw" type="password" placeholder="New password (min 8 chars)" required minlength="8" style="max-width:260px;font-size:.78rem">
+                <input class="input" id="settingsConfirmPw" type="password" placeholder="Confirm new password" required minlength="8" style="max-width:260px;font-size:.78rem">
+                <div style="display:flex;gap:.5rem;align-items:center">
+                  <button class="btn btn-neon btn-sm" type="submit">🔄 Update Password</button>
+                  <span id="settingsPwResult" style="font-size:.72rem;color:var(--text-dim)"></span>
+                </div>
+              </form>
+            </div>
+
           </div>
-          <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:0.5rem">Generate encrypted keys for your AI agents to access AIMS resources. <strong style="color:var(--neon)">Max 5 keys per account.</strong></p>
-          <div style="display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap">
-            <input class="input" id="apiKeyLabel" placeholder="Label (e.g. Cursor)" style="max-width:260px;font-size:.78rem">
-            <button class="btn btn-neon" onclick="createApiKey()">+ Generate Key</button>
-            <button class="btn btn-sm btn-ghost" onclick="fetchApiKeys()">⟳ Refresh</button>
-            <span id="apiKeyCount" style="font-size:0.7rem;color:var(--text-dim);align-self:center;margin-left:auto">— / 5 keys</span>
-          </div>
-          <div id="apiKeyResult" style="margin-bottom:.5rem"></div>
-          <div id="apiKeyList" style="font-size:.75rem"><div style="color:var(--text-dim);padding:.5rem">No API keys yet.</div></div>
 
-          <!-- Usage Instructions -->
-          <div style="border-top:1px solid var(--border);margin-top:1.5rem;padding-top:1.25rem">
-            <div style="font-size:0.8rem;font-weight:600;color:#fff;margin-bottom:0.75rem">📖 How to use your API Key</div>
-            <div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:1rem">Copy one of the examples below and replace <code style="color:var(--neon);background:rgba(0,219,231,0.06);padding:0.1rem 0.3rem;border-radius:3px">sk-aims-...</code> with your key.</div>
+          <!-- RIGHT COLUMN: Wallet + API Keys -->
+          <div style="display:flex;flex-direction:column;gap:1.25rem">
 
-            <!-- curl -->
-            <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem;margin-bottom:0.75rem">
-              <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">curl</div>
-              <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">curl -H "Authorization: Bearer YOUR_API_KEY" \
+            <!-- Wallet -->
+            <div class="glass" style="padding:1.25rem;border-color:rgba(167,139,250,0.15)">
+              <div class="panel-header">
+                <span class="panel-title">💳 Linked Wallet</span>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:.75rem">
+                <div><span style="font-size:0.72rem;color:var(--text-dim)">Wallet Address</span><div style="font-size:0.82rem;color:var(--neon);font-family:monospace;word-break:break-all" id="settingsWalletAddr">—</div></div>
+                <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+                  <button class="btn btn-sm btn-outline" onclick="connectWallet()">🔗 Connect / Switch Wallet</button>
+                  <button class="btn btn-sm btn-ghost" onclick="refreshBalance()">⟳ Refresh</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- API Keys -->
+            <div class="glass" style="padding:1.25rem">
+              <div class="panel-header">
+                <span class="panel-title">🔑 API Keys</span>
+              </div>
+              <p style="font-size:0.85rem;color:var(--text-dim);margin-bottom:0.5rem">Generate keys for your AI agents. <strong style="color:var(--neon)">Max 5 keys per account.</strong></p>
+              <div style="display:flex;gap:.5rem;margin-bottom:1rem;flex-wrap:wrap">
+                <input class="input" id="apiKeyLabel" placeholder="Label (e.g. Cursor)" style="max-width:260px;font-size:.78rem">
+                <button class="btn btn-neon" onclick="createApiKey()">+ Generate Key</button>
+                <button class="btn btn-sm btn-ghost" onclick="fetchApiKeys()">⟳ Refresh</button>
+                <span id="apiKeyCount" style="font-size:0.7rem;color:var(--text-dim);align-self:center;margin-left:auto">— / 5 keys</span>
+              </div>
+              <div id="apiKeyResult" style="margin-bottom:.5rem"></div>
+              <div id="apiKeyList" style="font-size:.75rem"><div style="color:var(--text-dim);padding:.5rem">No API keys yet.</div></div>
+
+              <!-- Usage Instructions -->
+              <details style="margin-top:1rem;border-top:1px solid var(--border);padding-top:1rem">
+                <summary style="font-size:0.8rem;font-weight:600;color:#fff;cursor:pointer;user-select:none">📖 How to use your API Key</summary>
+                <div style="font-size:0.75rem;color:var(--text-dim);margin:0.75rem 0">Copy one of the examples below and replace <code style="color:var(--neon);background:rgba(0,219,231,0.06);padding:0.1rem 0.3rem;border-radius:3px">sk-aims-...</code> with your key.</div>
+                <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem;margin-bottom:0.75rem">
+                  <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">curl</div>
+                  <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">curl -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   https://aims-gateway.fly.dev/api/discovery</pre>
-            </div>
-
-            <!-- Python -->
-            <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem;margin-bottom:0.75rem">
-              <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">Python (AI Agent SDK)</div>
-              <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">import requests
-
+                </div>
+                <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem;margin-bottom:0.75rem">
+                  <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">Python (AI Agent SDK)</div>
+                  <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">import requests
 headers = {"Authorization": "Bearer YOUR_API_KEY"}
-resp = requests.get(
-    "https://aims-gateway.fly.dev/api/discovery",
-    headers=headers
-)
+resp = requests.get("https://aims-gateway.fly.dev/api/discovery", headers=headers)
 print(resp.json())</pre>
-            </div>
-
-            <!-- Claude Code MCP -->
-            <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem">
-              <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">Claude Code / MCP Config</div>
-              <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">{
+                </div>
+                <div style="background:rgba(0,0,0,0.25);border-radius:6px;padding:0.75rem">
+                  <div style="font-size:0.7rem;color:var(--text-dim);margin-bottom:0.4rem">Claude Code / MCP Config</div>
+                  <pre style="margin:0;font-size:0.68rem;color:#cbd5e1;overflow-x:auto;user-select:all" onclick="navigator.clipboard.writeText(this.textContent);toast('Copied!','success')">{
   "aims-gateway": {
     "url": "https://aims-gateway.fly.dev",
-    "headers": {
-      "Authorization": "Bearer YOUR_API_KEY"
-    }
+    "headers": { "Authorization": "Bearer YOUR_API_KEY" }
   }
 }</pre>
+                </div>
+              </details>
             </div>
+
           </div>
         </div>
 
@@ -554,7 +603,7 @@ function switchSidebarTab(tabName) {
   if (targetPanel) targetPanel.classList.add('active');
 
   // Map sidebar tab to API role for data loading
-  const roleMap = { dashboard: 'consumer', publish: 'consumer', earn: 'developer', keys: 'developer', docs: 'consumer' };
+  const roleMap = { dashboard: 'consumer', publish: 'consumer', earn: 'developer', settings: 'consumer', docs: 'consumer' };
   switchRole(roleMap[tabName] || 'consumer');
 }
 

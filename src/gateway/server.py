@@ -42,7 +42,7 @@ from src.gateway.billing import BillingEngine, CommerceEngine, BillingMode, Reve
 from src.gateway.chain_listener import ChainListener
 from src.gateway.ledger import TransactionLedger
 from src.judge.judge_agent import JudgeEngine
-from src.gateway.database import init_db, create_user, authenticate_user, get_user_by_wallet, get_user_by_id, link_wallet_to_user, create_jwt, verify_jwt, generate_api_key, verify_api_key, list_api_keys, revoke_api_key, record_payment, get_payment_history, JWT_EXPIRY_S
+from src.gateway.database import init_db, create_user, authenticate_user, get_user_by_wallet, get_user_by_id, link_wallet_to_user, change_password, update_profile, create_jwt, verify_jwt, generate_api_key, verify_api_key, list_api_keys, revoke_api_key, record_payment, get_payment_history, JWT_EXPIRY_S
 
 logger = logging.getLogger(__name__)
 
@@ -1076,6 +1076,8 @@ async def discovery():
                     {"method": "POST", "path": "/api/auth/login", "summary": "Email + password login → JWT.", "auth_required": False},
                     {"method": "POST", "path": "/api/auth/wallet-login", "summary": "EIP-191 wallet signature login → JWT.", "auth_required": False},
                     {"method": "POST", "path": "/api/auth/link-wallet", "summary": "Link EVM wallet to current JWT user.", "auth_required": True},
+                    {"method": "POST", "path": "/api/auth/change-password", "summary": "Change account password (requires old + new).", "auth_required": True},
+                    {"method": "PUT", "path": "/api/auth/update-profile", "summary": "Update display name or email.", "auth_required": True},
                     {"method": "GET", "path": "/api/auth/me", "summary": "Get current user info from JWT.", "auth_required": True},
                     {"method": "POST", "path": "/api/auth/api-keys", "summary": "Generate new API Key (sk-aims-*).", "auth_required": True},
                     {"method": "GET", "path": "/api/auth/api-keys", "summary": "List non-revoked API keys.", "auth_required": True},
@@ -3640,6 +3642,42 @@ async def auth_link_wallet(req: LinkWalletRequest, request: Request):
         raise HTTPException(status_code=401, detail="Authentication required")
     await link_wallet_to_user(user_id, req.wallet)
     return {"status": "ok", "wallet": req.wallet}
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str = Field(..., min_length=8)
+    new_password: str = Field(..., min_length=8)
+
+
+@app.post("/api/auth/change-password")
+async def auth_change_password(req: ChangePasswordRequest, request: Request):
+    """Change the current user's password."""
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        await change_password(user_id, req.old_password, req.new_password)
+        return {"status": "ok"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+class UpdateProfileRequest(BaseModel):
+    display_name: str | None = Field(default=None, max_length=100)
+    email: str | None = Field(default=None, min_length=3, max_length=255)
+
+
+@app.put("/api/auth/update-profile")
+async def auth_update_profile(req: UpdateProfileRequest, request: Request):
+    """Update the current user's profile (display name, email)."""
+    user_id = getattr(request.state, "user_id", None)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        user = await update_profile(user_id, display_name=req.display_name, email=req.email)
+        return user
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.get("/api/auth/me")

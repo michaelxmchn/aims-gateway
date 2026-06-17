@@ -5,7 +5,15 @@
 > **格式要求**: 严格遵循 `.claude/output-styles/bullet-points.md` 格式规范  
 > **提交规范**: 遵循 commitlint 规范（type(scope): subject）
 
-## [2026-06-17]
+## [2026-06-18]
+### 新增
+- feat(settings-tab): 侧边栏 Keys Tab → **Settings Tab**（`settings` 图标）— 集中管理用户设置：**Profile**（邮箱、显示名称、注册时间）、**Password**（修改密码表单）、**Wallet**（链接钱包地址显示 + 连接/切换按钮）、**API Keys**（原有的密钥管理 + 折叠式使用说明）
+- feat(settings-tab): `src/gateway/database.py` 新增 `change_password()`（旧密码验证 + bcrypt 新哈希）+ `update_profile()`（display_name / email 更新，含 email 唯一性校验）
+- feat(settings-tab): `src/gateway/server.py` 新增 `POST /api/auth/change-password`（旧+新密码 8 位校验）+ `PUT /api/auth/update-profile`（display_name / email 修改）端点；Discovery 文档同步更新
+- feat(settings-tab): `static/js/console-core.js` 新增 `loadUserProfile()`（自动加载用户信息至设置面板）、`saveProfile()`（PUT 更新 display_name）、`changePassword()`（POST 提交新旧密码，前后端双重 min_length=8 校验）— DOMContentLoaded 自动调用 `loadUserProfile()`
+- feat(settings-tab): `static/css/console-v2.css` — **无需修改**（复用现有 glass/card/input/btn 类）
+- feat(settings-tab): `scripts/qa_console_test.py` — 124/124 PASS，全量回归通过
+### 重构
 ### 重构
 - refactor(console-income-expense): `static/console.html` 从 4 Tab 侧边栏重构为 **5 Tab 收支分离布局**（Dashboard → Publish → Earn → Keys → Docs）— Publish（`currency_exchange` 图标）专用于支出（发布任务/充值/vault/加价），Earn（`payments` 图标）专用于收入（任务市场/Worker/接入/技能上传）；侧边栏通过图标+文案清晰区分收入与支出功能
 - refactor(console-income-expense): 消除所有重复 DOM ID — `integrateInput/Wallet/Btn/Count/Result` 仅存于 Earn Tab，`coContribList/contribTotalPct/contribSaveResult` 仅存于 Earn Tab，`apiKeyLabel/Result/List/Count` 仅存于 Keys Tab，`corsDocContent` 仅存于 Docs Tab；Dashboard 移除 CORS 区域，Docs 移除 Integration 和 Contributors 区域，Mission Tab 移除 API Keys 区域
