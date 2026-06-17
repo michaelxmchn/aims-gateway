@@ -3442,6 +3442,20 @@ def _extract_bearer(request: Request) -> str:
     return ""
 
 
+async def _get_jwt_user_id(request: Request) -> int | None:
+    """Extract user_id from JWT in cookie or Authorization header."""
+    jwt_token = request.cookies.get("aims_jwt") or _extract_bearer(request)
+    if not jwt_token:
+        return None
+    payload = await verify_jwt(jwt_token)
+    if not payload:
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    return int(user_id)
+
+
 def _login_redirect() -> HTMLResponse:
     return HTMLResponse(
         content="""<!DOCTYPE html>
@@ -3672,12 +3686,18 @@ class APIKeyListResponse(BaseModel):
     keys: list[APIKeyItem]
 
 
+async def _require_user(request: Request) -> int:
+    """Get authenticated user_id from JWT or raise 401."""
+    user_id = await _get_jwt_user_id(request)
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user_id
+
+
 @app.post("/api/auth/api-keys", response_model=CreateAPIKeyResponse)
 async def create_api_key(req: CreateAPIKeyRequest, request: Request):
     """Generate a new API key for the authenticated user."""
-    user_id = getattr(request.state, "user_id", None)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    user_id = await _require_user(request)
     result = await generate_api_key(user_id, label=req.label)
     return CreateAPIKeyResponse(**result)
 
@@ -3685,9 +3705,7 @@ async def create_api_key(req: CreateAPIKeyRequest, request: Request):
 @app.get("/api/auth/api-keys", response_model=APIKeyListResponse)
 async def list_api_keys_endpoint(request: Request):
     """List all non-revoked API keys for the authenticated user."""
-    user_id = getattr(request.state, "user_id", None)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    user_id = await _require_user(request)
     keys = await list_api_keys(user_id)
     return APIKeyListResponse(keys=[APIKeyItem(**k) for k in keys])
 
@@ -3695,9 +3713,7 @@ async def list_api_keys_endpoint(request: Request):
 @app.delete("/api/auth/api-keys/{key_id}")
 async def revoke_api_key_endpoint(key_id: int, request: Request):
     """Revoke an API key by ID."""
-    user_id = getattr(request.state, "user_id", None)
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Authentication required")
+    user_id = await _require_user(request)
     ok = await revoke_api_key(key_id, user_id)
     if not ok:
         raise HTTPException(status_code=404, detail="API key not found or not owned by user")
