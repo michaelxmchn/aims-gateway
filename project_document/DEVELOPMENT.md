@@ -303,6 +303,7 @@
 参见下方 Fly.io 部署命令。
 
 ## 最近完成
+- feat(bounty-66): `ClankerNation/OpenAgents` **#66 StakingRewards phantom rewards + access control + precision 修复** — 修复 3 个 Solidity bug：`rewardPerToken()` 改用 `lastTimeRewardApplicable()` 防止期后虚增奖励、`notifyRewardAmount` 添加 `onlyOwner` 权限控制、`require(reward / rewardsDuration > 0)` 防止精度损失；重写测试 13/13 PASS；PR https://github.com/ClankerNation/OpenAgents/pull/5364
 - feat(bounty-179): `ClankerNation/OpenAgents` **#179 PaymentEscrow zero-amount + fee-on-transfer 修复** — 重写 `contracts/PaymentEscrow.sol`：添加 SafeERC20、零金额检查 (`require(amount > 0)`)、token 地址校验、balance-before/after 模式存储实际到账金额（支持 fee-on-transfer 代币）；创建 `contracts/test/FeeOnTransferToken.sol`（5% burn）、`contracts/test/MockERC20.sol` 和 `test/PaymentEscrow.test.js`（14 测试覆盖标准 ERC20 + fee-on-transfer 生命周期）；多版本 Solidity 编译 (0.8.20 + 0.8.24 Cancun viaIR)；PR https://github.com/ClankerNation/OpenAgents/pull/5363
 - feat(sniper-deliver): `ClankerNation/OpenAgents` **#27 SQL Injection 手动端到端交付** — 分析 `api/routes/agents.py` 4 项安全漏洞（无输入校验/logic bug/无认证/无追朔头），实施修复：Pydantic Field 校验（`pattern=r"^[a-zA-Z0-9 _\-.]+$"`，`max_length=64`），`list_agents` owner 参数化查询（User.address → ORM），分页上限 `le=100`，delete_agent 认证+owner 检查，`X-Contributor` 响应头；PR https://github.com/ClankerNation/OpenAgents/pull/5362
 - docs(deploy): `DEPLOY.md` — 追加入《AIMS 2.0 系统业务与功能梳理报告》，涵盖 9 大板块：核心定位、系统拓扑、业务流程、商业模式、安全架构、E2E 联调结果、部署架构、风险控制、快速运维命令

@@ -7,6 +7,7 @@
 
 ## [2026-06-18]
 ### 新增
+- feat(bounty-66): `ClankerNation/OpenAgents` **#66 StakingRewards phantom rewards + access control + precision 修复** — `rewardPerToken()` 改用 `lastTimeRewardApplicable()`、`notifyRewardAmount` 添加 `onlyOwner`、`require(reward / rewardsDuration > 0)` 精度门控；13 测试 13/13 PASS；PR https://github.com/ClankerNation/OpenAgents/pull/5364
 - feat(bounty-179): `ClankerNation/OpenAgents` **#179 PaymentEscrow zero-amount + fee-on-transfer 修复** — 重写 `contracts/PaymentEscrow.sol`：SafeERC20 集成、零金额 require、balance-before/after 存储实际到账、多版本 Solidity 编译；新建 `contracts/test/FeeOnTransferToken.sol`（5% burn 模拟）、`MockERC20.sol`；14 测试 14/14 PASS；PR https://github.com/ClankerNation/OpenAgents/pull/5363
 - feat(sniper-sql-injection): `ClankerNation/OpenAgents` **#27 SQL Injection 修复** — `api/routes/agents.py` Pydantic 输入校验（name pattern/length cap）+ 参数化 owner 查询 + 分页上限 le=100 + delete_agent 认证 + X-Contributor 头部；PR https://github.com/ClankerNation/OpenAgents/pull/5362
 ### 新增

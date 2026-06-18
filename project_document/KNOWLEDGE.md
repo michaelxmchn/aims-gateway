@@ -76,7 +76,15 @@
 - **验签流程（服务端）**：`encode_defunct(primitive=body)` → `Account.recover_message(signable_message, signature=signature)` → 比对 recovered address 与 header
 - **滑动窗口限流器**：`rate:limiter:{wallet_address}:{time // 60}` 键，`Storage.incr()` 原子递增，100 req/60s 阈值，120s TTL
 
-#### Solidity Fee-on-Transfer 代币防护模式
+#### StakingRewards Phantom Reward 防护模式（Synthetix 标准）
+- **问题**：`rewardPerToken()` 使用 `block.timestamp - lastUpdateTime` 计算奖励累积，当 `periodFinish` 过期后奖励继续虚增，导致用户可提取超过实际存入的奖励
+- **标准修复**：使用 `lastTimeRewardApplicable()`（= `min(block.timestamp, periodFinish)`）替代 `block.timestamp`，将时间窗口限制在奖励周期内
+- **notifyRewardAmount 防护三件套**：
+  1. `onlyOwner` 权限控制 — 防止任何人重置奖励率
+  2. `reward / rewardsDuration > 0` — 防止整除精度损失导致奖励率=0
+  3. 合约预存奖励代币 — `notifyRewardAmount` 前确保奖励池已充值
+
+### Solidity Fee-on-Transfer 代币防护模式
 - **问题**：`IERC20(token).transferFrom(msg.sender, address(this), amount)` 对于 fee-on-transfer 代币，实际到账金额 < amount，导致会计记账错误
 - **Balance-Before/After 模式**：
   ```solidity
