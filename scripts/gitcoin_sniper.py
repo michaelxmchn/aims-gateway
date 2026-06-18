@@ -30,6 +30,7 @@ import requests
 
 WORKDIR     = Path(os.getenv("AIMS_SNIPER_WORKDIR", "/tmp/aims-sniper"))
 BOUNTYCASTER_API = os.getenv("BOUNTYCASTER_API", "https://www.bountycaster.xyz")
+ADAPTER_API = os.getenv("ADAPTER_API", "http://localhost:9812")
 AIMS_API    = os.getenv("AIMS_API", "http://127.0.0.1:8001")
 AIMS_API_KEY = os.getenv("AIMS_API_KEY", "")
 AIMS_WALLET  = os.getenv("AIMS_WALLET", "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266")
@@ -39,7 +40,7 @@ DOCKER_ENABLED = os.getenv("SNIPER_DOCKER", "1") == "1"
 
 # Language → Docker image mapping for sandboxed test execution
 DOCKER_IMAGES: dict[str, str] = {
-    "node":   "node:20-slim",
+    "node":   "node:22-alpine",
     "python": "python:3.12-slim",
     "go":     "golang:1.23-alpine",
     "rust":   "rust:1.75-slim",
@@ -316,6 +317,46 @@ class BountycasterPoller:
         ]
 
 
+class AdapterPoller:
+    """Poll the multi-source adapter (bounty_adapter.py :9812) for aggregated bounties.
+
+    The adapter aggregates Bountycaster + GitHub Issues + Algora into a single
+    JSON list at GET /bounties. This poller reads that endpoint and converts
+    each item into a BountycasterBounty for the pipeline.
+    """
+
+    def __init__(self, api_url: str = ADAPTER_API):
+        self.api_url = api_url.rstrip("/")
+        self._session = requests.Session()
+        self._seen: set[str] = set()
+
+    def fetch(self) -> list[BountycasterBounty]:
+        """Fetch all bounties from the adapter."""
+        try:
+            resp = self._session.get(
+                f"{self.api_url}/bounties",
+                timeout=30,
+                headers={"Accept": "application/json"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            if not isinstance(data, list):
+                log(f"Adapter returned non-list response", "WARN")
+                return []
+            return [BountycasterBounty(item) for item in data]
+        except requests.RequestException as e:
+            log(f"Adapter API request failed: {e}", "WARN")
+            return []
+
+    def new_bounties(self) -> list[BountycasterBounty]:
+        """Return bounties not seen in previous polls."""
+        batch = self.fetch()
+        fresh = [b for b in batch if b.id not in self._seen]
+        for b in fresh:
+            self._seen.add(b.id)
+        return fresh
+
+
 # ═══════════════════════════════════════════════════════════════
 # 2. AIMS SKILL MATCHER
 # ═══════════════════════════════════════════════════════════════
@@ -379,9 +420,12 @@ class AIMSEvaluator:
                 json=payload,
                 timeout=30,
             )
+            if resp.status_code == 403:
+                log(f"AIMS /api/run returned 403 (auth required) — falling back to keyword heuristic", "WARN")
+                return self._mock_evaluate(bounty)
             if resp.status_code != 200:
                 log(f"AIMS /api/run returned {resp.status_code}: {resp.text[:200]}", "WARN")
-                return False, 0, f"API error {resp.status_code}"
+                return self._mock_evaluate(bounty)
 
             result = resp.json()
             raw = result.get("result_data", {})
@@ -395,16 +439,19 @@ class AIMSEvaluator:
         """Keyword-based simulation for dry-run."""
         desc = (bounty.title + " " + bounty.description).lower()
         # Auto-reject research / social / docs-only tasks
-        no_match_keywords = ["research", "document", "rfc", "architecture proposal",
-                             "social bounty", "engagement", "moon energy", "wish me luck",
+        # Note: avoid overly broad terms like "document" which catch "documentation" in code bounties
+        no_match_keywords = ["research-only", "creative design", "ux research",
+                             "social bounty", "social engagement", "moon energy", "wish me luck",
                              "good luck"]
         if any(kw in desc for kw in no_match_keywords):
             return False, 20, "Non-code task — not automatable"
         # Keywords that indicate a code task (works for both fix and build bounties)
         match_keywords = ["fix ", "bug", "test", "coverage", "lint", "css",
+                          "solidity", "contract", "staking", "reentrancy", "overflow",
                           "typescript", "script", "nextjs", "react", "tailwind",
                           "supabase", "frame", "migration", "cli", "api",
-                          "github", "node", "npm", "jest"]
+                          "github", "node", "npm", "jest",
+                          "security", "vulnerability", "injection"]
         score = 0
         has_github = bool(bounty.repo_url)
         for kw in match_keywords:
@@ -539,6 +586,19 @@ class CodeExecutor:
                 test_failed = False
                 if DRY_RUN:
                     log(f"[DRY-RUN] Would run in Docker ({docker_image}): {'; '.join(test_cmds)}")
+                elif not DOCKER_ENABLED:
+                    log("Docker disabled — running tests directly on host", "INFO")
+                    for cmd in test_cmds:
+                        log(f"  Running: {cmd}", "INFO")
+                        r = subprocess.run(cmd, shell=True, cwd=str(clone_path),
+                                           capture_output=True, text=True, timeout=600)
+                        if r.returncode != 0:
+                            detail = r.stderr[-500:] if r.stderr else r.stdout[-500:]
+                            last_error = f"'{cmd}' exited {r.returncode}: {detail}"
+                            log(f"  Test failed: {last_error[:300]}", "WARN")
+                            trace("test_failed", f"{last_error} (attempt {attempt})", "error")
+                            test_failed = True
+                            break
                 else:
                     result = self._run_in_docker(clone_path, docker_image, test_cmds)
                     if result is None:
@@ -604,6 +664,10 @@ class CodeExecutor:
             )
             if r.returncode != 0:
                 log(f"Docker test failed (exit {r.returncode}): {r.stderr[:200]}", "WARN")
+                # If Docker can't pull images (network issue), fall back to direct execution
+                if "Unable to find image" in r.stderr or "Error response from daemon" in r.stderr:
+                    log("Docker image pull failed — falling back to direct execution", "WARN")
+                    return None
             return {"returncode": r.returncode, "stdout": r.stdout, "stderr": r.stderr}
         except FileNotFoundError:
             log("Docker binary not found — is Docker installed?", "ERROR")
@@ -824,14 +888,17 @@ class SniperPipeline:
     """Orchestrates one full poll→match→execute→deliver cycle."""
 
     def __init__(self):
-        self.poller = BountycasterPoller()
+        # In dry-run mode use BountycasterPoller (has mock data);
+        # in live mode use AdapterPoller to hit the multi-source aggregator.
+        self.poller = BountycasterPoller() if DRY_RUN else AdapterPoller()
         self.evaluator = AIMSEvaluator()
         self.executor = CodeExecutor()
         self.deliverer = AutoDeliverer()
 
     def run_once(self) -> list[dict]:
         """Single cycle: return action traces generated."""
-        log("Polling Bountycaster for new bounties…")
+        source_name = "Bountycaster" if DRY_RUN else "Adapter (multi-source)"
+        log(f"Polling {source_name} for new bounties…")
         bounties = self.poller.new_bounties()
         log(f"Found {len(bounties)} new bounties")
 
@@ -895,8 +962,9 @@ def main():
         return
 
     mode = "DRY-RUN" if DRY_RUN else "LIVE"
+    source_label = "Bountycaster (mock)" if DRY_RUN else "Adapter (multi-source: Bountycaster+GitHub+Algora)"
     log(f"AIMS Bountycaster Sniper starting in {mode} mode")
-    log(f"  Poll: {BOUNTYCASTER_API}")
+    log(f"  Poll: {source_label}")
     log(f"  AIMS: {AIMS_API}")
     log(f"  Docker: {'ENABLED' if DOCKER_ENABLED else 'DISABLED'}")
     log(f"  Interval: {POLL_SECONDS}s")

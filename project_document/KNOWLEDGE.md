@@ -622,6 +622,15 @@ A: 待补充
 - **方案**：增加 `_worker_claimed[taskId]` 和 `_developer_claimed[taskId]` 独立追踪
 - **副作用**：`claimReward` 失败消息从 "task not settled" 变为 "worker already claimed"；`refundTask` 需额外检查认领状态
 
+### 2026-06-18: Sniper 指向 Adapter 多源聚合网关
+- **背景**：Bountycaster API 无开放 Bounty，GitHub + Algora 的 62 条 Bounty 困在 adapter 中，sniper 轮询空转
+- **方案**：新增 `AdapterPoller` 类通过 `ADAPTER_API=http://localhost:9812/bounties` 读取多源聚合结果；`SniperPipeline` 根据 `DRY_RUN` 标志自动选择 poller
+- **AIMS API 降级**：LIVE 环境下 AIMS `/api/run` 返回 403（缺 API Key）时 `AIMSEvaluator.evaluate()` 自动回退 `_mock_evaluate()` 关键词启发式
+- **Docker 禁用**：`SNIPER_DOCKER=0` 环境变量实际控制 `CodeExecutor.execute()` 执行路径（原仅修改日志显示），跳过 `_run_in_docker()` 直接 host 执行测试
+- **Pull 失败回退**：`_run_in_docker()` 捕获 Docker exit 125 / `Unable to find image` / `Error response from daemon` 返回 None 触发直连回退
+- **关键词扩展**：`_mock_evaluate()` `no_match_keywords` 移除非代码误报词 `"document"`（易匹配 bounty 描述中的 documentation），`match_keywords` 新增 solidity/contract/staking/reentrancy/overflow/security/vulnerability/injection
+- **Docker 镜像**：`DOCKER_IMAGES` `node:20-slim` → `node:22-alpine`（本地已预拉取避免网络超时）
+
 ### Anvil E2E Pipeline 模式
 - **四文件结构**：
   - `AIMSAgentGateway.sol` — 简化 Solidity 合约（native ETH，无需 USDC），worker-signed PoT 用 `ecrecover` 验证，70/25/5 分账，`onlyGateway` + `nonReentrant` 守卫

@@ -7,6 +7,12 @@
 
 ## [2026-06-18]
 ### 新增
+- feat(sniper-adapter): `gitcoin_sniper.py` **AdapterPoller 连接多源聚合网关** — 新增 `AdapterPoller` 类替换 `BountycasterPoller`，LIVE 模式轮询 `ADAPTER_API=http://localhost:9812/bounties`，62-66 条实时 Bounty 进入狙击管道（Bountycaster 0 + GitHub 40 + Algora 22）；DRY-RUN 保留 Bountycaster mock 数据；`SniperPipeline` 根据 `DRY_RUN` 标志自动切换 poller
+- feat(sniper-keywords): `gitcoin_sniper.py` **Solidity/Web3 关键词扩展** — `_mock_evaluate()` 新增 solidity/contract/staking/reentrancy/overflow/security/vulnerability/injection 匹配词，移除非代码误报词 `"document"`，高价值 Solidity Bounty 从 NO_MATCH → MATCH 95%
+- feat(sniper-fallback): `gitcoin_sniper.py` **AIMS API 403 自动降级关键词评估** — `AIMSEvaluator.evaluate()` 捕获 403 后回退 `_mock_evaluate()` 关键词启发式，无需 API Key 即可全自动匹配
+- feat(sniper-docker-direct): `gitcoin_sniper.py` **SNIPER_DOCKER=0 真正禁用 Docker** — `DOCKER_ENABLED` 全局变量控制 `CodeExecutor.execute()` 执行路径，跳过 `_run_in_docker()` 直接 host 执行测试；`_run_in_docker()` 新增 Docker Hub 不可达优雅回退（exit 125/image pull fail → return None → 直连）
+- feat(sniper-images): `DOCKER_IMAGES` `node:20-slim` → `node:22-alpine`（本地已缓存缓存）
+### 新增
 - feat(adapter-algora): `scripts/bounty_adapter.py` **Algora.io Source C 并入多源聚合网关** — `AlgoraClient` 使用 GitHub Issues Search API 搜索 `"/bounty" is:issue is:open` 跨引用发现 Algora 悬赏；`_parse_bounty_amount()` 正则匹配 `/bounty $X` / `/bounty $X USDC` 模式；`3` 个 Algora mock entries（`algora-mock-001` $300 Dashboard Dark Mode、`algora-mock-002` $150 API Tests、`algora-mock-003` $450 DB Query Optimization）集成至 `MultiSourceAggregator` 三源并网；`--sources` / `/sources` 端点展示 3 源状态；适配器初始化日志确认 3 源
 - feat(sniper-antiboot): `scripts/gitcoin_sniper.py` **反风控人类行为伪装机制** — `AutoDeliverer.deliver()` 成功 PR 提交后 `random.uniform(180, 600)` 秒强制休眠；日志 `[SECURITY] PR submitted successfully. Mimicking human behavior, cooling down for X seconds...`；dry-run 跳过实际休眠但记录提示
 - feat(sniper-retry): `scripts/gitcoin_sniper.py` **5-retry Circuit Break 熔断重试** — `CodeExecutor.execute()` 将 claude-code 修复 + Docker 测试阶段包裹在 `for attempt in range(1, 6)` 重试循环中；单步失败时 `continue` 下一轮重试（10s 间隔）；全部 5 次耗尽后记录 `All 5 attempts exhausted — giving up` 并返回 FAILED 终结；trace 日志展示 `Execution attempt N/5`
