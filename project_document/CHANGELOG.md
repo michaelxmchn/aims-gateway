@@ -7,6 +7,9 @@
 
 ## [2026-06-18]
 ### 新增
+- feat(bounty-179): `ClankerNation/OpenAgents` **#179 PaymentEscrow zero-amount + fee-on-transfer 修复** — 重写 `contracts/PaymentEscrow.sol`：SafeERC20 集成、零金额 require、balance-before/after 存储实际到账、多版本 Solidity 编译；新建 `contracts/test/FeeOnTransferToken.sol`（5% burn 模拟）、`MockERC20.sol`；14 测试 14/14 PASS；PR https://github.com/ClankerNation/OpenAgents/pull/5363
+- feat(sniper-sql-injection): `ClankerNation/OpenAgents` **#27 SQL Injection 修复** — `api/routes/agents.py` Pydantic 输入校验（name pattern/length cap）+ 参数化 owner 查询 + 分页上限 le=100 + delete_agent 认证 + X-Contributor 头部；PR https://github.com/ClankerNation/OpenAgents/pull/5362
+### 新增
 - feat(sniper-adapter): `gitcoin_sniper.py` **AdapterPoller 连接多源聚合网关** — 新增 `AdapterPoller` 类替换 `BountycasterPoller`，LIVE 模式轮询 `ADAPTER_API=http://localhost:9812/bounties`，62-66 条实时 Bounty 进入狙击管道（Bountycaster 0 + GitHub 40 + Algora 22）；DRY-RUN 保留 Bountycaster mock 数据；`SniperPipeline` 根据 `DRY_RUN` 标志自动切换 poller
 - feat(sniper-keywords): `gitcoin_sniper.py` **Solidity/Web3 关键词扩展** — `_mock_evaluate()` 新增 solidity/contract/staking/reentrancy/overflow/security/vulnerability/injection 匹配词，移除非代码误报词 `"document"`，高价值 Solidity Bounty 从 NO_MATCH → MATCH 95%
 - feat(sniper-fallback): `gitcoin_sniper.py` **AIMS API 403 自动降级关键词评估** — `AIMSEvaluator.evaluate()` 捕获 403 后回退 `_mock_evaluate()` 关键词启发式，无需 API Key 即可全自动匹配

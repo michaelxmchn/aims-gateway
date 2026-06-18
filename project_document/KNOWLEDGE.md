@@ -47,7 +47,15 @@
 - **Source C (Algora.io)**：新增 `AlgoraClient`，因 Algora 为 **Phoenix LiveView** 应用无 JSON API（`/api/bounties` 返回 HTML + `{"errors":{"detail":"Not Acceptable"}}`），改用 **GitHub Issue Comment 跨引用**策略 — 搜索 `"/bounty" is:issue is:open` 发现所有通过 `/bounty $X` 命令创建的 Algora 悬赏；`_parse_bounty_amount()` 正则匹配 `/bounty $300`、`/bounty $300 USDC` 等模式；3 个 mock entries 集成至 MultiSourceAggregator
 - **三源并网架构**：`MultiSourceAggregator.fetch_all()` 依次调用 `BountycasterClient` → `GitHubBountyClient` → `AlgoraClient`，每个源被独立的 `try/except` 包裹保证单源失败不影响其他源；最终统一经 `DedupEngine` + `is_valid_bounty()` 过滤后返回
 
-### Gitcoin Sniper 安全与风控机制
+#### SQL 注入修复模式（OpenAgents #27）
+- **FastAPI + SQLAlchemy ORM 安全修复清单**：
+  - **输入校验**：Pydantic `Field(pattern=r"^[a-zA-Z0-9 _\-.]+$", min_length=1, max_length=64)` 限制 name 字段字符集和长度
+  - **参数化查询**：避免 `Agent.owner_id == owner`（string vs int 列类型混淆），改为 `User.address` ORM 参数化预查 + `Agent.owner_id == user.id`
+  - **分页上限**：`limit: int = Query(50, ge=1, le=100)` 防止资源耗尽攻击
+  - **认证强制**：`delete_agent` 添加 `user=Depends(get_current_user)` + `agent.owner_id != user["id"]` owner 检查
+  - **可追溯性**：所有端点返回 `response.headers["X-Contributor"]` 响应头
+
+## Gitcoin Sniper 安全与风控机制
 - **Anti-bot Human Mimicry**：`AutoDeliverer.deliver()` 成功创建 PR 后调用 `time.sleep(random.uniform(180, 600))` 随机冷却 3-10 分钟模拟人类操作节奏，日志记录 `[SECURITY] PR submitted successfully. Mimicking human behavior, cooling down for X seconds...`；dry-run 模式下跳过实际休眠
 - **5-retry Circuit Break（5 次熔断重试）**：`CodeExecutor.execute()` 将 claude-code 修复 + Docker 测试阶段包裹在 `for attempt in range(1, 6)` 循环中；失败时 `continue` 下一轮（10s 间隔）；全部 5 次耗尽后返回 `{"status": "FAILED", "step": "circuit-break"}` 并记录 `All 5 attempts exhausted — giving up`；严禁无限卡死或报警
 
@@ -68,7 +76,25 @@
 - **验签流程（服务端）**：`encode_defunct(primitive=body)` → `Account.recover_message(signable_message, signature=signature)` → 比对 recovered address 与 header
 - **滑动窗口限流器**：`rate:limiter:{wallet_address}:{time // 60}` 键，`Storage.incr()` 原子递增，100 req/60s 阈值，120s TTL
 
-### AIMS 链上架构模式
+#### Solidity Fee-on-Transfer 代币防护模式
+- **问题**：`IERC20(token).transferFrom(msg.sender, address(this), amount)` 对于 fee-on-transfer 代币，实际到账金额 < amount，导致会计记账错误
+- **Balance-Before/After 模式**：
+  ```solidity
+  uint256 balanceBefore = IERC20(token).balanceOf(address(this));
+  IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+  uint256 actualReceived = IERC20(token).balanceOf(address(this)) - balanceBefore;
+  ```
+- **SafeERC20 必需**：OZ `safeTransferFrom/safeTransfer` 替代原始 `transfer/transferFrom`，处理非标准 ERC20（USDT 等不支持返回值的代币）
+- **存储实际而非名义金额**：escrow 中存储 `actualReceived` 而非 `amount`，确保 release/refund 操作使用正确的链上余额
+- **零金额检查门控**：所有涉及 amount 的 public/external 函数必须 `require(amount > 0, "...")`，防止事件污染和 storage 写入攻击
+
+### 多版本 Solidity 编译（Hardhat）
+- **场景**：项目中同时使用 ^0.8.20 和 ^0.8.24 合约时，OZ v5 需要 0.8.24+ + Cancun EVM + viaIR
+- **配置**：`hardhat.config.js` `solidity.compilers` 数组 + `overrides` 按文件路径覆盖
+- **0.8.24 必需设置**：`evmVersion: "cancun"`（OZ v5 mcopy opcode）+ `viaIR: true`（calldata 动态数组存储）
+- **Ethers v6 迁移注意**：`.deployed()` → `.waitForDeployment()`，`.address` → `.target`，`ethers.constants.AddressZero` → `ethers.ZeroAddress`，`.sub()` 用 `-` 运算符（native BigInt）
+
+## AIMS 链上架构模式
 - **链上仅做两件事**：结算（扣分/加分）+ 计数器（+1 状态证明）
 - **高频运行数据**：本地 Append-only Log 挡在前面，定期 Batch 上链
 - **底链**：Base（EVM 兼容，低 Gas）
